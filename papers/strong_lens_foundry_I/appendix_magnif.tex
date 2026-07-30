@@ -1,0 +1,135 @@
+% \subsection*{A. Magnification}\label{sec:magnif}
+This appendix describes the magnification calculations for the lensed arcs. 
+We will show three independent methods that provide consistent results with each other.
+% , and a sanity check.
+
+In the first method, we choose a reasonable luminosity threshold for the source light. 
+The pixels in the source plane and the lens plane with values exceeding the threshold are selected, with both images being non-PSF convolved. 
+This threshold is chosen in a manner that allows each arc to be isolated from the others. 
+The ratios between the number of pixels of each arc and the number of pixels of the source, above this threshold, will be the magnifications. 
+In practice, an important adjustment needs be made in order to achieve accurate results.
+Each flux value in the image plane comes from a corresponding pixel in the source plane. 
+\gigal ensures this correspondence by ray-tracing each pixel of the image plane to the source plane.
+% and determining the pixel value on the source plane.
+% evaluating the light profile of the source in that source-plane point. We then assign that value the the original pixel. 
+It then assigns the pixel in the image plane with the value of the corresponding pixel on the source plane. 
+However, for magnified images, using a grid in the source plane that is the same as the lens plane can lead to inaccuracy in the magnification calculation.
+Such a grid proves to be too coarse and thus
+% the fewer pixels will be counted in the source plane, and this 
+leads to an underestimation of the magnification.
+We use the peak pixel values in the source and image planes as a diagnostic.
+% The coarser the grid, the higher the discrepancy between the peak values of the light between the image plane and the source plane. 
+% will be. 
+% artificial increase in the magnification.
+% leads to potential resolution discrepancy. 
+% The center of the source profile must be reached with the resolution that the image plane requires. 
+We find that the source plane grid is sufficiently fine if a correspondence between the peak pixel values in the image and source planes can be established.
+% so that the (peak) luminosity values between the two planes coincide. 
+% Computing magnification involves selecting a luminosity threshold for the source and identifying pixels that surpass this threshold. The number of pixels exceeding this threshold within the image arcs is then computed to determine the quotient of these values. To ensure consistency, the luminosity values in both the arcs and the source must align. This requirement comes from the process of light assignment to arc pixels in the image plane, which involves ray-tracing back to the source plane, evaluating the light profile model for the source, and then projecting this value onto the initial arc pixel in the image plane. The usage of a finite grid to evaluate the image introduces a potential resolution discrepancy. Specifically, the positions in arcseconds of a point in the image plane, post ray-tracing, may have a higher resolution than the initial grid. Such a difference can lead to variations in the maximum luminosity value between the simulated source and the arcs, since the assigned luminosity, which depends on the distance to the center of the source, will vary with the resolution. 
+% For a fair comparison, a higher-resolution grid is used when simulating only the source. 
+We thus proceed as follows. 
+Let $\delta_I$ and $\delta_S$ be the pixel sizes, measured in arcseconds, of the image and source planes, respectively, with a sufficiently small $\delta_S$ (for typical lensed images, which are magnified, $\delta_I > \delta_S$).
+% When applying the method described initially, which involves dividing pixels in the arc and source based on a threshold, we need to account for this difference in the resolutions used by multiplying the final quotient by a factor $(\delta pix_I/\delta pix_S)^2$.
+In the case of DESI-165.4754-06.0423, we use  $\delta_I = 0.065''$ and $\delta_S = 0.02''$.
+We can now count pixels and compute the ratio for each arc. 
+We account for the pixel size difference between the planes
+% that we have introduced in the first step. For that reason, we must 
+by multiplying the ratio by the factor $(\delta_I/\delta_S)^2$. This is the magnification.
+This method is straightforward, but it requires determining a reasonable grid resolution for the source plane. %Using this first method, the best-fit model predicts magnifications of
+%26.65, 57.33, 53.81, and 36.21 for images A, B, C, and D, respectively (Figure~\ref{fig:what-to-mask}). 
+
+% A pixel-free approach would be ideal.
+% While increasing the resolution through this method guarantees consistent maximum values, manually selecting a resolution $\delta pix_S$ for the source to align with the luminosity peak in the arcs is needed. 
+
+We now introduce a second method that does not require that we choose an appropriate resolution in the source plane.
+% to simulate the source. 
+%First we assign a point in arcseconds to each pixel within the non-PSF-convolved arcs.
+% First, we assign a point, measured in arcseconds, to each pixel that exceeds a threshold (identical to the one used in the first method) within the non-PSF-convolved arc
+% First, we assign a point to the center of each pixel that exceeds a threshold (identical to the one used in the first method) within the non-PSF-convolved arc.
+For each pixel that exceeds a chosen threshold (identical to the one used in the first method) within a non-PSF-convolved arc, we ray-trace the center of that pixel to the source plane.
+% \textcolor{red}{ 2. This sentence sounds a little odd. 3. Here you use the image plane grid size -- in this case, $0.065''$?}
+% We then ray-trace these points to the source plane,
+We then compute the area of the convex hull that encloses these delensed points.  
+% By computing the area enclosed within the non-PSF-convolved and 
+The magnification is the ratio between the area of each arc and the source area calculated this way,
+as long as source structure does not have concave features and the convex hull results in a reasonable enclosure.\footnote{\citet{zhang2023a} uses convex hull in the \emph{image} plane for magnification calculations.
+% and say the advantages and disadvantages of each.)
+Given that a lensed arc can have significant curvature, the resulting enclosure can sometimes cover a larger area than the arc, and lead to inaccurate magnification.}  
+
+%The magnification values presented in \ref{sec:lens-model} are calculated using this second method, which predicts magnifications of $23.41$, $60.61$, $48.43$, and $34.64$ for images A, B, C, and D, respectively.
+
+
+
+
+% This method does not rely on determining a finer pixel grid for the source plane and makes all operations in arcseconds (\textcolor{red}{XH: say this better?}) and provides an accurate result. 
+% (\ed{Original text: this method results in a more accurate result -- is that true? NR: The second method is more accurate because it uses a convex hull to capture just the area enclosing the delensed points, while the first method overestimates by counting full squares, even if a point only touches a part of them. (See my last slide.)})
+% Neither does it require that we match the peak light values between the two planes, as this approach ray-trace the points with the resolution of the telescope.
+% We consider this a better approach because one does not need to chose a pixel size in the source plane (say more elegant?), 
+% In our view, it is a better approach,
+
+
+
+
+% We use a third method to calculate the total magnification. This is the most straightforward approach, although it does not provide magnification for each individual arc. 
+% Taking advantage of our forward modeling approach, 
+% We simply use a very fine grid, and add up all the pixel values in the image plane for the images and the pixels in the source plane for the source, and take the ratio.
+% This total magnification is also in excellent agreement with the results from the two methods above. Note that in this case we are doing a pixel-value weighted magnification.
+% It is good to have two different approach as a check for each other. 
+
+As a final check, we apply the point-wise magnification function from \texttt{Lenstronomy} to our model. The mean values of all points within each arc are also consistent with the magnification for each arc calculated using the first two methods. We present the magnification results for these three methods in Table~\ref{tab:magnifications}.
+
+%($24.83$, $57.15$, $53.06$, and $34.95$ for images A, B, C, and D, respectively)
+
+% \textcolor{red}{In the text we refer as the 3rd method to Andi's method, which we concluded we were not going to report, but in the table the 3rd method refers to the mean point-wise lenstronomy magnification, which is referred to in the text as a sanity check.}
+
+In the literature, magnifications are typically calculated using one method. 
+Here we take three reasonable approaches, and we note that the differences in the magnifications from using these different methods are greater than the statistical uncertainties. Thus, we regard the differences between the methods as an estimate for the uncertainty. For all three methods, the magnification for all four lensed images are in agreement to $\lesssim 10\%$. 
+We take the averages of the first two methods as the magnifications and their differences divided by two as the uncertainty. This is what is reported in the main text.
+We treat the third method as a ``sanity check''.
+% \ed{Say this, but gently: few papers (I don't know any in fact) have compared the results of different ways of calculation magnification, thus their uncertainties (only the statistical part) are likely underestimated).}
+
+
+
+
+
+\begin{deluxetable*}{lccccc}
+\tabletypesize{\footnotesize}
+\tablecaption{Magnification calculations for DESI-165.4754-06.0423.
+%for the lens mass profile and the external shear.
+\label{tab:magnifications}}
+\renewcommand{\arraystretch}{1.4}
+\tablehead{
+    \colhead{Method} &
+    \colhead{$A$} &
+    \colhead{$B$} &
+    \colhead{$C$} &
+    \colhead{$D$} &
+    \colhead{Total}
+}
+\startdata
+$1^{\text{st}}$&$26.65$&$57.33$&$53.81$&
+$36.21$&$174.00$ \\
+$2^{\text{nd}} $&$23.41$&$60.61$&$48.43$& 
+$34.64$&$167.09$ \\
+% $3^{\text{rd}} \ \text{method}$&$-$&$-$&$-$& 
+% $-$&$144.16$ \\
+$3^{\text{rd}} $&$24.83$&$57.15$&$53.06$& 
+$34.95$&$169.99$ \\
+\enddata
+\tablecomments{Our magnification calculations, using three approaches, for images A, B, C, D (see Figure~\ref{fig:what-to-mask}), and the total magnification, respectively.
+}
+\end{deluxetable*}
+
+
+% Indeed this estimate is in agreement with the values from the two methods described above.
+
+% The magnification for each arc can be estimated as the mean value of all points within the arc.
+% Indeed this estimate is in agreement with the values from the two methods described above.
+
+
+% A more precise method, for which choosing a specific resolution to simulate the source is not required, involves selecting all positions within the non-PSF-convolved arcs in arcseconds. Ray-tracing is then performed on these points to map them to the source plane and calculate the area enclosed by the convex hull of all the delensed positions. Finally, the ratio of areas between the arc and the source is computed. Notice that this method achieves higher precision by directly operating at the level of arcseconds, eliminating the necessity of a finite grid of pixels in the source. Additionally, it does not require matching the peak luminosity value between the image and the source for consistency. However, given that ray-tracing serves as the initial step in simulating a lensed image, followed by evaluating the light profile in the source and assigning this value to the initial lensed point, we implicitly maintain consistency between the luminosity values in the arcs and the source. 
+
+% As an additional calculation, it is crucial to ensure that the mean value of the pointwise magnification for all points in each arc does not deviate significantly from the magnifications calculated from the ratio of areas using the methods outlined in this section.
+
+
+% XH: should we mention that Lenstronomy currently doesn't have this functionality 

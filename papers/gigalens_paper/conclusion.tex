@@ -1,0 +1,33 @@
+\ag{In this work we present a new framework for modeling strong gravitational lenses that is robust, efficient, and scalable to high-dimensional parameter spaces. We achieve this via algorithmic improvements and extensive use of two technologies. For the former, we use multi-start gradient descent in place of PSO, and HMC augmented with VI in place of \emcee. 
+For the latter, first,} massive parallel processing on GPUs allows us to simulate thousands of systems at once, orders of magnitude faster than existing lensing codes that use CPUs. 
+This fast simulation capability is key 
+%requisite 
+for efficient forward modeling. 
+Second, automatic differentiation \ag{provides access to gradient information that is a highly valuable guide for each step in our pipeline, 
+at virtually no \xh{additional computational} cost.} 
+
+\ag{We have demonstrated our pipeline's performance on a large set of simulated systems.} We make a \agu{reasonably general} choice for our lens model (EPL + external shear, with lens and source light modeled with S\'ersic profiles) in this work. 
+\ag{But} we emphasize that our modeling methodology is an overarching framework. 
+The capabilities described above are applicable to any parameterized lens model. 
+For instance, if we opt instead to use shapelets \citep{birrer2015} as a source light model, only $\sim 10\%$ more computation time is needed. 
+More importantly, as we \xh{showed} in \S\ref{sec:hmcvemcee}, a gradient-informed modeling pipeline is necessary to do rigorous statistical inference on models with many parameters. %To further evidence the strengths of a gradient-informed modeling framework, 
+\agu{Fifty-one of the lensing systems that we discovered in \citet{huang2020a,huang2021a} have been observed with the \textit{Hubble Space Telescope} (ID: 15867; PI: Huang). We will apply the \gigalens framework to model a subset of these systems and report the results in an upcoming publication (Gu et al. in prep.).}
+
+In this work, we have developed the \ag{core} components for a gradient-based lens modeling framework. 
+There is much room for expansion within this framework. \agu{For instance, although we did not find significant multimodality in the posterior for the model we consider in this work (i.e., all local modes have vanishing posterior density compared to the global mode), it is unclear whether this will still be the case for more complex lens and source models.} We believe this can be addressed using more advanced samplers (using HMC as a substrate) such as adiabatic Monte Carlo \citep{betancourt2015}, parallel tempering \citep{earl2005}, or annealed importance sampling \citep{neal2001}. The latter is also capable of estimating normalizing constants\ag{, which enables the computation of Bayes factors. This is necessary for model comparison, which is particularly useful for tasks such as the modeling \agu{of subhalos and line-of-sight low-mass halos.}}
+
+%where it may be desirable to compare an ensemble of $n$ models $\qty{\mathcal{M}_j}$, each with $j=0,1,\ldots,n-1$ subhalos; 
+
+% \begin{enumerate}[label=(\alph*)]
+%     \item 
+%     \item Systematic uncertainty: we are often interested in understanding the degree to which our modeling choices are supported by the data. For instance, in substructure modeling, it may be desirable to compare an ensemble of $n$ models $\qty{\mathcal{M}_j}$, each with $j=0,1,\ldots,n-1$ subhalos. One way of doing this model comparison might be to use Bayes factors, which requires the computation of normalizing constants $P(X \mid \mathcal{M}_j)$. Annealed importance sampling \citep{neal2001}, which can also use HMC as a substrate, is a promising method for this type of computation. 
+% \end{enumerate}
+
+
+\ag{Finally, the execution time can very likely be significantly shortened from the 105~seconds reported in this work via a combination of technological and algorithmic improvements.}
+\agu{For the former, we plan to use 8 A100 GPUs, and expect that this will bring the execution time to roughly cut in half, bringing the total time to below 1 minute.} In addition, further improvement on GPU speed is almost a certainty. For the latter, on one hand, advances in mass matrix adaptation for HMC \citep{stan} may allow the VI step to be eliminated, potentially offering up to a factor of two speed \xh{gain}. 
+On the other hand, the VI step can be improved to fit the posterior exactly \citep{kingma2017a,papamakarios2018}, allowing HMC to be eliminated from the pipeline. 
+%In sum, 
+This framework and its further improvements make it possible, for the first time, that the $\mathcal{O}(10^5)$ strong lenses expected to be discovered in the next generation surveys can be modeled on a reasonable time scale.
+
+

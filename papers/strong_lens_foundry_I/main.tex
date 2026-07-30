@@ -1,0 +1,506 @@
+\PassOptionsToPackage{dvipsnames}{xcolor}
+% \documentclass[manuscript, linenumbers]{aastex631}
+% \documentclass[preprint, linenumbers]{aastex631}
+\documentclass[preprint]{aastex631}
+% \documentclass[twocolumn,linenumbers]{aastex631}
+% \pdfoutput\ed1
+%\documentclass[iop,revtex4]{emulateapj}
+\usepackage{amsmath}
+% \usepackage{caption}
+\usepackage{bm}
+\usepackage{capt-of}   % don't use the package caption -- it causes some kind of conflict. This is a smaller package 7/29/15
+% See this: https://texdoc.org/serve/caption/0
+% It seems that if I want to change figure caption size, I have to use the caption package
+%\usepackage[font=footnotesize,skip=-15pt]{caption}
+% specifically, LaTeX Error: Command \longtable* already defined.  10/7/23
+% \usepackage{caption}
+\usepackage{svg}
+\usepackage{empheq}
+\usepackage{enumitem}
+\usepackage{hyperref}
+\usepackage{hhline}
+\usepackage{longtable}
+\usepackage{numprint}
+\usepackage{pifont}
+\usepackage{xspace}
+\usepackage{placeins}
+\usepackage{graphicx}
+\usepackage{mwe}
+\usepackage[bottom]{footmisc}
+%\usepackage{adjustbox}
+
+%\usepackage{lineno}
+%\linenumbers
+%\usepackage{float}
+%\restylefloat{table}
+
+\raggedbottom
+
+\newcommand{\nparams}{41\xspace}
+\newcommand{\vdag}{(v)^\dagger}
+\newcommand\aastex{AAS\TeX}
+\newcommand\latex{La\TeX}
+
+\newcommand{\rf}{\textcolor{black}}
+\newcommand{\rff}{\textcolor{black}}
+\newcommand{\ed}{\textcolor{black}}
+
+\newcommand{\ang}{\AA\xspace}
+
+\newcommand{\projname}{DESI Strong Lens Foundry\xspace}
+\newcommand{\progname}{Strong Lensing Secondary Target Program\xspace}
+
+
+\newcommand{\ho}{\ensuremath{H_0}\xspace}
+
+\newcommand{\lcdm}{$\Lambda$CDM\xspace}
+
+\newcommand{\chisqnu}{$\chi^2_\nu$\xspace}
+\newcommand{\gigal}{\texttt{GIGA-Lens}\xspace}
+\newcommand{\thetaEfit}{\ensuremath{2.646\pm0.002\twopr}\xspace}
+\newcommand{\gammafit}{\ensuremath{1.37\pm0.02}\xspace}
+\newcommand{\Refit}{\ensuremath{1.89\pm0.02\twopr}\xspace}
+\newcommand{\Refitkpc}{\ensuremath{11.8\pm0.1}~kpc\xspace}
+
+\newcommand{\rhat}{\ensuremath{\hat{R}}\xspace}
+\newcommand{\tE}{\ensuremath{\theta_E}\xspace}
+
+
+\newcommand{\exetime}{{{3~\rm{hrs.} 13~\rm{min.}}}\xspace}
+\newcommand{\rojascutout}{{\color{blue}120~\rm{pixels}}\xspace}
+
+\newcommand{\cutoutsize}{{\color{red}128~\rm{pixels}}\xspace}
+
+
+\newcommand{\HST}{\emph{Hubble Space Telescope}\xspace}
+\newcommand{\hst}{\emph{HST}\xspace}
+\newcommand{\JWST}{\emph{James Webb Space Telescope}\xspace}
+\newcommand{\jwst}{\emph{JWST}\xspace}
+\newcommand{\RST}{\emph{Nancy Grace Roman Space Telescope}\xspace}
+
+
+\newcommand{\Ia}{SN~Ia\xspace}
+\newcommand{\Iae}{SNe~Ia\xspace}
+\newcommand{\tractor}{\textit{The Tractor}\xspace}
+\newcommand{\micro}{\ensuremath{\/micron}\xspace}
+\newcommand\pound{\scalebox{0.8}{\raisebox{0.4ex}{\#}}}
+
+\newcommand{\coverage}{19,000\xspace}
+\newcommand{\decalscover}{9000\xspace}
+\newcommand{\mzlscover}{5000\xspace}
+
+\newcommand{\ser}{S{\'e}rsic\xspace}
+
+%\newcommand{\twopr}\ensuremath{{^{\prime \prime}}\xspace}
+\newcommand{\twopr}{^{\prime \prime}}
+\newcommand{\zl}{\ensuremath{z_{lens}\xspace}}
+
+%% Reintroduced the \received and \accepted commands from AASTeX v5.2
+%\received{July xx, 2020}
+%\revised{December, xx, 2023}
+% \revised{October 12, 2017}
+% \accepted{December 22, 2020}
+%% Command to document which AAS Journal the manuscript was submitted to.
+%% Adds "Submitted to " the arguement.
+\submitjournal{ApJ}
+
+
+\shorttitle{\projname I}
+\shortauthors{Huang, Baltasar, Ratier-Werbin et al.}
+
+
+\begin{document}
+%\title{Discovering 1000 New Strong Gravitational Lens Candidates in the DESI Legacy Imaging Surveys}
+\title{\projname I:\\
+\hst Observations and Modeling with \gigal}
+
+%%%% DECaLS Imaging Survey
+
+\correspondingauthor{Xiaosheng Huang}
+\email{xhuang22@usfca.edu}
+
+\author[0000-0001-8156-0330]{X.~Huang}
+\affiliation{Department of Physics \& Astronomy, University of San Francisco, San Francisco, CA 94117, USA}
+\affiliation{Physics Division, Lawrence Berkeley National Laboratory, 1 Cyclotron Road, Berkeley, CA 94720, USA}
+
+\author[0009-0003-4697-7079]{S.~Baltasar}
+\affiliation{Physics Division, Lawrence Berkeley National Laboratory, 1 Cyclotron Road, Berkeley, CA 94720, USA}
+\affiliation{Department of Physics, 
+Complutense University of Madrid, 28040 Madrid, Spain}
+\affiliation{Department of Mathematics, 
+Complutense University of Madrid, 28040 Madrid, Spain}
+
+\author[0009-0009-8206-0325]{N.~Ratier-Werbin}
+\affiliation{Physics Division, Lawrence Berkeley National Laboratory, 
+1 Cyclotron Road, Berkeley, CA 94720, USA}
+\affiliation{Department of Physics, 
+Complutense University of Madrid, 28040 Madrid, Spain}
+\affiliation{Department of Mathematics, 
+Complutense University of Madrid, 28040 Madrid, Spain}
+
+\author[0000-0002-0385-0014]{C.~Storfer}
+\affiliation{Institute for Astronomy, University of Hawai'i, 
+Honolulu, HI 96822-1897, USA}
+
+\author[0000-0003-1889-0227]{W.~Sheu}
+\affiliation{Department of Physics \& Astronomy, 
+University of California, Los Angeles, Los Angeles, CA 90095, USA}
+\affiliation{Physics Division, Lawrence Berkeley National Laboratory, 
+1 Cyclotron Road, Berkeley, CA 94720, USA}
+
+\author[0000-0002-2350-4610]{S.~Agarwal}
+\affiliation{University of Chicago, Department of Astronomy, Chicago, IL 60615, USA}
+\affiliation{Physics Division, Lawrence Berkeley National Laboratory, 1 Cyclotron Road, Berkeley, CA 94720, USA}
+
+\author[0009-0008-0518-8045]{M.~Tamargo-Arizmendi}
+\affiliation{Physics Division, Lawrence Berkeley National Laboratory, 
+1 Cyclotron Road, Berkeley, CA 94720, USA}
+\affiliation{Department of Physics \& Astronomy, University of Pittsburgh, Pittsburgh, PA 15260, USA}
+
+\author[0000-0002-5042-5088]{D.J.~Schlegel}
+\affiliation{Physics Division, Lawrence Berkeley National Laboratory, 
+1 Cyclotron Road, Berkeley, CA 94720, USA}
+
+\author{J.~Aguilar}
+\affiliation{Physics Division, Lawrence Berkeley National Laboratory, 1 Cyclotron Road, Berkeley, CA 94720, USA}
+
+\author[0000-0001-6098-7247]{S.~Ahlen}
+\affiliation{Physics Dept., Boston University, 590 Commonwealth Avenue, Boston, MA 02215, USA}
+
+\author{G.~Aldering}
+\affiliation{Physics Division, Lawrence Berkeley National Laboratory, 1 Cyclotron Road, Berkeley, CA 94720, USA}
+
+\author{S.~Banka}
+\affiliation{Department of Electrical Engineering \& Computer Sciences, 
+University of California, Berkeley, Berkeley, CA 94720}
+
+\author[0000-0001-5537-4710]{S.~BenZvi}
+\affiliation{Department of Physics \& Astronomy, University of Rochester, 
+206 Bausch and Lomb Hall, P.O. Box 270171, 
+Rochester, NY 14627-0171, USA}
+
+\author[0000-0001-9712-0006]{D.~Bianchi}
+\affiliation{Dipartimento di Fisica ``Aldo Pontremoli'', Universit\`a degli Studi di Milano, 
+Via Celoria 16, I-20133 Milano, Italy}
+
+\author[0000-0002-9836-603X]{A.~Bolton}
+\affiliation{NSF's National Optical-Infrared Astronomy Research Laboratory, Tucson, AZ 85719, USA}
+
+\author{D.~Brooks}
+\affiliation{Department of Physics \& Astronomy, University College London, 
+Gower Street, London, WC1E 6BT, UK}
+
+\author[0000-0001-7101-9831]{A.~Cikota}
+\affiliation{Gemini Observatory / NSF's NOIRLab, Casilla 603, La Serena, Chile}
+
+\author{T.~Claybaugh}
+\affiliation{Physics Division, Lawrence Berkeley National Laboratory, 
+1 Cyclotron Road, Berkeley, CA 94720, USA}
+
+\author[0000-0002-1769-1640]{A.~de~la~Macorra}
+\affiliation{Instituto de F\'{\i}sica, Universidad Nacional Aut\'{o}noma de M\'{e}xico,  
+Circuito de la Investigaci\'{o}n Cient\'{\i}fica, Ciudad Universitaria, 
+Cd. de M\'{e}xico  C.~P.~04510,  M\'{e}xico}
+
+\author[0000-0002-4928-4003]{A.~Dey}
+\affiliation{NSF's National Optical-Infrared Astronomy Research Laboratory, Tucson, AZ 85719, USA}
+
+\author{P.~Doel}
+\affiliation{Department of Physics \& Astronomy, University College London, 
+Gower Street, London, WC1E 6BT, UK}
+
+\author{J.~Edelstein}
+\affiliation{Space Sciences Laboratory, University of California, Berkeley, 7 Gauss Way, Berkeley, CA 94720, USA}
+%\affiliation{University of California, Berkeley, 110 Sproul Hall \#5800, Berkeley, CA 94720, USA}
+% Remove the second? In recent papers only included SSL. Maybe is what "only for publication" means.
+
+\author[0000-0003-4701-3469]{A.~Filipp}
+\affiliation{Universit\'{e} de Montréal, Physics Department, 
+1375 Av. Th\'{e}r\`{e}se-Lavoie-Roux, H2V~0B3 Montr\'{e}al, QC, Canada}
+\affiliation{Ciela -- Montreal Institute for Astrophysical Data Analysis and Machine Learning, 
+1375 Av. Th\'{e}r\`{e}se-Lavoie-Roux, H2V~0B3 Montr\'{e}al, QC, Canada}
+\affiliation{Technical University Munich, TUM School of Natural Sciences, 
+Physics Department, 85748 Garching, Germany}
+\affiliation{Max Planck Institute for Astrophysics (MPA), Karl-Schwarzschild-Strasse 1, 
+85748 Garching, Germany}
+
+\author[0000-0002-2890-3725]{J.~E.~Forero-Romero}
+\affiliation{Departamento de F\'isica, Universidad de los Andes, Cra. 1 No. 18A-10, Edificio Ip, CP 111711, Bogot\'a, Colombia}
+\affiliation{Observatorio Astron\'omico, Universidad de los Andes, 
+Cra. 1 No. 18A-10, Edificio H, CP 111711 Bogot\'a, Colombia}
+% Remove the first? in recent papers has both.
+
+\author{E.~Gazta\~{n}aga}
+\affiliation{Institut d'Estudis Espacials de Catalunya (IEEC), 
+c/ Esteve Terradas 1, Edifici RDIT, Campus PMT-UPC, 08860 Castelldefels, Spain}
+\affiliation{Institute of Cosmology and Gravitation, 
+University of Portsmouth, Dennis Sciama Building, Portsmouth, PO1 3FX, UK}
+\affiliation{Institute of Space Sciences, ICE-CSIC, Campus UAB, 
+Carrer de Can Magrans s/n, 08913 Bellaterra, Barcelona, Spain}
+% 3: No, 1: Past. all of them in recent paper.
+
+\author[0000-0003-3142-233X]{S.~Gontcho~A~Gontcho}
+\affiliation{Physics Division, Lawrence Berkeley National Laboratory, 
+1 Cyclotron Road, Berkeley, CA 94720, USA}
+% only one in the csv (the current one) but 3 in the website.
+
+\author[0000-0003-2748-7333]{A.~Gu}
+\affiliation{Quantum Science and Engineering, 
+Harvard University, Cambridge, MA 02138, USA}
+
+\author{G.~Gutierrez}
+\affiliation{Fermi National Accelerator Laboratory, PO Box 500, Batavia, IL 60510, USA}
+
+\author[0000-0002-6550-2023]{K.~Honscheid}
+\affiliation{Center for Cosmology and AstroParticle Physics, 
+The Ohio State University, 191 West Woodruff Avenue, Columbus, OH 43210, USA}
+\affiliation{Department of Physics, The Ohio State University, 
+191 West Woodruff Avenue, Columbus, OH 43210, USA}
+\affiliation{The Ohio State University, Columbus, 43210 OH, USA}
+% 3: No
+
+% \author[0000-0002-6876-8492]{Yuan-Ming~Hsu}
+% \affiliation{Department of Physics, National Taiwan University, No. 1, Section 4, Roosevelt Road, Taipei 10617, Taiwan}
+% \affiliation{Institute of Astronomy and Astrophysics, Academia Sinica, Astronomy-Mathematics Building, No. 1, Section 4, Roosevelt Road, Taipei 10617, Taiwan 3}
+
+
+\author[0000-0002-9253-053X]{E.~Jullo}
+\affiliation{Aix-Marseille Univ., CNRS, CNES, LAM, Marseille, France}
+
+\author[0000-0002-0000-2394]{S.~Juneau}
+\affiliation{NSF NOIRLab, 950 N. Cherry Ave., Tucson, AZ 85719, USA}
+% National Science Foundation's National Optical-Infrared Astronomy Research Laboratory
+
+\author{R.~Kehoe}
+\affiliation{Department of Physics, Southern Methodist University, 
+3215 Daniel Avenue, Dallas, TX 75275, USA}
+
+\author[0000-0002-8828-5463]{D.~Kirkby}
+\affiliation{Department of Physics and Astronomy, 
+University of California, Irvine, CA 92697, USA}
+
+\author[0000-0003-3510-7134]{T.~Kisner}
+\affiliation{Physics Division, Lawrence Berkeley National Laboratory, 
+1 Cyclotron Road, Berkeley, CA 94720, USA}
+
+\author[0000-0001-6356-7424]{A.~Kremin}
+\affiliation{Physics Division, Lawrence Berkeley National Laboratory, 
+1 Cyclotron Road, Berkeley, CA 94720, USA}
+% Only one in the csv because the other 2 in the web are past
+
+\author[0000-0001-9802-362X]{K.J.~Kwon}
+\affiliation{Department of Physics, University of California, Santa Barbara, 
+Santa Barbara, CA 93106, USA}
+
+\author{A.~Lambert}
+\affiliation{Physics Division, Lawrence Berkeley National Laboratory, 
+1 Cyclotron Road, Berkeley, CA 94720, USA}
+
+\author[0000-0003-1838-8528]{M.~Landriau}
+\affiliation{Physics Division, Lawrence Berkeley National Laboratory, 
+1 Cyclotron Road, Berkeley, CA 94720, USA}
+
+\author[0000-0002-1172-0754]{D.~Lang}
+\affiliation{Perimeter Institute for Theoretical Physics, 
+Waterloo, ON N2L 2Y5, Canada}
+
+\author[0000-0001-7178-8868]{L.~Le~Guillou}
+\affiliation{Sorbonne Universit\'{e}, CNRS/IN2P3, 
+Laboratoire de Physique Nucl\'{e}aire et de Hautes Energies (LPNHE), 
+FR-75005 Paris, France}
+
+\author{J.~Liu}
+\affiliation{Department of Physics, Rose-Hulman Institute of Technology, 
+Terre Haute, IN 47803, USA}
+
+\author[0000-0002-1125-7384]{A.~Meisner}
+%\affiliation{NSF's National Optical-Infrared Astronomy Research Laboratory, 950 N. Cherry Ave., Tucson, AZ 85719}
+\affiliation{NSF's National Optical-Infrared Astronomy Research Laboratory, Tucson, AZ 85719, USA}
+% 2 in the web, one past
+% STANDARDIZED
+
+\author{R.~Miquel}
+\affiliation{Instituci\'{o} Catalana de Recerca i Estudis Avan\c{c}ats, 
+Passeig de Llu\'{\i}s Companys, 23, 08010 Barcelona, Spain}
+\affiliation{Institut de F\'{i}sica d’Altes Energies (IFAE), 
+The Barcelona Institute of Science and Technology, Edifici Cn, Campus UAB, 
+08193, Bellaterra (Barcelona), Spain}
+
+\author[0000-0002-2733-4559]{J.~Moustakas}
+\affiliation{Department of Physics and Astronomy, 
+Siena College, 515 Loudon Road, Loudonville, NY 12211, USA}
+
+\author{A.~D.~Myers}
+\affiliation{Department of Physics \& Astronomy, 
+University of Wyoming, 1000 E. University, Dept.~3905, 
+Laramie, WY 82071, USA}
+
+\author[0000-0002-4436-4661]{S.~Perlmutter}
+\affiliation{Physics Division, Lawrence Berkeley National Laboratory, 
+1 Cyclotron Road, Berkeley, CA 94720, USA}
+\affiliation{Department of Physics, University of California, 
+Berkeley, CA 94720, USA}
+
+\author[0000-0001-6979-0125]{I.~P\'erez-R\`afols}
+\affiliation{Departament de F\'isica, EEBE, Universitat Polit\`ecnica de Catalunya, 
+c/Eduard Maristany 10, 08930 Barcelona, Spain}
+% the ones in the web are past
+
+\author[0000-0001-7145-8674]{F.~Prada}
+\affiliation{Instituto de Astrof\'{i}sica de Andaluc\'{i}a (CSIC), 
+Glorieta de la Astronom\'{i}a, s/n, E-18008 Granada, Spain}
+
+\author{G.~Rossi}
+\affiliation{Department of Physics and Astronomy, 
+Sejong University, 209 Neungdong-ro, Gwangjin-gu, Seoul 05006, Republic of Korea}
+% one more in the web, past
+
+\author[0000-0001-5402-4647]{D.~Rubin}
+\affiliation{Department of Physics \& Astronomy, 
+University of Hawai'i at M\~{a}noa, Honolulu, HI 96822, USA}
+\affiliation{Physics Division, Lawrence Berkeley National Laboratory, 
+1 Cyclotron Road, Berkeley, CA 94720, USA}
+
+\author[0000-0002-9646-8198]{E.~Sanchez}
+\affiliation{CIEMAT, Avenida Complutense 40, E-28040 Madrid, Spain}
+
+\author{M.~Schubnell}
+\affiliation{Department of Physics, University of Michigan, 
+450 Church Street, Ann Arbor, MI 48109, USA}
+\affiliation{University of Michigan, 500 S. State Street, 
+Ann Arbor, MI 48109, USA}
+% 2: No
+% Both in recent paper
+
+\author{Y.~Shu}
+\affiliation{Purple Mountain Observatory, Chinese Academy of Sciences, 
+Nanjing 210023, People's Republic of China}
+
+\author{E.~Silver}
+\affiliation{Department of Astronomy, University of California, 
+Berkeley, CA 94720, USA}
+
+\author{D.~Sprayberry}
+\affiliation{NSF's National Optical-Infrared Astronomy Research Laboratory, Tucson, AZ 85719, USA}
+
+
+\author[0000-0001-7266-930X]{N.~Suzuki}
+\affiliation{Physics Division, Lawrence Berkeley National Laboratory, 
+1 Cyclotron Road, Berkeley, CA 94720, USA}
+
+% \author[0000-0003-3533-5890]{S. Tabares-Tarquinio}
+% \affiliation{Physics Division, Lawrence Berkeley National Laboratory, 1 Cyclotron Road, Berkeley, CA 94720, USA}
+% \affiliation{Department of Physics \& Astronomy, University of San Francisco, San Francisco, CA 94117, USA}
+
+
+\author[0000-0003-1704-0781]{G.~Tarl\'{e}}
+\affiliation{University of Michigan, 500 S. State Street, 
+Ann Arbor, MI 48109, USA}
+
+\author{B.A.~Weaver}
+\affiliation{NSF's National Optical-Infrared Astronomy Research Laboratory, Tucson, AZ 85719, USA}
+%\affiliation{NSF NOIRLab, 950 N. Cherry Ave., Tucson, AZ 85719, USA}
+% STANDARDIZED
+% 2 in the web, 1 past
+
+\author[0000-0002-6684-3997]{H.~Zou}
+\affiliation{National Astronomical Observatories, Chinese Academy of Sciences, 
+A20 Datun Rd., Chaoyang District, Beijing, 100012, P.R. China}
+
+
+% % \author[0000-0002-5828-6211]{K.~Boone}
+% % \affiliation{Google, 601 N 34th St, Seattle, WA 98103, USA}
+
+% % \author{R.R.~Gupta}
+% % \affiliation{The Walt Disney Company, 500 S Buena Vista St, Burbank, CA 91521, USA}
+
+% % \author[0000-0002-8207-3304]{K.A.~Ponder}
+% % \affiliation{Noodle.ai, 115 Sansome St 8th floor, San Francisco, CA 94104, USA}
+
+% % \author{V.~Ravi}
+% % \affiliation{Protiviti Inc., 10801 North Mopac Expressway, Bldg. 2, Suite 230, Austin, TX 78759, USA}
+
+% % \author[0000-0002-3569-7421]{E.F.~Schlafly}
+% % \affiliation{Lawrence Livermore National Laboratory,
+% % 7000 East Ave., Livermore, CA 94550-9234}
+
+
+
+% % \author{E.~Sukay}
+% % \affiliation{Department of Physics \& Astronomy,
+% % The Johns Hopkins University, Baltimore, MD 21218, USA}
+
+
+
+\begin{abstract}
+We present the Dark Energy Spectroscopic Instrument (DESI) Strong Lens Foundry. We discovered $\sim 3500$ new strong gravitational lens candidates in the DESI Legacy Imaging Surveys
+using residual neural networks (ResNet). We observed a subset (51) of our candidates using the {\it Hubble Space Telescope} ({\it HST}). All of them were confirmed to be strong lenses. We also briefly describe spectroscopic follow-up observations by DESI and Keck NIRES programs. From this very rich dataset, a number of studies will be carried out, including evaluating the quality of the ResNet search candidates and lens modeling. In this paper, we present our initial effort in these directions. 
+In particular, as a demonstration, we present the lens model for DESI-165.4754-06.0423, with imaging data from {\it HST}, and lens and source redshifts from DESI and Keck NIRES, respectively. 
+In this effort, we have applied a \emph{fully} forward-modeling Bayesian approach (\texttt{GIGA-Lens}), using \emph{multiple} GPUs, for the first time in both regards, to a strong lens with {\it HST} data, or any high resolution imaging.
+% This is the first time a strong lens with {\it HST} data, or any high resolution imaging, has been modeled with a \emph{fully} forward-modeling (\texttt{GIGA-Lens}) using multiple GPUs.
+\end{abstract}
+\keywords{galaxies: high-redshift -- gravitational lensing: strong 
+}
+
+\section{Introduction}\label{sec:intro}
+\input{intro}
+
+\FloatBarrier
+\section{\HST SNAP Program}\label{sec:ls-hst}
+\input{ls-hst-snap}
+
+
+\section{Spectroscopic Observations}\label{sec:spect}
+\input{spect}
+
+\section{Lens Modeling}\label{sec:lens-model}
+\input{lens-model}
+
+\section{Discussion}\label{sec:discussion}
+\input{discussion}
+\section{Conclusion}\label{sec:conclusion}
+\input{conclusion}
+
+% \section*{Data availability
+% }
+% All the material needed to reproduce the figures of this publication is available at this site: https://doi.org/10.5281/zenodo.xxxx.
+
+\newpage
+\section*{Acknowledgement}\label{sec:acknowledgement}
+\input{acknowledgement}
+
+\software{
+    \texttt{GIGA-Lens} \citep{gu2022a},
+    TensorFlow \citep{TensorFlow},
+    TensorFlow Probability \citep{dillon2017a}, 
+    JAX \citep{bradbury2018a}, 
+    Optax \citep{optax2020},
+    \texttt{Lenstronomy} \citep{birrer2018a},
+    Matplotlib \citep{hunter2007a},
+    photutils \citep{bradley2023a},
+    seaborn \citep{waskom2021a},
+    corner.py \citep{foreman2016a},
+    NumPy \citep{harris2020a},
+    Astropy \citep{astropy22a}
+} 
+
+
+\bibliographystyle{aasjournal}
+\bibliography{dustarchive}
+
+\appendix
+
+\section{Magnification} \label{sec:append-mag}
+% \section*
+% {Appendix}\label{sec:appendix}
+% \input{appendix_hst_all_sys}
+\input{appendix_magnif}
+% \newpage
+% \input{appendix_complete_cornerplot}
+
+%\section{Physical Model} \label{sec:append-physical-model}
+
+%\input{physical_model}
+
+\end{document}
+

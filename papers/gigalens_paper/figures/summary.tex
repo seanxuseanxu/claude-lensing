@@ -1,0 +1,42 @@
+% \begin{deluxetable}{l p{3.5cm} p{6.25cm} c c}
+% \tablecaption{Summary of the modeling pipeline\label{tab:pipeline}. The typical execution time for running each step on the V100 GPU and 4 A100 GPUs are reported.}
+% \tablehead{
+% \colhead{Step} & \colhead{Output} & \colhead{Hyperparameters} & \colhead{Time (V100)} & \colhead{Time (A100 $\times$ 4)}}
+% \startdata
+% 1. MAP & An estimate of the posterior mode $\tilde{\Theta}^*_{global}$. & 
+% Number of starts $n_{MAP}=300$, number of iterations $k=300$, learning rate $\alpha=10^{-2}$ to $\alpha=10^{-3}$ over $k$ iterations 
+% & 2 minutes & 17 seconds \\
+% 2. VI & An estimate of the posterior mean $\tilde{\mu}^*$ and covariance $\tilde{\Sigma}^*$. & Initial guess $\tilde{\mu}$, $\tilde{\Sigma}$, number of samples for estimating the ELBO $n_{VI}=500$, number of iterations $k=1500$, learning rate that is annealed from $\alpha=10^{-6}$ to $\alpha=10^{-3}$ over 200 iterations.  & 3 minutes  & 52 seconds \\
+% 3. HMC & Samples drawn from the posterior $p(\Theta \mid \mathcal{I}_{obs})$. & Number of walkers $n_{HMC}=50$, number of burn-in iterations $n_{burn}=250$, number of sampling iterations $n_{samples}=750$, initial step size $\epsilon=0.3$, initial number of leapfrog steps $L=3$. We use the Tensorflow Probability default hyperparameters for the adaptation of $\epsilon$ and $L$ (e.g., the target acceptance probability for $\epsilon$-adaptation is 0.75). & 4 minutes & 36 seconds \\
+% \textbf{Total} & & & \textbf{9 minutes} & \textbf{105 seconds}
+% \enddata
+% \end{deluxetable}
+\begin{deluxetable}{c m{3.5cm} r l c}
+\tablecaption{Summary of the modeling pipeline\label{tab:pipeline}}
+\tablehead{
+\colhead{\textbf{Step}} & \colhead{\textbf{Output}} & \multicolumn2c{\textbf{Hyperparameters}} & \colhead{\textbf{Time (V100/A100 $\mathbf{\times}$ 4)}}}
+\startdata
+\arrayrulecolor{gray}
+& \multirow{3}{=}{An estimate of the posterior mode $\tilde{\Theta}^*_{global}$.} & Number of iterations $K_{MAP}$: & 300 & \\
+1. MAP & & Number of samples $n_{MAP}$: & 300 & 2 min. / 17 sec. \\
+& & Learning rate $\alpha$: & $10^{-2} \overset{\text{lin,300}}{\longrightarrow} 10^{-3}$ & \\
+\hline
+%
+& \multirow{5}{=}{An estimate of the posterior mean $\tilde{\mu}^*$ and covariance $\tilde{\Sigma}^*$.} & Number of iterations $K_{VI}$: & 1000 & \\
+& & Number of VI samples $n_{VI}$: & 500 & \\
+2. SVI & & Initial mean $\tilde{\mu}^{(1)}$ & $\tilde{\Theta}^*_{global}$ & 3 min. / 52 sec. \\
+& & Initial covariance $\tilde{\Sigma}^{(1)}$: & $10^{-3} \mathbb{I}$ & \\
+& & Learning rate $\alpha$: & $0 \overset{\text{quad,500}}{\longrightarrow} 10^{-3}$ & \\
+\hline
+%
+& \multirow{5}{=}{Samples drawn from the posterior $p(\Theta \mid \mathcal{I}_{obs})$} & Burn-in steps $n_{burn}$: & $250$ & \\
+& & Sampling steps $n_{sample}$: & 750 & \\ 
+3. HMC & & Number of chains $n_{HMC}$: & 50 & 4 min. / 36 sec. \\
+& & Initial step size $\epsilon$: & 0.3 & \\
+& & Initial leapfrog steps $L$: & 5 & \\
+\hline\arrayrulecolor{black}
+%
+\textbf{Total} & & & & \textbf{9 min.} / \textbf{105 sec.}
+\enddata
+\tablecomments{We adopt the notation $\alpha_1 \overset{p,k}{\longrightarrow} \alpha_2$ to indicate a learning rate that changes from $\alpha_1$ to $\alpha_2$ over $k$ iterations with a polynomial schedule $p$. The rightmost column indicates typical execution times for each modeling step on the V100 GPU and four A100 GPUs.}
+\end{deluxetable}

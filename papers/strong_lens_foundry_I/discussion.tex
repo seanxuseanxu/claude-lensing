@@ -1,0 +1,83 @@
+\ed{The accurate measurements of the density slopes of lensing galaxies, which are typically elliptical galaxies, have significant implications for time-delay \ho constraints \citep[e.g.,][]{birrer2020a}
+and are crucial for determining other cosmological parameters using a large number of static lenses \citep[e.g.,][]{li2024a}.
+Such measurements for lensing systems over a wide range of redshifts also makes it possible to study
+the structural evolution of massive elliptical galaxies \citep[e.g.,][]{sahu2024a}.}
+
+Numerical simulations of cold dark matter (CDM) halos predict mass profiles with a logarithmic slope approaching $\gamma = 1$ and 3 
+at small and large radii, respectively \citep[e.g.,][NFW]{navarro1996a}.
+In cluster strong lenses, low $\gamma$ values near the cluster center certainly \ed{have} been measured \citep[e.g.,][at 1.26]{broadhurst2000a}.
+For galaxy-scale lenses, with significant baryon  contribution (typically stellar in elliptical galaxies) to the mass, 
+the picture is more complicated.
+Nevertheless, low $\gamma$ values around 1.4 \ed{have} also been reported, 
+for five systems from the BELLS and SL2S samples \citep{LiR2018a} and one from the LSD sample \citep{treu2004a}. 
+There is an even larger number of systems (three from SLACS and six from BELLS) for which the $\gamma$ value is consistent with our best-fit value for DESI-165.4754-06.0423 to within 2$\sigma$.
+As mentioned earlier, this system appears to be at the center of a galaxy group, 
+and such systems have not been as extensively studied compared with galaxy-scale strong lenses that typically have smaller Einstein radii.
+In addition, the previous analyses on the LSD, SLACS, BELLS, and SL2S samples were not \ed{performed} with a fully forward modeling approach\ed{, nor have convergence metrics been applied to those results}.
+Thus applying this approach
+consistently to a large number of systems with satisfactory sampling convergence for each system
+(see \S\,\ref{sec:lens-model} and the paragraph below) 
+can shed more light on the mass slope question.
+Finally, for this system,
+comparison with mass profile modeling based on well-measured velocity dispersion, 
+especially from spatially resolved stellar dynamics \ed{\citep[e.g.,][]{treu2004a, barnabe2009a,  shajib2023a, turner2024a}} will be very interesting and is left for a future investigation.
+
+
+
+Given the covariance that exists between the fitting parameters of a model, 
+to properly estimate the uncertainties of these parameters, 
+it is best to perform full forward modeling.
+However, to take this approach for strong lensing is challenging given that it is inherently a highly nonlinear problem 
+(in fact, the solution is near \ed{a mathematical singularity}, the critical curve).
+Using high resolution data (e.g., \hst) for lens modeling would require a high dimensional parameter space and, if the Einstein radius is large (which is the case for this system), a large cutout---both will present even greater challenges.
+Thanks to modern GPUs and automatic differentiation, 
+this became possible in recent years and we developed \gigal.
+In this pipeline, we also assess convergence for statistical inference, 
+using the metrics of \rhat and ESS.
+%We first applied it to simulated data \citep{gu2022a}.
+% In \citet{cikota2023a}, we applied it for the first time to a real strong lensing system. 
+%%%%%%%%%%% Possibly use the summary below in the Conclusion
+%In this paper, we have applied \gigal
+% , that is, a fully forwarding Bayesian approach, 
+%for the first time, to a real gravitational lensing system observed by the \HST (or any high resolution data)
+% We note the following especially challenging factors: 
+% 1) this model has a high dimensionality parameter space (\nparams); 
+% 2) using the high resolution \hst image necessitates the inclusion of a complex shapelets component for the lensed source;
+% and 3) the large Einstein radius of this system ($2.646\twopr$) results in a large cutout size of $128^2$ pixels.
+% And yet, 
+We show that for this system we have achieved excellent convergence.
+% , with $\rhat < 1.03$ and ESS $> 37,000$ for all parameters of interest.
+Thus this first attempt has yielded very encouraging results.
+
+\ed{In the event of a SN in the source galaxy,
+the precise time-delays will depend on the location of the SN. From using different test locations, 
+% (near the core and $\sim 3 R_e$ away), 
+the arrival time offset between the earliest and latest images is $\gtrsim 40$ days, which would be ideal for \ho measurements.
+We will determine the stellar mass and star formation rates to estimate the SN rates, based on the photometric and spectroscopic data for this and other systems in follow-up analyses.}
+\ed{Finally, from this modeling effort, we do not see evidence for dark matter substructure or line-of-sight low-mass halos in this system. 
+In future publications, we will report the modeling results for other systems in this program, including the detection status of substructure/low-mass LOS halos.}
+% \ed{The full exploration of these two topics are out of scope for this overview paper.}
+
+%%%%
+%won't using this for now:
+%This is consistent the shallower $\gamma$ \citep[e.g.,][]{humphrey2010a} than the typical galaxy scale strong lenses with an Einstein radii or $\sim 1\twopr$, which is around 2 \citep[e.g.,][]{koopmans2006a}.
+
+% We now briefly discuss the ``small dot'', 
+% which is located at upper tip (in projection) of the western arc~A (Figure~\ref{fig:what-to-mask}).
+% It has an AB magnitude of {\color{red} 24.82$_{-0.48}^{+0.89}$}.
+% Its nature is unclear, whether it is a MW star, 
+% % or a transient 
+% %%%% DO NOT DELETE
+% %({\color{red}need to do TD based on the model}), 
+% a small satellite galaxy, 
+% or small interloper galaxy.
+% If it is a galaxy along the LOS, based on its magnitude, it must be very small.
+% %%%% DO NOT DELETE
+% %{\color{red} In fact, is it even possible that it's a galaxy? because the interloper in DESI-253 was already pretty small, and this one is much fainter. Maybe ES can help give me an estimate of its mass. That is, if its mass turns out to be too small, then it should be ``dark''. In which case, if it's a galaxy that has stars, that's unexpected in CDM. Or else it's a star or a transient.}
+% Observation in another band providing color information can shed more light on this question.
+% % As for the possibility of it being an interloper, 
+% We find that whether to include a mass model for this object make little difference for the main lens parameters, which is the goal of this modeling effort.
+% The full investigation of this ``dot" is out of scope for this work and will be carried out in followup observations and analysis.
+% \textcolor{red}{it could carry significance for testing detection of small halos --- so we should find out what it is.}
+% %Need to mention VDISP from DESI, from fastspecfit.
+% %Mention dynamical mass from DESI.

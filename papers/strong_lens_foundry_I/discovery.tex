@@ -1,0 +1,24 @@
+% \subsection{The DESI Legacy Imaging Surveys}\label{sec:LS}
+
+The DESI Legacy Imaging Surveys (hereafter Legacy Surveys) \ed{are} composed of three surveys: 
+the Dark Energy Camera Legacy Survey (DECaLS), the Beijing-Arizona Sky Survey (BASS), and the Mayall $z$-band Legacy Survey (MzLS). 
+DECaLS is observed by the Dark Energy Camera \citep[DECam;][]{flaugher2015a} on the 4-m Blanco telescope, which covers $\sim 9000$~deg$^2$ of the sky in the range of $-18^{\circ} \lesssim \delta \lesssim +32^{\circ}$. 
+% BASS/MzLS are observed in the $g$ and $r$ bands by the 90Prime camera \citep[][]{williams2004a} on the Bok 2.3-m telescope and in the $z$ band by the Mosaic3 camera \citep[][]{dey2016a} on the 4-meter Mayall telescope. 
+\ed{The MzLS has imaged the $\delta \gtrsim +32^\circ$ sub-region ($\sim5000$~deg$^2$) in $z$-band by the Mosaic3 camera \citep[][]{dey2016a} that complemented the BASS $g$- and $r$-band observations in the same \ed{sub-region} on 90Prime camera \citep[][]{williams2004a} on the Bok 2.3-m telescope.
+}
+% Together BASS/MzLS cover the same $\sim5000$~deg$^2$ of the northern subregion of the Legacy Surveys.
+\ed{Data Releases} 9 \& 10 (DR9, 10; Schlegel et al., in prep)
+contain additional DECam data reprocessed from the Dark Energy Survey \citep[DES;][]{abbott2018a} for $\delta\lesssim-18^{\circ}$.
+This provides an extra $\sim 5000~$deg$^2$, resulting in a total footprint of $\sim19,000$~deg$^2$. 
+% The combined footprint is divided into two contiguous regions separated by the Galactic plane. 
+The Legacy Surveys \ed{are} imaged 
+% with a median $5\sigma$ 
+\ed{to a total depth of at least} 22.5 AB mag in $z$-band (for galaxies with an exponential disk profile \ed{and a half-light radius r$_{half} = 0.45\twopr$}). 
+The \ed{average} FWHMs \ed{for} the delivered images are: $1.29\twopr$ ($g$), 1.18$\twopr$ ($r$), and 1.11$\twopr$ ($z$) for DECaLS; $1.61\twopr$ ($g$) and $1.47\twopr$ ($r$) for BASS; and $1.01\twopr$ ($z$) for MzLS.  
+A more detailed description of the Legacy Surveys can be found on the Legacy Surveys website.\footnote{\href{https://www.legacysurvey.org/dr9/description/}{https://www.legacysurvey.org/dr9/description/}} 
+On this dataset, 
+% \subsection{Lens Discoveries in the Legacy Surveys}\label{sec:LS-discoveries}
+we have performed three lens searches in the Legacy Surveys in \ed{Data Releases~7, 8, and~9} (H20, H21, S24, respectively).
+% \ed{yielding} $\sim 3500$ new lens candidates.
+We used a residual neural network architecture first developed by \citet{lanusse2018a}, and improved upon by H21 (the ``shielded" model).
+For all three searches, we used observed images of both lenses and non-lenses (instead of simulations or a combination of observations and simulations) for training.

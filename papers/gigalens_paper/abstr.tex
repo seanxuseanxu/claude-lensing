@@ -1,0 +1,13 @@
+We present \gigalens: a gradient-informed, GPU-accelerated Bayesian framework for modeling strong gravitational lensing systems, implemented in TensorFlow and JAX.  The three components, optimization using multi-start gradient descent, posterior covariance estimation with variational inference, and 
+sampling via Hamiltonian Monte Carlo\agu{,} all take advantage of gradient information through automatic differentiation and massive parallelization on graphics processing units (GPUs). 
+We test our pipeline on a large set of simulated systems and demonstrate in detail its high level of performance.  
+The average time to model a single system on four Nvidia A100 GPUs is 105 seconds.  
+The 
+%rigor 
+robustness, speed, and scalability offered by this framework make it possible to model the large number of strong lenses found in current surveys and \agu{present a very} promising prospect for the modeling of 
+%makes it possible to 
+%has significant implications 
+$\mathcal{O} (10^5)$ lensing systems expected to be discovered in the era of the \agu{Vera C.} Rubin Observatory, Euclid, and the \agu{Nancy Grace} Roman Space Telescope.
+
+%% at 9 min/sys --> 625 days to model 1e5 systems.
+%% can distributed GPUs improve speed further?  

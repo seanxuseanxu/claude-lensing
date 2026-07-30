@@ -1,0 +1,239 @@
+\PassOptionsToPackage{dvipsnames}{xcolor}
+
+% ------START PREPRINT SPECIFIC------
+% \documentclass[preprint,linenumbers]{aastex631}
+% \usepackage{amsmath}
+
+% \usepackage{colortbl}
+% % Patch 'normal' math environments:
+% \usepackage{etoolbox} %% <- for \cspreto, \csappto, \patchcmd, \retocmd, \apptocmd
+% \newcommand*\linenomathpatch[1]{%
+%   \cspreto{#1}{\linenomath}%
+%   \cspreto{#1*}{\linenomath}%
+%   \csappto{end#1}{\endlinenomath}%
+%   \csappto{end#1*}{\endlinenomath}%
+% }
+% %% Patch AMS math environments:
+% \newcommand*\linenomathpatchAMS[1]{%
+%   \cspreto{#1}{\linenomathAMS}%
+%   \cspreto{#1*}{\linenomathAMS}%
+%   \csappto{end#1}{\endlinenomath}%
+%   \csappto{end#1*}{\endlinenomath}%
+% }
+
+% %% Definition of \linenomathAMS depends on whether the mathlines option is provided
+% \expandafter\ifx\linenomath\linenomathWithnumbers
+%   \let\linenomathAMS\linenomathWithnumbers
+%   %% The following line gets rid of an extra line numbers at the bottom:
+%   \patchcmd\linenomathAMS{\advance\postdisplaypenalty\linenopenalty}{}{}{}
+% \else
+%   \let\linenomathAMS\linenomathNonumbers
+% \fi
+% \linenomathpatch{equation}
+% \linenomathpatchAMS{gather}
+% \linenomathpatchAMS{multline}
+
+% \linenomathpatchAMS{align}
+% \linenomathpatchAMS{alignat}
+% \linenomathpatchAMS{flalign}
+% ------END PREPRINT SPECIFIC------
+
+
+% ------START MANUSCRIPT SPECIFIC------
+\documentclass{aastex631}
+\usepackage{amsmath}
+\usepackage{colortbl}
+% ------END MANUSCRIPT SPECIFIC------
+
+\pdfoutput=1
+\usepackage{enumitem}
+\usepackage{bm}
+\usepackage{multirow}
+
+\usepackage[capitalize]{cleveref}
+% \makeatletter
+% \usepackage{etoolbox}
+% \patchcmd\H@refstepcounter{\protected@edef}{\protected@xdef}{}{}
+% \makeatother
+
+\usepackage{graphicx}
+\usepackage{float}
+\usepackage{booktabs}
+\usepackage{bigstrut}
+\usepackage{capt-of}
+
+\usepackage{physics}
+\usepackage{mwe}
+%%%% this may help sort out the Huang 2020a, b issue:
+%%%% https://tex.stackexchange.com/questions/251285/biblatex-same-first-author-same-year-cite-as-a-b-etc
+%\usepackage[style=authoryear-comp,
+%            maxcitenames=2, maxbibnames=999,
+%            uniquelist=false, uniquename=false]{biblatex}
+
+
+
+\raggedbottom
+
+\newcommand{\vdag}{(v)^\dagger}
+\newcommand\aastex{AAS\TeX}
+\newcommand\latex{La\TeX}
+
+\newcommand{\xh}[1]{#1}
+\newcommand{\ag}[1]{#1}
+\newcommand{\agu}[1]{\textcolor{black}{#1}}
+\newcommand{\aguu}[1]{\textcolor{black}{#1}}
+
+\newcommand{\ed}{\textcolor{black}}
+
+\newcommand{\hst}{\emph{HST}\xspace}
+\newcommand{\twopr}{\ensuremath{^{\prime \prime}}}
+\newcommand{\ho}{\ensuremath{H_0}\xspace}
+\newcommand{\emcee}{\texttt{emcee}\xspace}
+\newcommand{\lenstr}{\texttt{lenstronomy}\xspace}
+\newcommand{\chisqnu}{$\chi^2_\nu$\xspace}
+\newcommand{\kl}{\normalfont \text{KL}\xspace}
+\newcommand{\ess}{\normalfont \text{ESS}\xspace}
+
+
+\newcommand{\HST}{\emph{HST}\xspace}
+\newcommand{\gigalens}{\texttt{GIGA-Lens}\xspace}
+
+\newcommand{\Ia}{SN~Ia\xspace}
+\newcommand{\Iae}{SNe~Ia\xspace}
+\newcommand{\micro}{\ensuremath{\/micron}\xspace}
+
+\newcommand{\drzsize}{\ensuremath{0.065\twopr}\xspace}
+\newcommand{\sysname}{DESI-238.5690+04.7276}
+
+
+\newcommand{\zerrmax}{3.9\xspace}
+
+\newcommand{\lensknown}{19\xspace}
+\newcommand{\tractor}{\textit{The Tractor}\xspace}
+%\newcommand{\twopr}\ensuremath{{^{\prime \prime}}\xspace}
+
+%% Reintroduced the \received and \accepted commands from AASTeX v5.2
+\received{February 15, 2022}
+% \revised{September 26, 2017}
+% \revised{October 12, 2017}
+% \accepted{October 13, 2017}
+%% Command to document which AAS Journal the manuscript was submitted to.
+%% Adds "Submitted to " the arguement.
+\submitjournal{ApJ}
+
+
+\shorttitle{\gigalens}
+\shortauthors{Gu, Huang, et al.}
+
+
+\begin{document}
+
+\title{\gigalens: Fast Bayesian Inference for Strong Gravitational Lens Modeling}
+
+\author[0000-0003-2748-7333]{A.~Gu}
+\affiliation{Department of Physics, University of California, Berkeley, Berkeley, CA 94720}
+\affiliation{Department of Electrical Engineering \& Computer Sciences, University of California, Berkeley, Berkeley, CA 94720}
+
+\author[0000-0001-8156-0330]{X.~Huang}
+\affiliation{Department of Physics \& Astronomy, University of San Francisco, San Francisco, CA 94117}
+\affiliation{Physics Division, Lawrence Berkeley National Laboratory, 1 Cyclotron Road, Berkeley, CA 94720}
+
+\author{W.~Sheu}
+\affiliation{Department of Physics, University of California, Berkeley, Berkeley, CA 94720}
+\affiliation{Department of Electrical Engineering \& Computer Sciences, University of California, Berkeley, Berkeley, CA 94720}
+
+\author{G.~Aldering}
+\affiliation{Physics Division, Lawrence Berkeley National Laboratory, 1 Cyclotron Road, Berkeley, CA 94720}
+
+
+\author[0000-0001-8156-0330]{A.~S.~Bolton}
+\affiliation{NSF's National Optical-Infrared Astronomy Research Laboratory, 950 N. Cherry Ave., Tucson, AZ 85719}
+
+\author[0000-0002-5828-6211]{K.~Boone}
+\affiliation{DiRAC Institute, Department of Astronomy, University of Washington, 3910 15th Ave. NE, Seattle, WA 98195}
+
+\author[0000-0002-4928-4003]{A.~Dey}
+\affiliation{NSF's National Optical-Infrared Astronomy Research Laboratory, 950 N. Cherry Ave., Tucson, AZ 85719}
+
+\author{A.~Filipp}
+\affiliation{Technische Universit\"{a}t M\"{u}nchen, Physik-Department, James-Franck-Stra\ss e 1, 85748 Garching, Germany}
+\affiliation{Max-Planck-Institut f\"{u}r Astrophysik, Karl-Schwarzschild-Str. 1, 85748 Garching, Germany}
+
+\author[0000-0002-9253-053X]{E.~Jullo}
+\affiliation{Aix-Marseille Univ, CNRS, CNES, LAM, Marseille, France}
+
+
+%\author{J.~Kwon}
+%\affiliation{Department of Physics, University of California, Santa Barbara, Santa Barbara, CA, 93106}
+
+\author[0000-0002-4436-4661]{S.~Perlmutter}
+\affiliation{Department of Physics, University of California, Berkeley, Berkeley, CA 94720}
+\affiliation{Physics Division, Lawrence Berkeley National Laboratory, 1 Cyclotron Road, Berkeley, CA 94720}
+
+\author[0000-0001-5402-4647]{D.~Rubin}
+\affiliation{Department of Physics \& Astronomy, University of Hawaii, Honolulu, HI 96822}
+
+\author[0000-0002-3569-7421]{E.~F.~Schlafly}
+\affiliation{Lawrence Livermore National Laboratory, 7000 East Avenue, Livermore, CA 94550}
+
+
+\author[0000-0002-5042-5088]{D.~J.~Schlegel}
+\affiliation{Physics Division, Lawrence Berkeley National Laboratory, 1 Cyclotron Road, Berkeley, CA 94720}
+
+\author[0000-0002-9063-698X]{Y.~Shu}
+\affiliation{Max-Planck-Institut f\"{u}r Astrophysik, Karl-Schwarzschild-Str. 1, 85748 Garching, Germany}
+\affiliation{Ruhr University Bochum, Faculty of Physics and Astronomy, Astronomical Institute (AIRUB), German Centre for Cosmological
+Lensing, 44780 Bochum, Germany}
+
+% \author{C.~Storfer}
+% \affiliation{Institute for Astronomy, University of Hawaii, Honolulu, HI 96822}
+
+\author[0000-0001-5568-6052]{S.~H.~Suyu}
+\affiliation{Technische Universit\"{a}t M\"{u}nchen, Physik-Department, James-Franck-Stra\ss e 1, 85748 Garching, Germany}
+\affiliation{Max-Planck-Institut f\"{u}r Astrophysik, Karl-Schwarzschild-Str. 1, 85748 Garching, Germany}
+\affiliation{Academia Sinica Institute of Astronomy and Astrophysics (ASIAA), 11F of ASMAB, No.1, Section 4, Roosevelt Road, Taipei
+10617, Taiwan}
+
+\correspondingauthor{Xiaosheng Huang, Andi Gu}
+\email{xhuang22@usfca.edu, andi.gu@berkeley.edu}
+
+%\collaboration{(The DESI Collaboration)}
+
+\begin{abstract}
+\input{abstr}
+\end{abstract}
+
+\keywords{cosmology -- gravitational lensing: strong -- methods: statistical}
+
+\section{Introduction}
+\label{sec:intro}
+\input{intro}
+
+\section{Lens Modeling}
+\label{sec:modeling}
+\input{modeling}
+
+% \newpage
+\section{Results}
+\label{sec:results}
+\input{results}
+
+%\newpage
+\section{Discussion and Conclusion}\label{sec:conclusion}
+\input{conclusion}
+
+% \begin{acknowledgments}
+\section{Acknowledgement}\label{sec:acknowledgement}
+\input{acknowledgement}
+% \end{acknowledgments}
+
+\bibliographystyle{aasjournal}
+\bibliography{dustarchive}
+
+
+\appendix
+\input{appendix}
+
+
+\end{document}
+

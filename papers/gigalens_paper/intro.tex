@@ -1,0 +1,79 @@
+Strong gravitational lensing systems are a powerful tool for cosmology. They have been used to study how dark matter is distributed in galaxies and clusters \citep[e.g.,][]{kochanek1991a, hogg1994, broadhurst2000a, koopmans2002a, bolton2006a,bradac2008a,koopmans2006a, vegetti2009a,  huang2009a, jullo2010a, grillo2015a,shu2015a,shu2016b,shu2017, meneghetti2020a},  
+and are uniquely suited to probe the low-end of the dark matter mass function and test the prediction of the cold dark matter (CDM) model beyond the local universe \citep[e.g.,][]{vegetti2010a, vegetti2012a, hezaveh2016a, ritondale2019a, diazrivero2020a, cagansengul2020a,sengul2021,gilman2021}. 
+Multiply lensed supernovae (SNe) are ideal for measuring time delays and \ho because of their well-characterized light curves, and in the case of Type~Ia, with the added benefit of standardizable luminosity \citep{refsdal1964a, treu2010a, oguri2010a}\agu{, provided microlensing can be accurately characterised \citep{yahalomi2017,foster2018}. Furthermore, SNe have the benefit of fading, so for these systems, lens models can be validated using images that are uncontaminated by bright point sources \citep{ding2021}.}
+In recent years, strongly lensed supernovae,  both core-collapse \citep{kelly2015a, rodney2016a} and Type~Ia \citep{quimby2014a, goobar2017a, rodney2021a}, have been discovered. 
+Time-delay \ho measurements from multiply imaged supernovae \citep[e.g.,][]{goldstein2017a, shu2018, goldstein2018b, goldstein2018a, pierel2019a, suyu2020a, huber2021a}, 
+combined with measurements from distance ladders \citep[e.g.,][]{riess2019, freedman2019a, freedman2020a,riess2021a} and lensed quasars \citep[e.g.,][]{suyu2010a, suyu2013a, treu2016a, bonvin2017a, wong2019a,millon2020a,birrer2020a}, can be an important test of the tension  between \ho measured locally and the value inferred from the \agu{Cosmic Microwave Background \citep[CMB;][]{planck2020}}.
+
+The introduction of neural networks to identify gravitational lens candidates in imaging surveys has 
+%ushered in a new epoch for lens discovery 
+been transformational \citep[e.g.,][]{jacobs2017a, metcalf2018a, jacobs2019a, jacobs2019b, canameras2020a}. 
+In our recent work, 
+we discovered over 1500  
+%335 \citep{huang2020a} + 1312 \citep{huang2020b} 
+new strong lenses \citep{huang2020a, huang2021a}
+%Paper~I \& II
+in the Dark Energy Spectroscopic Instrument (DESI) Legacy Imaging Surveys \aguu{\citep{dey2019}} by using residual neural networks. 
+This trend will accelerate in the era of the \agu{Vera C. Rubin Observatory} Legacy Survey of Space and Time (LSST), Euclid, and the \agu{Nancy Grace} Roman Space Telescope, 
+when $\mathcal{O}(10^5)$ strong lensing systems are projected to be found in the next decade \citep{collett2015a}. 
+\xh{As} the lens search efficiency has dramatically improved, 
+\xh{there has been significant development on strong lens modeling as well.
+%\xh{In recent years, 
+%open source 
+%strong lensing modeling packages \citep[e.g.,]{birrer2018a, nightingale2018a} have made possible the development of an automated modeling pipeline.
+%However, the computational cost for modeling a large number of systems remains high.}
+For example, the widely-used
+\lenstr \citep{birrer2018a} is a fully-fledged (including, for example, a suite of plotting routines) and highly versatile lens modeling package.}
+However, the computational cost for lens modeling remains high.
+For instance, \citet{rojas2021a} \xh{modeled 
+%79\% of the 52 
+41 systems with a single deflector in $gri$ bands from the Dark Energy Survey using a pipeline based on \lenstr. 
+They used S\'ersic profiles for lens and source light, and for the lensing potential, a singular isothermal ellipsoid model  and external shear.
+%using ground-based data with a widely-used package \citep[\texttt{lenstronomy};][]{birrer2018a}, 
+They reported that modeling a single system took 4.3~hours on average.}
+%\xh{We suspect that hyperparameter tuning is an issue --- did they say that?} 
+%For more detailed modeling of a complex system such as that of \cite{shajib2020a}, it took $\order{10^6}$ CPU hours. 
+%\xh{Furthermore, \lenstr use particle swarm optimatization to find minimum and then use MCMC to sample.
+%We issues with both technique -- both in terms of scalabiliby and reliability.}
+%\xh{This situation will get worse for lens modeling with high resolution images and with higher complexity.}
+In addition, \lenstr uses particle swarm optimization (PSO). PSO is an easily parallelizable heuristic algorithm for non-convex optimization. However, it does not have any guarantee of convergence, especially in high dimensions (see \S\ref{sec:map}).
+Furthermore, 
+\xh{\emcee \citep{foreman2013a}, a popular MCMC algorithm in astrophysics, including being used in \lenstr,}
+%existing methods often 
+relies on sampling techniques that also show undesirable behavior in high dimensional parameter spaces (see \S\ref{sec:hmcvemcee}).
+For lens modeling using high resolution images, often more complex lens and source models
+%(\agu{compared to \citet{rojas2021a}}) 
+will be used, and this can significantly increase the dimensionality of the parameter space.
+%However, this is precisely the setting for many lens modeling tasks (particularly substructure modeling). 
+%This is a significant bottleneck that must be addressed before 
+\xh{For strong gravitational lenses to realize their full potential as an effective probe for cosmology,
+%as drawing statistically robust conclusions from gravitational lenses relies on a large number of well-understood systems. 
+%Therefore, 
+it is crucial that we address these issues and 
+%can 
+make the process of modeling lensing systems 
+%efficient, 
+\xh{robust, considerably faster, and scalable to high-dimensional parameter spaces}.} 
+
+In this paper, we present a Bayesian lens modeling framework that fulfills these requirements. 
+%and improves considerably upon existing methods.  
+We describe our \agu{gradient-informed, GPU-accelerated (\gigalens) framework} in \S\ref{sec:modeling}.
+% We use multi-start gradient descent for optimization, variational inference for estimating the posterior covariance matrix, 
+% and Hamiltonian Monte Carlo for sampling.  
+% Throughout this pipeline, we take advantage of two developments in computation in recent years: automatic  differentiation (AD) and massively parallel processing on graphics processing units (GPUs). 
+%This paper is organized as follows. 
+In \S\ref{sec:results}, we 
+\xh{demonstrate the performance of} our pipeline on a large set of simulated systems. 
+We discuss our results and conclude in \S\ref{sec:conclusion}.
+
+
+%you 1) Automatic differentiation (AD). \citet{chianese2020} employed AD in their differentiable probabilistic lens modeling framework.  We
+%\begin{enumerate}[label=(\alph*)]
+%    \item It has been argued that \textbf{automatic differentiation} (AD) can be very useful for doing inference with very complex lens models \citep{chianese2020}. We expand upon this idea by demonstrating that in high dimensional parameter spaces, AD is not only useful, but necessary (\cref{sec:hmcvemcee}). 
+%    \item \textbf{Massively parallel processing on graphics processing units} (GPUs) is a technique that, to the best of our knowledge, has remained unexploited for strong lens modeling. Using GPUs, we can simulate thousands of systems in a fraction of the time that a CPU takes. We will demonstrate that this parallel processing capability allows us to achieve unprecedented modeling speed.
+%\end{enumerate}
+
+%\vfill
+
+
+% Gravitational lensing is a highly non-linear phenomenon, and therefore any parameter search technique must cope with a significantly multimodal posterior distribution. Furthermore, although the posterior density is typically differentiable with respect to the lensing parameters, the gradient is not easily accessible without the correct tools: it has no known analytic form, and numerical differentiation (i.e. finite difference methods) are simply infeasible for models with more than ten parameters. Therefore, prior art has been constrained to zero-order search algorithms. For instance, a widely used optimization technique for modeling strong gravitational lenses is particle swarm optimization (PSO) \citep{sengupta2018}, in which a swarm of candidate solutions (`particles') is iteratively improved to maximize the likelihood of each candidate. Rather than using the gradient of the loss function to update its particles, it uses information about its own previously best known position and the quality of other candidate solutions in the swarm. Using PSO, it has been found that successfully modeling systems can take up to hours at a time \citep{rojas2021strong}, not including the human time needed to fine-tune the hyperparameters for the PSO itself.

@@ -1,0 +1,31 @@
+The EPL model is characterized by the surface mass density expressed in units of the critical density, commonly referred to as convergence,
+\begin{equation}
+    \kappa(x_{lens}, y_{lens}) = \frac{3-\gamma}{2}\left(\frac{\theta_E}{\sqrt{q x_{lens}^2+y_{lens}^2 / q}}\right)^{\gamma-1},
+\end{equation}
+where $\theta_E$ is the Einstein radius, $\gamma$ is the mass profile slope, $(x_{lens}, y_{lens})$ are lens-centric coordinates, and $q$ is the axial ratio. 
+The deflection angle can be calculated iteratively using the Gaussian hypergeometric function, reaching a truncation error $\lesssim 10^{-16}$ within $35$ iterations for $q\gtrsim 0.5$ \citep{tessore2015a}.
+
+
+
+
+We include an external shear characterized by a deflection angle, where $(x,y)$ are image coordinates:
+\begin{equation}
+    \alpha_{ext}(x,y)=\left(\gamma_{ext, 1}x+\gamma_{ext, 2}y, \gamma_{ext, 2}x-\gamma_{ext, 1}y\right).
+\end{equation}
+
+
+
+
+The elliptical \ser profile is defined as:
+\begin{equation}
+I(x_{light}, y_{light})= I_0 \ exp\left(-b_n\left(\left(\frac{\sqrt{q x_{light}^2+y_{light}^2 / q}}{R}\right)^{1/n} - 1
+\right)
+\right),
+\end{equation}
+where $b_n = 1.9992 n - 0.3271$, $n$ is the Sérsic index, $(x_{light}, y_{light})$ are light-centric coordinates, and $R$ is the half-light radius. 
+
+Finally, in lens modeling, eccentricities are often used through a reparametrization,
+\begin{equation}
+    (\epsilon_1, \epsilon_2) = \frac{1-q}{1+q}\left(cos(2\phi), sin(2\phi)\right),
+\end{equation}
+where $\phi$ is the position angle. 

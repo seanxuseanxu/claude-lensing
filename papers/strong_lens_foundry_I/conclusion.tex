@@ -1,0 +1,106 @@
+%%------------Conclusions----------------
+
+In this paper---Paper I of the \ed{\projname} series---we present our \HST SNAP program (GO-15867, PI: Huang) for confirming strong gravitational lens candidates found using Residual Neural Networks in the DESI Legacy Imaging Surveys.
+\ed{It is the first \hst program to follow up on strong lens candidates found using machine learning in imaging surveys.}
+All 51 systems observed by \hst were confirmed to be lenses.
+% , achieving a 100\% success rate.
+To our knowledge, this is the first time an \hst~SNAP program for strong lens confirmation has achieved a 100\% success rate.
+
+Spectroscopic observations of these systems are ongoing through DESI (Paper~II in this series; Huang, Inchausti et al., in prep) and on Keck NIRES (Paper~III in this series, Agarwal et al. in prep).
+
+We have applied a \emph{fully} forward modeling Bayesian approach (\gigal) using \emph{multiple} GPUs, for the first time in both regards, to a real gravitational
+lensing system with \hst (or any high resolution) data, DESI-165.4754-06.0423.
+The Einstein radius of the lens is $\theta_{E} =\thetaEfit$ and the slope of the power law mass profile is $\gamma = \gammafit$.
+%%%% Do NOT DELETE
+% At this redshift, assuming SIS, with this Einstein radius, we get 380.64~km/s for velocity dispersion.
+We report excellent sampling results: 
+for all parameters 
+% of interests, including the mass and light  parameters of the lens and the light parameters of the lensed source, 
+the \ed{$\hat{R}$ is well-below the threshold of 1.2 (based on the TensorFlow definition and implementation; see Footnote\footref{fn:rhat}})
+%the potential scale reduction factor (PSRF) value, or $\hat{R}$, is below 1.03 
+and the effective sample size (ESS), greater than 37,000.
+%%%% DO NOT DELETE
+% This sets a promising starting point for possible future improvement. 
+%%%% May not say: we will discuss ways to mitigate the singular nature of strong lensing in a future work (Baltasar, Natier-Werbin, Huang et al. in prep).
+% Other papers will just present corner plot. 
+%%%% If gamma goes down, everything else being equal, how does theta_E change? Maybe one of O'Riordan's paper addresses this?
+%%%% which corresponds to a velocity dispersion of $\sigma^{L1}_{\rm SIE}$ = 379 $\pm$ 2 km s$^{-1}$. 
+%%%%This is consistent with the spectroscopically determined velocity dispersion of $\sigma$ = 331.98 $\pm$ xx km s$^{-1}$.
+%%%% This is also likely the first carefully modeled galaxy at the center of a small group.
+Our model is also fast.
+For such a complex model (\nparams parameters) for a highly nonlinear problem,
+with a large \hst image size ($128^2$ pixels),
+% with image size 128 $\times$ 128 pixels, 
+the time it takes to run \gigal is $\exetime$ on four A100 GPU on one GPU node on the \emph{Perlmutter} supercomputer at \ed{NERSC}. 
+%\citet{rojas2022a} reported an average lens modeling time of 4.3 hour using Lenstronomy (e.g., \citealt{birrer2018a}) 
+%for ground-based data from DES,  with a cutout size of \rojascutout on the side, 
+%using a singular isothermal elliptical model for the each lens, with elliptical s{\'e}rsic light models for lens and source.  
+% For our system, with a cutout size of \cutoutsize pixels on the side,
+% we use a much more complex model with an elliptical power law for the lens mass, and a \ser and a shapelets for the source. 
+With further improvement in the hardware and software almost a certainty, 
+this concretely demonstrates a promising future of modeling  many more strong lensing systems with \hst data, or observed with comparable or superior image resolution and depth (e.g.,
+\emph{Euclid}, the \JWST, and the \RST), with speed and statistical rigor.
+
+\ed{
+Recently two cluster lensed SNe have been used to determine \ho \citep{kelly2023a, pascale2024a}, with a measurement from a third system possible \citep{pierel2023a}.
+For the two resolved galaxy-scale strongly lensed SNe discovered so far, the Einstein radii (\tE), and therefore time-delays ($< 1$~day), are too small for this to be possible \citep{mortsel2020a, goobar2023a, pierel2023a}.
+However, with 
+% the longer history \citep[e.g.,][]{suyu2010a, suyu2013a, wong2019a} and a 
+the much larger sample of galaxy-scale strong lenses already observed with high resolution imaging and modeled, with a time-varying source \citep[e.g.,][]{suyu2010a, suyu2013a, wong2019a, shajib2023a, schmidt2023a} or without \citep[e.g.,][]{bolton2008a, shu2016a},
+% of galaxy-scale multiply lensed quasar systems that have been modeled, 
+there are still significant advantages of using galaxy-scale lensed SNe for \ho measurement: the modeling is simpler and the systematics are well-understood \citep[e.g.,][]{kochanek2020a, birrer2020a, shajib2023a}.
+% \citep[the mass sheet transformation and accurate measurements of the lens mass profile; e.g.][]{kochanek2020a}, 
+% with a clear path to address them \citep[e.g.,][]{birrer2020a, shajib2023a}, even for lensed CC~SNe.}
+% \ed{
+From the ongoing work of modeling the galaxy-scale strong lenses in this program beyond the system presented in this work, 
+we will measure the lens mass slope over a wide redshift range, providing robust prior for not only \ho measurements, but the determination of other cosmological parameters \citep[e.g.,][]{li2024a}.
+In addition, building on the experience we have gained using \gigal from modeling systems in this sample, we have extended this framework to lensed point sources 
+(e.g., SNe; S.~Baltasar, N.~Ratier-Werbin \& X.~Huang in prep).
+% depend on the accurate measurements of lens mass profile.  .}
+Finally, this framework has also been extended to model group/cluster scale lenses \citep{urcelay2025a}, 
+which we will apply to the group/cluster strong lenses in this sample.
+}
+% \ed{
+% We will determine the stellar mass and star formation rates to estimate the SN rates, based on the photometric and spectroscopic data for this and other systems in follow-up analyses.}
+% We will report the modeling results for all systems in this program, including the detection status of substructure/low-mass LOS halos, in future publications.).
+% This will helps us understand if there are any systemic issues that need to be addressed for lenstronomgy and likely make it more robust, and further boost our confidence in the \ho result should a supernova event occur.  
+
+
+
+%%%%
+% \ed{Given the detection method, it was not a surprise that the Einstein radii of these two systems (SN~2022qmx, or Zwicky, and SN~2016geu) are small.
+% Both were SNe~Ia found using the ``magnification method'' method \citep[e.g.,][]{goldstein2019a}.
+% Since the beginning of this \hst program,  
+% many more galaxy-scale strong lens candidates have been discovered.
+% The vast majority of them, including the systems in this program, have $\tE \gtrsim 1.5''$.  
+% This typically translates to time delays of $\mathcal{O}$(1 month), which we demonstrated with a system in this program whose model is presented in this work.
+% Based on the estimates of \citet{shu2018a, shu2021a}, from a sample of $\sim 100$ systems that are the most productive in hosting SNe selected from the SLACS and BELLS programs, one year of cadenced search down to $\sim 25$th mag in $i$-band will yield approximately one SN per year 
+% % (0.18 Ia and 0.78 core collapse) 
+% \citep[see also,][]{craig2024a, suyu2023a}.
+% With strong lens candidates now approaching $\mathcal{O}(10^4)$, 
+% it is entirely possible that even more productive systems, at both galaxy and group/cluster scales, can be identified, resulting in higher expected lensed SN discoveries from such a targeted lensed SN search \citep[for the application in a retrospective search, see][]{sheu2023a}.
+% % \ed{Maybe also cite the HST GAP program (GO-17307, PI: Tran) and 16773 (PI: Glazebrook)?
+% % which is ideal for SN time delay measurements, and the effects of dust extinction and microlensing will be significantly diminished if not removed.
+% Armed with DESI/Keck spectra and lens modeling results (even just using ground-based data, but there are now additional space telescope data for galaxy-scale strong lenses, e.g., \hst GO-17307 (PI: Tran) and 16773 (PI: Glazebrook)), 
+% we can carry out such a search.}
+
+
+% in a fast, robust and scalable way.
+
+%%%% May use this:
+% , and at least an order of magnitude more to be discovered in LSST, Euclid, Roman, to realize the full potential such a large sample of strong lenses, 
+
+
+% This is already larger than the current sample of lensed quasars used for the measurement of \ho to 2.4\% \citep{wong2019a}. 
+% All strongly lensed SNe so far were found serendipitously and not systematically, including those by clusters.
+% The light curves for lensed AGN’s typically take years to monitor.  In contrast, for SNe, the time required is typically on the order of one to two months depending on the redshift. 
+% We therefore consider the approach of using multiply lensed SNe to measure \ho as having a strong potential to achieve competitive results on \ho.  
+% The main reason is this system has very small deflection angles ($\sim 0.3''$).  This implies 1) a short time delay of ~ 1 day, which is comparable to the typical accuracy for the time of maximum brightness for SNe Ia and that 2) dust extinction and 3) stellar microlensing in the lensing galaxy can  both significantly differentially affect the observed brightnesses of the lensed images.  
+
+% We then have an advantage of having these systems already modeling -- here it will be like the cluster lensed SNe: 
+% that those were well-known clusters that already had lens model make it easier for planning DD (we will already have confident estimated time-delays), 
+% and that the modeling was already done using lensed galaxies alone also gives confidence in the modeling, unlike in the quasar scenario. 
+% Finally, one can test how robust the model is by comparing the lens modeling from extended source (host galaxy) vs. lensed point source, 
+% i.e., SN,  using position, flux, and standardized flux in the case of SNe Ia (Mention GIGA-Lens version of lensed point source paper?).
+% The redshift range of this sample, and the Einstein radius range of this sample, 
+% when combined with other samples (cite Adam's program?? -- maybe not) will provide more robust prior for time-delay \ho measurements from lensed quasars and lensed SNe.}

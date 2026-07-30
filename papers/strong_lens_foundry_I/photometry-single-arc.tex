@@ -1,0 +1,119 @@
+
+\clearpage
+% \startlongtable
+% \begin{deluxetable*}{lccccccccc}
+% \tabletypesize{\scriptsize}
+% \tablecaption{\hst SNAP Targets\label{tab:phot}}
+% \tablehead{
+%     \colhead{Name} &
+%     \colhead{Type} &
+%     \colhead{F140W} &
+%     \colhead{mag\_g} &
+%     \colhead{mag\_r} &
+%     \colhead{mag\_z} &
+%     \colhead{Human} &
+%     \colhead{Probability} &
+%     \colhead{$z_{spec}$}&
+%     \colhead{$z_{phot}$}
+% }
+% \startdata
+% DESI-004.2564-10.1530 &	 DC &	18.79	&	21.22 &	19.52 &	18.29 & 3(0) &	0.60 &  0.00  & 0.414±0.080 \\
+% DESI-002.0299+18.3723 &   DC & 17.76 & 20.63 &  19.16 &  17.84 &  0.00 &  0.97 &  0.4724 &                 \\
+% \enddata
+% \tablecomments{The 51 systems observed by the \hst program GO-15867.
+% }
+% \end{deluxetable*}
+
+We present \hst photometry for the brightest lensed source images \ed{for the source identified in the discovery image}\footnote{\ed{As noted above, in some cases, \hst NIR observations revealed additional lensed sources. These are typically significantly fainter and their photometry is not presented here.}} for all 51 systems in Table~\ref{tab:hst-phot}, 
+\ed{where we define the contour to be
+at 75\% of the peak pixel value}.
+To account for the luminosity contribution from the lens we employ GALFIT \citep{Peng2010a}, a parametric 2D fitting algorithm.  
+We model the 
+light components of the lensing galaxy using 
+the S\'ersic luminosity profile \citep{sersic1963a}. Each S\'ersic component in the fitting algorithm is described by the \ed{7 parameters}: $(x,y)$ position, integrated magnitude $m$, effective radius $r_e$, concentration index $n$, axis ratio $q$, and position angle $\theta$.
+\par Prior to the fitting procedure, a PSF was generated for each image by stacking star cutouts from the field and iteratively refining a proposed PSF model based on the stack. This process was carried out using \texttt{PSFr} 
+% (Birrer et al. in prep) 
+% utilizing features of 
+in the \texttt{Lenstronomy} package \citep{birrer2021a}. Following successful extraction of PSFs, each galaxy was initially fit \ed{using} a single S\'ersic component, with additional components added when necessary to adequately subtract the lens light from the image. Goodness of fit was determined using the $\chi^2$ metric as well as visual inspection of the image residuals. In cases where model parameters deviated from physically acceptable values, such as extreme $r_e$, constraints were imposed. For systems where the lensing field was densely populated, the light profiles of all galaxies in the image region were also modeled and subtracted to reduce contamination of source light. Moreover, in certain outlier cases where 
+% images from two sources 
+two source images appeared in close proximity to each other, the source light for such systems was also modeled in order to properly isolate each source image. Source light distribution was modeled using \ser profiles along with an additional bending mode where necessary.
+
+
+\startlongtable
+\begin{deluxetable*}{lcccc}
+\tabletypesize{\scriptsize}
+\tablecaption{Isophotal magnitudes for the brightest source image
+% for all 51 systems. 
+% For systems with two entries, each magnitude corresponds to a different image family.
+\label{tab:hst-phot}}
+\tablehead{
+    \colhead{Target Name} &
+    \colhead{\ed{RA (deg)}} &
+    \colhead{\ed{Dec (deg)}} &
+    \colhead{F140W Isophotal Magnitude \ed{(AB mag)}} &
+    \colhead{Contour Area \ed{(arcsec$^2$)}} 
+}
+\startdata
+DESI-004.2564-10.1530 & 4.2560 & $-$10.1549 & 23.51 $\pm$ 0.02 & 0.0380 \\
+DESI-006.3643+10.1853 & 6.3646 & 10.1820 & 23.79 $\pm$ 0.02 & 0.0338 \\
+DESI-023.0157-16.0040 & 23.0152 & $-$16.0041 & 25.04 $\pm$ 0.04 & 0.0634 \\
+DESI-023.6765+04.5639 & 23.6753 & 4.5635 & 25.68 $\pm$ 0.05 & 0.0338 \\
+DESI-024.1631+00.1384 & 24.1628 & 0.1376 & 24.89 $\pm$ 0.04 & 0.0380 \\
+DESI-025.4848+30.7585 & 25.4846 & 30.7587 & 26.43 $\pm$ 0.07 & 0.0423 \\
+DESI-030.4360-27.6618 & 30.4365 & $-$27.6617 & 25.43 $\pm$ 0.05 & 0.0211 \\
+DESI-033.8095-29.1570 & 33.8094 & $-$29.1571 & 24.16 $\pm$ 0.03 & 0.0169 \\
+DESI-072.0873-19.4172 & 72.0883 & $-$19.4177 & 26.20 $\pm$ 0.06 & 0.0296 \\
+DESI-094.5639+50.3059 & 94.5634 & 50.3065 & 24.88 $\pm$ 0.04 & 0.0211 \\
+DESI-118.8480+34.7610 & 118.8477 & 34.7615 & 24.64 $\pm$ 0.03 & 0.0338 \\
+DESI-122.0852+10.5284 & 122.0836 & 10.5279 & 22.43 $\pm$ 0.01 & 0.5197 \\
+DESI-133.3800+23.3652 & 133.3795 & 23.3653 & 23.98 $\pm$ 0.02 & 0.0296 \\
+DESI-140.8110+18.4954 & 140.8114 & 18.4951 & 24.35 $\pm$ 0.03 & 0.0423 \\
+DESI-154.5307-00.1368 & 154.5299 & $-$0.1369 & 25.42 $\pm$ 0.05 & 0.0296 \\
+DESI-154.6972-01.3590 & 154.6977 & $-$1.3587 & 23.24 $\pm$ 0.02 & 0.0296 \\
+DESI-160.2351-01.0663 & 160.2353 & $-$1.0654 & 23.55 $\pm$ 0.02 & 0.0423 \\
+DESI-165.4754-06.0423 & 165.4760 & $-$6.0425 & 23.87 $\pm$ 0.02 & 0.1394 \\
+DESI-165.6876+12.1864 & 165.6870 & 12.1865 & 25.02 $\pm$ 0.04 & 0.0211 \\
+DESI-181.3974+41.1790 & 181.3981 & 41.1783 & 24.47 $\pm$ 0.03 & 0.0465 \\
+DESI-186.4028-07.4188 & 186.4026 & $-$7.4193 & 24.92 $\pm$ 0.04 & 0.0296 \\
+DESI-186.8292+17.4324 & 186.8287 & 17.4343 & 24.13 $\pm$ 0.02 & 0.2113 \\
+%\ed{DESI-189.4008+55.5619a} & 189.4004 & 55.5633 & 22.64 $\pm$ 0.01 & 0.0718 \\
+DESI-189.4008+55.5619 & 189.4036 & 55.5601 & 24.26 $\pm$ 0.03 & 0.0380 \\
+DESI-189.5370+15.0309 & 189.5388 & 15.0313 & 23.81 $\pm$ 0.02 & 0.0676 \\
+DESI-192.9428+01.7155 & 192.9417 & 1.7138 & 23.59 $\pm$ 0.02 & 0.1648 \\
+DESI-202.6690+04.6707 & 202.6700 & 4.6698 & 23.74 $\pm$ 0.02 & 0.1310 \\
+DESI-202.9388+51.5753 & 202.9371 & 51.5752 & 23.32 $\pm$ 0.02 & 0.1817 \\
+DESI-215.2654+00.3719 & 215.2652 & 0.3715 & 24.39 $\pm$ 0.03 & 0.0845 \\
+DESI-216.9538+08.1792 & 216.9525 & 8.1795 & 24.21 $\pm$ 0.03 & 0.0507 \\
+DESI-220.3861-00.8995 & 220.3884 & $-$0.9006 & 23.94 $\pm$ 0.02 & 0.0507 \\
+% \ed{DESI-220.3861-00.8995b} & 220.3878 & $-$0.9018 & 23.93 $\pm$ 0.02 & 0.0465 \\
+% \ed{DESI-220.3861-00.8995c} & 220.3874 & $-$0.8974 & 24.56 $\pm$ 0.03 & 0.0296 \\
+DESI-220.4549+14.6891 & 220.4557 & 14.6893 & 23.74 $\pm$ 0.02 & 0.0338 \\
+DESI-225.4050+52.1417 & 225.4047 & 52.1424 & 24.97 $\pm$ 0.04 & 0.0380 \\
+DESI-226.2950+17.3451 & 226.2932 & 17.3455 & 24.68 $\pm$ 0.03 & 0.0549 \\
+DESI-227.3528+39.0279 & 227.3521 & 39.0273 & 23.91 $\pm$ 0.02 & 0.0507 \\
+DESI-227.5364+20.6236 & 227.5339 & 20.6244 & 23.74 $\pm$ 0.02 & 0.1099 \\
+DESI-231.2858+42.4643 & 231.2877 & 42.4639 & 23.08 $\pm$ 0.02 & 0.0465 \\
+DESI-234.4783+14.7232 & 234.4780 & 14.7227 & 25.12 $\pm$ 0.04 & 0.0254 \\
+DESI-234.8707+16.8379 & 234.8703 & 16.8391 & 24.47 $\pm$ 0.03 & 0.0803 \\
+DESI-238.5690+04.7276 & 238.5695 & 4.7277 & 24.24 $\pm$ 0.03 & 0.1352 \\
+DESI-245.7514+21.6226 & 245.7524 & 21.6224 & 23.71 $\pm$ 0.02 & 0.0887 \\
+%\ed{DESI-246.0062+01.4836a} & 246.0070 & 1.4836 & 24.28 $\pm$ 0.03 & 0.0718 \\
+DESI-246.0062+01.4836 & 246.0060 & 1.4843 & 24.97 $\pm$ 0.04 & 0.0803 \\
+%\ed{DESI-246.0062+01.4836c} & 246.0056 & 1.4831 & 25.54 $\pm$ 0.05 & 0.0338 \\
+DESI-252.9173+28.0881 & 252.9166 & 28.0890 & 24.45 $\pm$ 0.03 & 0.0634 \\
+DESI-254.4235+34.8162 & 254.4234 & 34.8174 & 24.00 $\pm$ 0.02 & 0.1732 \\
+DESI-257.4348+31.9046 & 257.4352 & 31.9046 & 24.13 $\pm$ 0.02 & 0.0380 \\
+DESI-259.8396+24.6880 & 259.8397 & 24.6873 & 24.94 $\pm$ 0.04 & 0.0338 \\
+%DESI-259.8396+24.6880$^{b}$ & 259.8398 & 24.6891 & 25.97 $\pm$ 0.06 & 0.0296 \\
+DESI-278.8338+46.1076 & 278.8348 & 46.1099 & 23.52 $\pm$ 0.02 & 0.0423 \\
+DESI-293.9927+58.1525 & 293.9930 & 58.1510 & 26.15 $\pm$ 0.06 & 0.0211 \\
+DESI-310.8019-06.1649 & 310.8015 & $-$6.1660 & 23.86 $\pm$ 0.02 & 0.1648 \\
+DESI-327.8408+13.7884 & 327.8425 & 13.7896 & 23.67 $\pm$ 0.02 & 0.0465 \\
+%\ed{DESI-329.6820+02.9584a} & 329.6825 & 2.9575 & 23.92 $\pm$ 0.02 & 0.0380 \\
+%\ed{DESI-329.6820+02.9584b} & 329.6830 & 2.9584 & 23.94 $\pm$ 0.02 & 0.0465 \\
+% We chose c, b/c Tran22 targeted b+c
+DESI-329.6820+02.9584 & 329.6824 & 2.9595 & 23.91 $\pm$ 0.02 & 0.0592 \\
+DESI-349.5492-11.1012 & 349.5478 & $-$11.1005 & 25.33 $\pm$ 0.04 & 0.0085 \\
+\enddata
+\end{deluxetable*}
+

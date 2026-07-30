@@ -1,0 +1,467 @@
+In this section, we introduce \agu{the \gigalens\footnote{\agu{Our framework will be made public upon acceptance of this paper.}}} modeling framework. 
+%This pipeline has been influenced by \texttt{lenstronomy}, 
+In the initial stages of the development of our pipeline, \lenstr served as a helpful guide,
+specifically\agu{, in its approach of using optimization to find a region of high posterior density from which the MC sampler can be initialized}. We believe our framework represents a significant improvement upon the \texttt{lenstronomy} modeling pipeline \agu{in terms of speed, optimization, and sampling}.
+Our entire framework is  
+%Our implementation of the above models, as well our lens simulation code, is based on the
+%As a starting point, we re\texttt{lenstronomy} package \citep{birrer2018a}. However, we have fully 
+implementated in both TensorFlow \citep{TensorFlow} and JAX \citep{bradbury2018a}. Complete integration with either of these libraries confers significant advantages.
+It enables seamless execution of our code on graphics processing units (GPUs), which 
+%are an excellent resource that can be exploited to 
+can achieve much faster gravitational lens simulation and modeling. 
+Even modest, freely available GPUs
+%\footnote{Unless otherwise indicated, the runtimes reported are using the Nvidia V100 GPUs on Google Colab (\url{https://colab.research.google.com/}).} 
+are capable of performing basic linear algebra operations 
+(which are at the core of lens modeling codes) one to two orders of magnitude faster than a typical CPU. 
+%Beyond performance improvements, 
+In addition, our tight integration with TensorFlow allows us to use the TensorFlow Probability \citep{dillon2017a} library for probabilistic modeling (which also provides support for JAX). \ag{Conveniently, this library} has already implemented %cutting-edge 
+advanced statistical methods such as variational inference and adaptation algorithms (for step size and trajectory length; \citet{hoffman2014,hoffman2021}) in Hamiltonian Monte Carlo. 
+\ag{These features play a central role in our pipeline.}
+%We will demonstrate in the following sections, that using TensorFlow or JAX
+%to build an accelerated simulation code, 
+%we achieve significant speed increases in lens modeling.
+In \S\ref{sec:model-spec}, we describe our lens model, both its physical and probabilistic aspects.
+Obtaining the gradient for the posterior with automatic differentiation is presented in \S\ref{sec:ad}. 
+Next, we detail the three main steps in our modeling pipeline.
+In \S\ref{sec:map}, we find the global optimal values for the lensing parameters using multi-start gradient descent.  
+In \S\ref{sec:vi}, we estimate the covariance matrix around the global optimum using variational inference.  
+This allows us to sample the posterior distribution efficiently with Hamiltonian Monte Carlo in \S\ref{sec:hmc}.
+
+
+\subsection{Model Specification}\label{sec:model-spec}
+%The first step of a Bayesian inference procedure is to specify a model for the data. For strong lensing, 
+%We use a model comprising of physical parameterization for the system (e.g., light and mass profiles)
+%, and a probabilistic model for how the data was generated (e.g., 
+%and specification of a likelihood and prior.
+
+\subsubsection{Physical Model}\label{sec:phys-model}
+\agu{Given a lens model fully described by a set of parameters $\Theta$, the predicted \aguu{counts per second} at arbitrary positions on the image plane, $\mathcal{I}_{model}(x,y; \Theta)$, can be determined by evaluating the deflection angle at $(x,y)$, using this deflection to ray trace \citep[e.g.,][]{narayan1997} onto the source plane, \aguu{setting the surface brightness of the lensed source at $(x,y)$ to the corresponding surface brightness on the source plane (via surface brightness conservation),} then adding the lens light, and finally convolving with the PSF\footnote{\agu{The sky brightness, $I_{sky}$, can also be included in the model parameters $\Theta$. In this work, we assume the sky brightness has been subtracted.}}. To demonstrate how our modeling pipeline works, we simulate a reference system (\cref{fig:ref-sys}) using \lenstr. The lens model used for this simulation consists of an elliptical power law\footnote{We note the EPL model is equivalent to the power law elliptical mass density profile \citep[PEMD;][]{barkana1998a}.} (EPL) mass model \aguu{for the lens} \citep{tessore2015a} and external shear.} The EPL model is characterized by the surface mass density \ag{in units of the critical density}, or convergence,
+\begin{equation}
+    \kappa(x_{\agu{lens}},y_{\agu{lens}}) = \frac{3-\gamma_{epl}}{2} \qty(\frac{\theta_E}{\sqrt{qx_{\agu{lens}}^2+y_{\agu{lens}}^2/q}})^{\gamma_{\agu{epl}}-1},
+\end{equation}
+where $\theta_E$ is the Einstein radius, $\gamma_{epl}$ is the mass profile slope, 
+the coordinates $x_{\agu{lens}},y_{\agu{lens}}$ are aligned with the major and minor axes of the lens, and $q$ is the axial ratio. \agu{The transformation between the image coordinates $(x,y)$ and the lens\agu{-centric} coordinates $(x_{lens},y_{lens})$ is \begin{equation}
+     \mqty[x_{lens} \\ y_{lens}] = \mqty[\cos \phi & \sin \phi \\ -\sin \phi & \cos \phi] \mqty[x-x_{epl} \\ y-y_{epl}] \label{eqn:coord-trans}
+\end{equation}
+where $\phi$ is the position angle and $x_{epl}$ and $y_{epl}$ are the lens center.}
+The deflection angle for this model can be written in terms of the Gaussian hypergeometric function, which can be calculated iteratively, converging to a high degree of accuracy in \aguu{a small number} of iterations. The truncation error reaches $\lesssim 10^{-16}$ within 35 iterations for $q \gtrsim 0.5$ \citep{tessore2015a}. 
+
+%$_2F_1(a,b;c;z)$:
+%\begin{equation}
+%     \alpha_{\text{EPL}}(R, \psi) = \frac{2 \theta_E \sqrt{q}}{1+q} \qty(\frac{\theta_E}{\sqrt{q x^2 + y^2/q}})^{\gamma-1} e^{i \psi} \  _2F_1\qty(1, \frac{\gamma+1}{2}; \frac{3-\gamma}{2}; -\frac{1-q}{1+q} e^{i 2 \psi})
+%\end{equation}
+%Although there is no closed form for the hypergeometric function $_2F_1$, 
+%We use the method introduced by 
+
+
+To include the effects of the local environment, we include an external shear with a deflection angle
+\begin{equation}
+    \alpha_{ext}(x,y) = \qty(\gamma_{ext,1} x + \gamma_{ext,2} y, \gamma_{ext,2} x - \gamma_{ext,1} y).
+\end{equation}
+Finally, for our simulations, we model our lens and source light with an elliptical S\'ersic profile \citep{sersic1963}:
+\begin{equation}
+    I(x_{\agu{light}},y_{\agu{light}}) = I_0 \exp(-b_n \qty(\qty(\frac{\sqrt{qx_{\agu{light}}^2 + y_{\agu{light}}^2/q}}{R_{eff}})^{1/n} - 1)),
+\end{equation}
+where $b_n=1.9992n - 0.3271$, $R_{eff}$ is the \agu{effective radius (half-light radius)}, $n$ is the S\'ersic index, and $x_{\agu{light}},y_{\agu{light}}$ are 
+%defined on the coordinate system that is 
+aligned with the major and minor axes of the light profile. \agu{The transformation between image coordinates $(x,y)$ and light coordinates $(x_{light}, y_{light})$ is identical in form to \cref{eqn:coord-trans}. We will use $(x_l, y_l)$ to denote the lens light center \aguu{(in this work, the lens light center is not fixed to the lens mass center)} and $(x_s,y_s)$ to denote the source light center. Finally, in lens modeling, eccentricities are often used through the reparameterization,
+\begin{equation}
+    (\epsilon_1,\epsilon_2) = \frac{1-q}{1+q} \qty(\cos(2\phi), \sin(2\phi)),
+\end{equation}
+where $\phi$ is \agu{the} position angle. We will use $(\epsilon_{epl,1},\epsilon_{epl,2})$ to denote the lens mass eccentricities, $(\epsilon_{l,1},\epsilon_{l,2})$ for the lens light eccentricities, and $(\epsilon_{s,1},\epsilon_{s,2})$ for the source light eccentricities.} \aguu{Similarly, $R_l$ and $R_s$ will denote the lens and source light effective radius.}
+
+\agu{In practice, $\mathcal{I}_{model}(x,y; \Theta)$ is vectorized to be evaluated on a grid of pixels simultaneously. This grid is supersampled by some integer factor $k_{super}$ (in this work, $k_{super}=2$) from the image coordinates, so there is an additional step in evaluating $\mathcal{I}_{model}$ that consists of downsampling (by averaging) the predicted image by $k_{super}$ back to the image coordinate grid.}
+
+% Our implementation of the above models, as well our lens simulation code, is based on the \texttt{lenstronomy} package \citep{birrer2018a}. However, we have fully implemented these models in both Tensorflow \citep{TensorFlow} and JAX \citep{bradbury2018a}. Complete integration with either of these libraries confers a significant advantage: it enables seamless execution of our code on graphics processing units (GPUs), which are an excellent resource that can be exploited to achieve much faster gravitational lens simulation and modeling. Even modest, freely available GPUs
+% %\footnote{Unless otherwise indicated, the runtimes reported are using the Nvidia V100 GPUs on Google Colab (\url{https://colab.research.google.com/}).} 
+% are capable of performing basic linear algebra operations (which are the core of lens simulation codes) hundreds of times faster than a typical CPU. Using TensorFlow or JAX to build an accelerated simulation code, we achieve significant speed increases in the lens modeling pipeline, as we demonstrate in the following sections. Beyond performance improvements, our tight integration with TensorFlow allows us to use the Tensorflow Probability \citep{dillon2017} library for probabilistic modeling, which conveniently has already implemented cutting-edge statistical methods such as adaptation algorithms for step size and trajectory length \citep{hoffman2014,hoffman2021} in Hamiltonian Monte Carlo. We use these features extensively in our modeling pipeline.
+
+\subsubsection{Probabilistic Model}\label{sec:prob-model}
+
+%Abstractly, a 
+Our probabilistic model 
+%can be thought to be comprised of 
+comprises a likelihood function $\mathcal{L}(\Theta; \mathcal{I}_{obs}) \equiv p(\mathcal{I}_{obs} \mid \Theta)$ and a prior $p(\Theta)$, where $\Theta \in \mathbb{R}^d$ are the lensing system parameters, and $\mathcal{I}_{obs}$ is the observed image (in units of counts/sec). 
+The likelihood function requires a preprocessed
+%\footnote{For realistic observed data, this may include standard operations such as drizzling multiple exposures.}
+observed image $\mathcal{I}_{obs}$ as well as specification of the background (sky) Gaussian noise $\sigma_{bkg}$ and exposure time $t_{exp}$. For this work, we define:
+\begin{equation}\label{eqn:model-def}
+\begin{gathered}
+    \log \mathcal{L}(\Theta; \mathcal{I}\agu{_{obs}}) = -\frac{1}{2} \sum_{x,y} \qty[ \frac{\qty(\mathcal{I}_{obs}(x,y)-\mathcal{I}_{model}(x,y; \Theta))^2}{\sigma_{tot}^2(x,y; \Theta)} + \log\qty(2\pi\sigma_{tot}^2(x,y; \Theta))] \\
+    \sigma_{tot}^2(x,y; \Theta) = \sigma_{bkg}^2 + \frac{\mathcal{I}_{model}(x,y; \Theta)}{\mathcal{G} \cdot t_{exp}},
+\end{gathered}
+\end{equation}
+where $\mathcal{I}_{model}(x,y; \Theta)$ is our \aguu{forward} model for the observed image, $\mathcal{G}$ is the gain \aguu{(in $\mathrm{e^-}$/count)}, and the sum is over all pixels $(x,y)$ in the observed data. 
+\agu{The second term in the variance map arises from Poisson shot noise: since the \aguu{expected value of the electron counts is $t_{exp} \mathcal{I}_{model} \mathcal{G}$, the Poisson variance is therefore also $t_{exp} \mathcal{I}_{model} \mathcal{G}$, and so the Poisson variance of the model image is $\frac{t_{exp} \mathcal{I}_{model} \mathcal{G}}{\mathcal{G}^2 \cdot t_{exp}^2} = \frac{\mathcal{I}_{model}}{\mathcal{G} \cdot t_{exp}}$}. The form of this likelihood assumes independent per-pixel noise. However, the variance map $\sigma_{tot}^2$ can be specified to account for correlated pixels and to incorporate prior information about the noise at each pixel. For example, an alternative form for $\sigma_{tot}^2$, defined in terms of the observed image, is sometimes used: $\sigma_{tot}^2(x,y) = \sigma^2_{bkg} + \frac{\mathcal{I}_{obs}(x,y)}{ \mathcal{G} \cdot t_{exp}}$ , so that the total variance is independent of $\Theta$.}
+This is done for computational efficiency.
+For example, it allows for linear light profile parameters to be solved for in closed form. \agu{We note, however, this definition for the variance may induce biases at low signal-to-noise ratios \citep{horne1986}.\footnote{\ag{Another issue with using $\mathcal{I}_{obs}$ to define the noise map $\sigma^2_{tot}$ is that it may have negative pixel values due to Gaussian noise. In \lenstr, the negative pixels are set to zero, which is not the most rigorous way to estimate the Poisson noise. Despite the slight difference in these two approaches, 
+for our simulated systems (\S\ref{sec:results}), the results using both are virtually identical.}} Therefore}, we opt to use the more rigorous definition.
+%in \texttt{lenstronomy}, negative pixels are zero-ed out in the calculation of the Poisson shot noise. That is, in \texttt{lenstronomy}, the noise map is defined as $\sigma^2_{tot}(x,y)=\sigma^2_{bkg} + \max(\mathcal{I}_{obs}(x,y),0)/t_{exp}$.} definition for $\sigma_{tot}^2$ above.
+In our pipeline, this incurs little additional computational cost.
+\agu{We also point out that the first term in the log-likelihood corresponds to \begin{equation}
+    \chi^2 = \sum_{x,y} \frac{\qty(\mathcal{I}_{obs}(x,y)-\mathcal{I}_{model}(x,y; \Theta))^2}{\sigma_{tot}^2(x,y; \Theta)},
+\end{equation}
+and the second term is the normalization factor.}
+%is not an issue for our modeling pipeline. 
+
+%in the preprocessing stage.
+
+\begin{figure}
+    \centering
+    \includegraphics[width=0.65\textwidth]{figures/ref-sys.pdf}
+    \caption{A lensing system simulated using \texttt{lenstronomy} is shown on the left. 
+    The parameters for this system are taken directly from the \texttt{lenstronomy} starting guide Jupyter Notebook \citep{birrer2021}.
+    Although \texttt{lenstronomy} uses a Gaussian point spread function (PSF) for this system, we use a more realistic PSF calculated for the Hubble Space Telesopce (\hst) WFC3 F140W band using \texttt{TinyTim} \citep{krist2011a} with \agu{an original pixel scale of 0.13\twopr. We then subsample this PSF to a scale of 0.065\twopr, as shown on the right.} This system will be used to show the step-by-step workflow of our modeling pipeline. It will henceforth be called the reference system.}
+    \label{fig:ref-sys}
+\end{figure}
+
+The prior for the parameters is typically defined as a product of independent distributions, \agu{each of which} can be tuned either to reflect 
+prior knowledge about lensing parameters, or to match a physical understanding of the particular system that is being modelled (e.g., the Einstein radius can typically be estimated to within 20\% from visual inspection).
+Given our physical understanding of the model, our prior ought to vanish for certain regions of parameter space, such as $\theta_E<0$. 
+In our modeling, we make use of mappings that naturally enforce these constraints. We \agu{describe these mappings} in \S\ref{sec:ad}.
+
+\newcommand{\scale}[2]{\textcolor{red}{#1} \ / \ \textcolor{blue}{#2}}
+\agu{In this work, we use a ``simulation distribution" to generate \aguu{a full set of 22 parameters for} 100 lensing systems, and the prior distribution used to model these lenses (see \S\ref{sec:results}) is a broadened version of this simulation distribution \aguu{(note some rows contain two parameters)}:}
+\begin{equation}
+\begin{split}\label{eqn:sim-dist}
+\text{Lens mass}: &
+\left\lbrace
+\array{@{}r@{\quad}l@{}r@{}}%
+\theta_{E} &\sim \exp(\mathcal{N}(\ln 1.25, \scale{0.25}{0.4})) & \hspace{78 pt} \text{[Einstein radius(\twopr)]} \\
+\gamma_{epl} &\sim \mathcal{TN}(2, \scale{0.25}{0.5}; 1, 3) & \text{[Mass slope]} \\
+\epsilon_{epl,1}, \epsilon_{epl,2} &\sim \mathcal{N}(0, \scale{0.1}{0.2}) & \text{\qquad [Lens mass eccentricities]} \\
+x_{epl}, y_{epl} &\sim \mathcal{N}(0, \scale{0.03}{0.06}) & \text{[Lens mass center(\twopr)]} \\
+\gamma_{ext,1}, \gamma_{ext,2} &\sim \mathcal{N}(0, \scale{0.05}{0.1}) & \text{[External shear components]}
+\endarray \right. \\
+\text{Lens light}: &\left\lbrace
+\array{@{}r@{\quad}l@{}r@{}}%
+R_{l} &\sim \exp(\mathcal{N}(\ln 1.6, \scale{0.15}{0.25})) & \hspace{65 pt}  \text{[Lens S\'ersic radius(\twopr)]} \\
+n_{l} &\sim \mathcal{U}(\scale{2}{0.5}, \scale{6}{8}) & \text{[Lens S\'ersic index]} \\
+\thinspace \epsilon_{l,1}, \epsilon_{l,2} &\sim \mathcal{TN}(0, \scale{0.05}{0.1}; -0.15, 0.15) & \text{[Lens light eccentricities]}\\
+x_{l}, y_{l} &\sim \mathcal{N}(0, \scale{0.01}{0.02}) & \text{[Lens light center(\twopr)]} \\
+I_l &\sim \exp(\mathcal{N}(\ln 300, \scale{0.3}{0.5})) & \text{[Lens half light intensity]}
+\endarray \right. \\
+\text{Source light}: &\left\lbrace
+\array{@{}r@{\quad}l@{}r@{}}%
+R_s &\sim \exp(\mathcal{N}(\ln 0.25, \scale{0.15}{0.25})) & \hspace{65 pt} \text{[Source S\'ersic radius(\twopr)]} \\
+n_s &\sim \mathcal{U}(0.5, \scale{4}{8}) & \text{[Source S\'ersic index]} \\
+\thinspace \epsilon_{s,1}, \epsilon_{s,2} &\sim \mathcal{TN}(0, \scale{0.15}{0.3}; -0.5, 0.5) & \text{[Source light eccentricities]}\\
+x_s, y_s &\sim \mathcal{N}(0, \scale{0.25}{0.5}) & \text{[Source light center(\twopr)]} \\
+I_s &\sim \exp(\mathcal{N}(\ln 150, \scale{0.5}{0.9})) & \text{[Source half light intensity]}
+\endarray \right.
+\end{split}
+\end{equation}
+where $\mathcal{U}(a,b)$ is a uniform distribution with support $\qty[a,b]$, $\mathcal{N}(\mu, \sigma)$ is Gaussian with mean $\mu$ and standard deviation $\sigma$, and $\mathcal{TN}(\mu, \sigma; x_{low}, x_{high})$ is a truncated Gaussian with support $\qty[x_{low}, x_{high}]$. \agu{For the distribution parameters, we use the notation $\scale{a}{b}$ to indicate that the simulation distribution uses the parameter $\textcolor{red}{a}$ while the prior uses $\textcolor{blue}{b}$. For instance, when generating our dataset, we sample $x_{epl}$ from $\mathcal{N}(0, 0.03)$, while during modeling, our prior for $x_{epl}$ is $\mathcal{N}(0, 0.06)$.}
+
+Note that $\exp(\mathcal{N}(\ldots))$ is a log-normal distribution, \ag{used for 5 parameters. Since these distributions are not as intuitive, we show them in \cref{fig:prior}}. 
+The simulation distribution for the light amplitudes $I_l$ and $I_s$ have been chosen in such a way that the typical signal-to-noise ratio of the arcs is 100 (with a range between 30 and 200), and is comparable to the amplitudes used in the \lenstr starting guide Jupyter Notebook \citep{birrer2021}.
+% \footnote{\scriptsize\url{https://github.com/sibirrer/lenstronomy_extensions/blob/main/lenstronomy_extensions/Notebooks/starting_guide.ipynb}}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=\textwidth]{figures/prior.pdf}
+    \caption{Probability density for five components of the simulation and prior distribution that are log-normal.}
+    \label{fig:prior}
+\end{figure}
+
+\agu{Although the distributions in \cref{eqn:sim-dist} can be specified in any format, in this work, we make a number of deliberate choices. Most importantly, for parameters such as ellipticities (e.g., $\epsilon_{epl,1},\epsilon_{epl,2}$) and centers (e.g., $x_{epl},y_{epl}$), we use normal distributions to reflect their rotational symmetry. For instance, in \cref{fig:prior-choice}, we show how a normal distribution for the ellipticities results in a uniform distribution for the position angle $\phi$, whereas independent uniform distributions for the ellipticities break rotational symmetry, resulting in a non-uniform distribution for $\phi$ and a highly non-Gaussian distributions for $q$.}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.6\textwidth]{figures/prior-choices.pdf}
+    \caption{The corresponding distributions for $\phi, q$ when the ellipticities are normally distributed (blue) and uniformly distributed (orange).}
+    \label{fig:prior-choice}
+\end{figure}
+
+% Apart from this, as we will show in \S\ref{sec:map}, 
+% %the accurate recovery 
+% accurate modeling of the lensing parameters is insensitive to the prior choices. 
+%That is, the modeling results are not contingent upon having an accurate guess for the true parameters. 
+%However, there are some subtleties. 
+%in our choice of prior. 
+
+
+\subsection{Obtaining Gradient Information}\label{sec:ad}
+For the models discussed in \S\ref{sec:phys-model}, $\mathcal{I}_{model}(x, y; \Theta)$ is a differentiable mapping with respect to the model parameters, $\Theta$. Therefore, so is the posterior density \ag{(\cref{eqn:model-def})} within the support of the prior\footnote{\agu{Although the gradient is continuous everywhere, it may vanish in certain regions of the parameter space due to extreme misalignment of the lens and source. We avoid this by setting our prior in a way such that, $\sqrt{(x_{s}-x_{epl})^2+(y_s-y_{epl})^2} \sim \theta_E$.}}. This is essential. As we will show in \S\ref{sec:map} and \S\ref{sec:hmc}, gradient information about the posterior is 
+%not only helpful, but 
+necessary to successfully achieve fast convergence for complex lens models. Although the posterior is theoretically differentiable, to obtain gradient with numerical differentiation (i.e., finite difference) would be prohibitively expensive.
+%for $d > 10$. 
+Therefore, we exploit the fact that \aguu{the mapping} $\mathcal{I}_{model}$ is composed of a sequence of differentiable operations (e.g., \ag{convolution}) and use automatic differentiation \citep[AD;][]{wengert1964}. 
+% See \cref{fig:comp-graph} for a visual representation of the sequence of differentiable operations necessary for simulating one system. 
+Crucially with AD\ag{, which is implemented in both TensorFlow and JAX}, the \agu{additional} computational cost of \agu{evaluating} the gradient is independent of the number of parameters \citep{baydin2018}. The full gradient $\pdv{\mathcal{I}_{model}}{\Theta_i}$ that we are interested in can be calculated in approximately the same amount of time it takes to calculate $\mathcal{I}_{model}$ itself.
+
+Although we can calculate the gradient efficiently with AD, there are regions of parameter space where this gradient is undefined as a result of having hard boundaries for the parameters. This can have a number of undesirable effects for modeling. 
+%Most importantly, 
+For example, any algorithm with an iterative update that has a finite step size for the parameters may result in certain solutions being updated to positions outside the support of the prior. %(gradient descent is one example of this issue). 
+Therefore we instead use smooth, invertible functions (termed ``bijectors''), $g$, to map from an unconstrained space to the support of the prior, $\text{supp}(p)$. 
+For instance, the Einstein radius has a semi-infinite support $\mathbb{R}_{>0}$, so we use the exponential map
+\begin{equation}
+\begin{split}\label{eqn:exp}
+    g_{\theta_E}: %\mathbb{R} &\rightarrow \mathbb{R}_{>0} \\
+    z &\mapsto e^z
+\end{split}
+\end{equation}
+For other parameters, such as the mass profile slope $\gamma$, that may have a finite support $\qty(a,b)=(1,3)$, 
+a convenient bijector to use is the sigmoid mapping:
+\begin{equation}\label{eqn:sigmoid}
+\begin{split}
+    g_\gamma: %\mathbb{R} &\rightarrow \qty(a,b) \\
+    z &\mapsto a + \frac{b-a}{1+e^{-z}}
+\end{split}
+\end{equation}
+The joint bijector $g: \mathbb{R}^d \rightarrow \text{supp}(p)$ is typically constructed component-wise from the bijectors for each parameter.\footnote{\agu{Although $g$ can be specified in any desired form, we find that simply constructing it component-wise from the standard bijectors (\cref{eqn:exp,eqn:sigmoid}) is sufficient. This component-wise construction is also inexpensive to evaluate, since each of the standard bijectors are elementary.}} That is, $\Theta=g(\tilde{\Theta})$, 
+using the notation $\tilde{\cdot}$ to henceforth denote quantities in the unconstrained space.
+This allows us to optimize or sample over the unconstrained space $\mathbb{R}^d$, rather than manually enforcing constraints on the parameters. 
+%However, 
+Since the volume element in the unconstrained space is different from the constrained parameter space, the prior needs to be modified,
+%such that $\tilde{p}(\tilde{\Theta} ) \dd[n]{\tilde{\Theta}} = p(\Theta) \dd[n]{\Theta}$, 
+%That is,  
+\begin{equation}
+    \log \tilde{p}(\tilde{\Theta}) = \log p(g(\tilde{\Theta})) + \log \abs{J},
+\end{equation}
+where $J$ is the Jacobian of $g$ evaluated at \agu{$\tilde{\Theta}$}.
+The likelihood remains unchanged,
+\begin{equation}
+    \log \tilde{p}(\mathcal{I}_{obs} \mid \tilde{\Theta}) = \log p(\mathcal{I}_{obs} \mid g(\tilde{\Theta})).
+\end{equation}
+Thus for the posterior,
+\begin{equation}
+    \log \tilde{p}(\tilde{\Theta} \mid \mathcal{I}_{obs}) = \log p(\Theta \mid \mathcal{I}_{obs}) + \log \abs{J}. \label{eqn:reparam-post}
+\end{equation}
+The constrained parameters that correspond to physical quantities in the lens model (e.g., $\theta_E$) are hereafter called physical parameters.
+With the posterior distribution thus reparameterized, it is straightforward to compute its derivatives using AD.
+
+% Now, the MAP estimate is $\tilde{\Theta}^* \equiv \underset{\tilde{\Theta}}{\text{argmax}} \ \tilde{p}(\tilde{\Theta} \mid X)$. We emphasize that it is not necessarily true that $g(\tilde{\Theta}^*)=\Theta^*$. This is characteristic of an MAP estimate: it is not invariant under reparameterization of the parameters.
+
+% For VI, the initialization is now modified to:
+% \begin{equation}
+%     \tilde{\mu}^{(0)} = \tilde{\Theta}^*; \ \tilde{\Sigma}^{(0)} = J^{-1} \Sigma^{(0)} \qty(J^{-1})^T \label{eqn:reparam-vi}
+% \end{equation}
+% where $J$ is the Jacobian of $g$ evaluated at the MAP estimate $\tilde{\Theta}^*$, and $\Sigma^{(0)}=10^{-6} \mathbb{I}$.\footnote{This transformation of the initial covariance matrix is done because to first order, the $g(\mathcal{N}(\tilde{\mu}^{(0)}, \tilde{\Sigma}^{(0)})) \approx \mathcal{N}(g(\tilde{\mu}^{(0)}), J \tilde{\Sigma}^{(0)} J^T)$, where $J$ is the Jacobian of $g$ evaluated at $\tilde{\mu}^{(0)}$. That is, it is done so that when transforming back to parameter space, the initial ansatz has a covariance that is close to $\Sigma^{(0)}=10^{-6} \mathbb{I}$.} Finally, after using HMC to sample from the reparameterized posterior, the posterior samples are transformed back to lens parameters by applying the bijector $g$.
+
+% as:
+% \begin{align}
+%     \pdv{\mathcal{I}_{sim}}{\Theta_i} = \sum_{v_j^{(1)} \in \text{out}(\Theta_i)} \pdv{\mathcal{I}_{sim}}{v_j^{(1)}} \pdv{v_j^{(1)}}{\Theta_i} \quad \leftarrow %\pdv{\mathcal{I}_{sim}}{v_{j}^{(1)}} = \sum_{v_k^{(2)} \in \text{out}(v_j^{(1)})} \pdv{\mathcal{I}_{sim}}{v_k^{(2)}} \pdv{v_k^{(2)}}{v_j^{(1)}} \rightarrow \quad \ldots \quad \rightarrow 
+%     \quad \ldots \quad \leftarrow \quad \pdv{\mathcal{I}_{sim}}{v_l^{(D)}} = \sum_{v_l^{(D)} \in \text{out}(v_k^{(D-1)})} \pdv{\mathcal{I}_{sim}}{v_l^{(D)}} \pdv{v_l^{(D)}}{v_k^{(D-1)}} \label{eqn:ad}
+% \end{align}
+% where $v_i^{(\ell)}$ refers to the $i$th variable in the $\ell$th layer of the computational graph, and $D$ is the depth of the graph. Since the derivatives for each elementary transformation $\pdv{v_i^{(\ell)}}{v_j^{(\ell-1)}}$ are readily available, the recursive relation \cref{eqn:ad} can be evaluated by `back-propagating' the partial derivatives down each layer of the computational graph,
+
+
+\subsection{Maximum a Posteriori Estimate}\label{sec:map}
+%The goal of Bayesian inference is to characterize the posterior distribution of the physical parameters $p(\Theta \mid \mathcal{I}_{obs})$. 
+%%-- since no analytic expression exists for the posterior density, 
+%%It is typical to resort to 
+When sampling from a high dimensional posterior using Monte Carlo (MC) algorithms, since all but a small fraction of the parameter space has a vanishing posterior density, arbitrarily chosen initializations for these samplers will take a long time to converge to the posterior distribution. 
+Therefore, it is necessary to identify a region of high posterior density from which MC samplers can be initialized. Typically, the maximum a posteriori (MAP) estimate 
+%$\tilde{\Theta}^*_{global}$ 
+serves this purpose well:
+% To obtain the global optimal values for the lensing paramters, we use the maximum a posteriori (MAP) estimate,
+\begin{equation}
+    \tilde{\Theta}^*_{MAP} = \underset{\tilde{\Theta} \in \mathbb{R}^d}{\text{argmax}} \ \log \tilde{p}(\tilde{\Theta} \mid \mathcal{I}_{obs}) = \underset{\tilde{\Theta} \in \mathbb{R}^d}{\text{argmin}} \ \qty(-\log \tilde{p}(\mathcal{I}_{obs} \mid \tilde{\Theta}) - \log \tilde{p}(\tilde{\Theta})).
+\end{equation}
+Here and below, the notation $\cdot^*$ will denote a local optimum, 
+and the notation $\cdot^*_{MAP}$ will indicate that this local optimum is also globally optimal. Finding $\tilde{\Theta}_{MAP}^*$ is an optimization task with the objective function $f$ being the negative (unnormalized) log posterior density:
+\begin{equation}
+f(\tilde{\Theta})= -\qty(\log \tilde{p}(\mathcal{I}_{obs} \mid \tilde{\Theta}) + \log \tilde{p}(\tilde{\Theta})). \label{eqn:obj-fun}
+\end{equation}
+
+There are different approaches to global optimization for non-convex, multimodal functions such as \cref{eqn:obj-fun}.
+For example, \texttt{lenstronomy} uses particle swarm optimization (PSO). Although this method is attractive because it requires only the evaluation of the objective function $f$ (and not its gradient), 
+%its critical 
+a major weakness is that there are ``little to no guarantees'' \citep{sengupta2018} for finding the global, or even local, minimum.
+%``little to no guarantees about any optima being found in the [PSO] search process" 
+%An alternative 
+We take the approach of gradient descent, 
+which has a number of advantages over 
+%other 
+heuristic optimization techniques such as PSO. 
+Most importantly, gradient descent can at least guarantee convergence towards a local minimum. 
+Furthermore, when close enough to a local minimum, $\tilde{\Theta}^*$,
+gradient descent approximately achieves a geometric convergence rate. %towards this optimum
+That is, $f(\tilde{\Theta}^{(k)}) - f(\tilde{\Theta}^*)$ is upper bounded by $\order{\beta^k}$, where $\beta < 1$ and $\tilde{\Theta}^{(k)}$ is the candidate solution on the $k$th iteration, called the $k$th iterate \citep{nesterov2014}.
+%), and $\tilde{\Theta}^*$ is the local optimal solution 
+%However, this is only a guarantee for fast convergence towards a \textit{local} optimum: we recover 
+To achieve the global optimum, we disperse a large number of samples $n_{MAP}$ throughout a wide region of the parameter space and carry out gradient descent on each of these samples \citep{marti2003,gyorgy2011}. 
+Since the iterates of these samples will quickly and reliably converge towards local minima, we only need to ensure that $n_{MAP}$ is large enough such that at least one of the samples %is initially sufficiently close to 
+reaches sufficient proximity of the global minimum. \agu{The loss function $f(\tilde{\Theta})$ is multimodal in the sense that there exist multiple local minima\footnote{\agu{However, the posterior is \textit{not} multimodal in the sense that each of these local minima has vanishing posterior density relative to the global mode. Although each of these local minima have a large effect on the performance of MAP, for sampling, they are irrelevant.}}, but} we find that a moderate number of samples, $n_{MAP} = 300$ and $K_{MAP}=300$ iterations of gradient descent is \agu{sufficient} for consistent identification of the global optimum. \agu{After $K_{MAP}$ iterations, we take the best of the $n_{MAP}$ samples to be the MAP estimate $\tilde{\Theta}^*_{MAP}$.}
+As we show in \cref{fig:ref-grad-desc}, many samples, even some that start far away from the global minimum, converge to the neighbourhood of the correct solution. If the gradient descent were run for more iterations, each of them would reach the same, globally optimal solution \agu{(see \cref{fig:ref-loss})}. \agu{Typically $\sim 5\%$ (and at least $1\%$, for systems with a low signal-to-noise ratio) of the samples converge to the global optimum, with the other samples eventually converging to local optima.} This demonstrates the robustness of the multi-starts gradient descent method. 
+
+Each of the $n_{MAP}$ samples are initialized by sampling from the prior: $\tilde{\Theta}_i^{(1)} \sim \tilde{p}(\tilde{\Theta})$ for $i=~1,\ldots, n_{MAP}$. 
+Finally, similar to the training of neural networks, we use the Adam optimizer \citep{kingma2017} with an initial large learning rate\footnote{The learning rate is used as a multiplier for the gradient when updating parameters in gradient descent, with the simplest implementation being $\tilde{\Theta}^{(k+1)}_i=\tilde{\Theta}^{(k)}_i-\alpha \grad f(\tilde{\Theta}^{(k)}_i)$. The Adam optimizer is slightly more complex, and rescales the components of the gradient before applying the update. We refer readers to \citet{kingma2017} for a more detailed description of the Adam update rule.} $\alpha=10^{-2}$ to accelerate 
+%training 
+``learning'' and escape spurious local minima, and decay it to $\alpha=10^{-3}$ over 300 iterations to help the optimization converge and avoid instabilities \citep{you2019}. This is reflected in the loss trajectories shown in \cref{fig:ref-loss}, which show a period of rapid improvement in the first \agu{$\sim 200$} iterations toward the neighborhood that surrounds the global mode, followed by approximate geometric convergence. 
+
+
+%The key difficulty in implementing this optimization method is in calculating the gradient; however, 
+%In terms of implementation, 
+As noted in \S\ref{sec:ad}, with AD,
+the gradient can be calculated at virtually no additional computational cost. 
+Furthermore, after initializing $n_{MAP}$ samples, the optimization can be done simultaneously by virtue of our code's parallelization. 
+Combining these two performance enhancements, this step of our modeling pipeline is fast: 
+to find the global optimum, it takes just \ag{17 seconds (see \S\ref{sec:pipeline-sum}, \cref{tab:pipeline})} to run 300 iterations of gradient descent with $n_{MAP}=300$ (\cref{fig:ref-grad-desc}). 
+%We compare this to PSO with \texttt{lenstronomy}, which takes 51 minutes to converge to the optimum.
+
+\begin{figure}[h!]
+\begin{minipage}{0.56\textwidth}
+\includegraphics[width=\textwidth]{figures/grad-desc.pdf}
+\caption{The error trajectories of the lensing parameters (i.e., the difference between the $k$th iterate and the \agu{ground truth}) for the reference system (see \cref{fig:ref-sys}) over the course of gradient descent. Trajectories that end in $\chi_\nu^2 \leq 1.01$ \agu{(where $\chi_\nu^2=\chi^2/\text{DOF}$)} are shown with thicker lines\aguu{, all of which converge to the global minimum (see \cref{fig:ref-loss})}. We note that a wide range of samples converge to the correct solution (see text). \label{fig:ref-grad-desc}}
+\end{minipage}
+\hfill
+\begin{minipage}{0.38\textwidth}
+\includegraphics[width=\textwidth]{figures/loss.pdf}
+\caption{Six of the best performing loss trajectories, ranked, over \agu{800} iterations of gradient descent. \agu{We have run 800 iterations (after which the \textit{total} $\chi^2$ difference is $\lesssim 0.5$) solely for demonstration purposes. In our pipeline, however, we terminate the gradient descent at the 300th iteration, because at that stage, the best performing trajectory always ends up at the global minimum.}
+Also, with the $y$-axis in $\log$ scale, note the approximate geometric convergence of each solution starting around the 200th iteration, 
+after the initial steep descent.
+%`burn-in' of the optimization, 
+%as indicated by the linear shape of the loss trajectory after the 150th iteration .
+\label{fig:ref-loss}}
+\end{minipage}
+
+\end{figure}
+
+
+\clearpage
+\subsection{Variational Inference}\label{sec:vi}
+After finding the MAP estimate, $\tilde{\Theta}^*_{MAP}$, it is \agu{necessary} to do an intermediate step of analysis before sampling via Monte Carlo. 
+Specifically, we estimate the posterior covariance matrix of the lens parameters $\Sigma$. \aguu{This covariance estimate plays an important auxiliary role for Monte Carlo sampling: it sets a scale for each of the parameters that is used to define a proposal distribution in the sampling step, as we will show in \S\ref{sec:hmc}.}
+We find this covariance estimate by using variational inference \citep[VI;][]{blei2017} to fit a multivariate normal $\mathcal{N}(\tilde{\mu},\tilde{\Sigma})$ (called the ``surrogate'' posterior) with a probability density $\tilde{q}(\tilde{\Theta}; \tilde{\mu}, \tilde{\Sigma})$ to the true posterior.\footnote{\agu{This roughly corresponds to calculating the posterior mode and evaluating the Hessian of the log posterior density around the mode.}} This means minimizing the Kullback-Leibler (\kl) divergence between the two distributions:
+\begin{equation}
+    \tilde{\mu}^*_{VI}, \tilde{\Sigma}^*_{VI} = \underset{\tilde{\mu}, \tilde{\Sigma}}{\text{argmin}} \ \kl (\tilde{q}(\tilde{\Theta}; \tilde{\mu}, \tilde{\Sigma}) \mid \mid \tilde{p}(\tilde{\Theta} \mid \mathcal{I}_{obs})) \label{eqn:vi}
+\end{equation}
+Since the posterior density $\tilde{p}(\tilde{\Theta} \mid \mathcal{I}_{obs})$ is intractable, we decompose the \kl:
+\begin{equation}
+\begin{split}
+    \kl (\tilde{q}(\tilde{\Theta}; \tilde{\mu}, \tilde{\Sigma}) \mid \mid \tilde{p}(\tilde{\Theta} \mid \mathcal{I}_{obs})) &= \mathbb{E}_{\tilde{\Theta} \sim \mathcal{N}(\tilde{\mu}, \tilde{\Sigma})}\qty[\log \tilde{q}(\tilde{\Theta}; \tilde{\mu}, \tilde{\Sigma})-\log \frac{\tilde{p}(\mathcal{I}_{obs}, \Theta)}{p(\mathcal{I}_{obs})}] \\ &= \underbrace{\mathbb{E}_{\tilde{\Theta}}[\log \tilde{q}(\tilde{\Theta}; \tilde{\mu}, \tilde{\Sigma})-\log \tilde{p}(\mathcal{I}_{obs},\tilde{\Theta})]}_{\text{ELBO loss}} + \underbrace{\mathbb{E}_{\tilde{\Theta}}[\log p(\mathcal{I}_{obs})]}_{\text{Independent of $\tilde{\mu},\tilde{\Sigma}$}} \label{eqn:elbo}
+\end{split}
+\end{equation}
+where $\mathbb{E}_{\tilde{\Theta}}$ denotes the expectation value with respect to the surrogate posterior $\tilde{q}$. 
+Therefore, minimizing the \kl divergence is equivalent to minimizing the evidence lower bound (ELBO). 
+This is tractable since $\tilde{p}(\mathcal{I}_{obs},\tilde{\Theta})$ \agu{can be expressed as the product of the prior $\tilde{p}(\tilde{\Theta})$ and likelihood $\tilde{p}(\mathcal{I}_{obs} \mid \tilde{\Theta})$, each of which are readily available}. The gradient of this loss is also expressible as an expectation \citep{ranganath2013}:
+\begin{equation}
+    \grad_{\tilde{\mu}, \tilde{\Sigma}} \kl = \grad_{\tilde{\mu}, \tilde{\Sigma}} \text{ELBO} = \mathbb{E}_{\tilde{\Theta}}\qty[\qty(\log \tilde{q}(\tilde{\Theta}; \tilde{\mu}, \tilde{\Sigma})-\log \tilde{p}(\mathcal{I}_{obs}, \tilde{\Theta})) \grad_{\tilde{\mu},\tilde{\Sigma}} \log \tilde{q}(\tilde{\Theta}; \tilde{\mu}, \tilde{\Sigma})] \label{eqn:elbo-grad}
+\end{equation}
+In practice, at each iteration, we use AD to calculate $\grad_{\tilde{\mu},\tilde{\Sigma}} \log \tilde{q}(\tilde{\Theta}; \tilde{\mu}, \tilde{\Sigma})$ and approximate the expectation in \cref{eqn:elbo-grad} with a finite number of samples\footnote{This way of doing variational inference is sometimes termed stochastic variational inference \citep{hoffman2013} because of the stochasticity induced by the finite number of samples $n_{VI}$ used at each iteration.} $n_{VI}$ drawn from $\mathcal{N}(\tilde{\mu}, \tilde{\Sigma})$. This forms an estimator for the true gradient $\grad_{\tilde{\mu},\tilde{\Sigma}} \kl$, which we use to do gradient descent with the Adam optimizer to minimize the ELBO in \cref{eqn:elbo}.
+We note that the covariance matrix $\tilde{\Sigma}$ is constrained to be positive semi-definite. In keeping with our method of using unconstraining bijectors in \S\ref{sec:ad}, we use a Cholesky bijection mapping unconstrained real vectors to positive semi-definite matrices, and optimize over this unconstrained space.\footnote{The bijector uses the fact that any covariance matrix can be written in terms of its Cholesky decomposition $\Sigma=L L^T$, where the Cholesky factor $L$ is a lower triangular matrix with a non-negative diagonal. The unconstrained space of real vectors $\mathbb{R}^{d(d+1)/2}$ is then mapped to a covariance matrix by first reshaping the vector into a lower triangular matrix, exponentiating the diagonal entries (which defines a valid Cholesky factor $L$), then multiplying $LL^T$ to find the corresponding covariance matrix.} We initialize our VI with the MAP estimate $\tilde{\mu}^{(1)}=\tilde{\Theta}^*_{MAP}$ and a diagonal covariance matrix $\tilde{\Sigma}^{(1)}=10^{-6} \mathbb{I}$\agu{, based on the intuition that it will be easier for VI to approximate the true covariance starting from an underestimate.}
+%(recall the superscript $\cdot^k$ indicates the $k$th iterate). 
+\agu{Based on a coarse optimization for the reference system,} we run VI for $K_{VI}=1000$ iterations using $n_{VI}=500$, with the learning rate being increased quadratically from $\alpha=0$ to $\alpha=10^{-3}$ over 500 iterations.\footnote{We start from $\alpha=0$ to allow Adam to adjust its first and second order moment estimates \ag{\citep[see][]{kingma2017}}.} This slow increase in learning rate is to avoid initial instabilities in the optimization that may result from the crude initial guess for the covariance $\tilde{\Sigma}^{(1)}$. In our TensorFlow implementation of the modeling pipeline, we use the TensorFlow Probability methods for variational inference, whereas in our JAX implementation, we calculate \cref{eqn:elbo-grad} directly.
+
+The resulting best-fit distribution is only an approximation, since the true posterior is not necessarily Gaussian. \cref{fig:archtypes} show an instance of a posterior with non-Gaussian marginals, indicating the true posterior is not Gaussian. Even when the marginals of the posterior appear to be Gaussian, this does not necessarily imply the full posterior is jointly Gaussian (see \cref{fig:ref-corner} and \citet{dutta2014b}). This is consistent with the fact that the VI posterior does not always exactly agree with the true posterior (i.e., HMC samples). Nonetheless, we find that the VI covariance matrix is almost always a sufficiently good estimate of the true covariance. 
+
+% \footnote{} 
+%Metropolis-Hastings Monte Carlo, 
+%and plays an equally important role in Hamiltonian Monte Carlo (see next section). 
+
+\clearpage
+\subsection{Hamiltonian Monte Carlo}\label{sec:hmc}
+%We will now sample from the posterior $\tilde{p}(\tilde{\Theta} \mid \mathcal{I}_{obs})$ with 
+For the last step, sampling, we will use Hamiltonian Monte Carlo \citep[HMC;][]{duan1987a, neal2012a}. 
+HMC relies on gradient information about the posterior distribution, and is known to have several advantages over gradient-free MCMC samplers (e.g., \emcee). 
+Conveniently, this gradient information is readily available via AD. 
+Using HMC, we achieve highly efficient sampling.
+These results are shown \S\ref{sec:hmc-result}. 
+Furthermore, we compare the performance of HMC and the widely used \emcee sampler in \S\ref{sec:hmcvemcee} and show that in high-dimensional spaces HMC is strongly preferred.
+
+\subsubsection{Sampler Configuration}\label{sec:hmc-result}
+We sample from the posterior $\tilde{p}(\tilde{\Theta} \mid \mathcal{I}_{obs})$ in the unconstrained parameter space with HMC and convert back to samples of the \ag{physical} parameters $p(\Theta \mid \mathcal{I}_{obs})$ using the bijector $g$. 
+We initialize $n_{HMC}$ chains\aguu{\footnote{\aguu{We use multiple chains, $n_{HMC}=50$, first because our framework naturally lends itself to parallelization, so it is more efficient to sample for $750$ iterations using $50$ chains rather than sampling for $750 \cdot 50$ iterations using one chain. Using multiple chains is also necessary to evaluate sampling diagnostics such as $\hat{R}$ (see end of this section).}}} by sampling from the surrogate posterior calculated by VI (namely, $\mathcal{N}(\tilde{\mu}^*_{VI},\tilde{\Sigma}^*_{VI})$), 
+and as is typical for Monte Carlo samplers, run $n_{burn}$ burn-in steps before sampling $n_{sample}$ times.
+
+Correctly configuring the HMC sampler is important to realizing its advantages. 
+There are three hyperparameters in HMC: the step size $\epsilon$, number of leapfrog steps $L$, and the mass matrix $\tilde{M}$ that defines the momentum distribution. 
+Much work has been done to adaptively set the first two hyperparameters $\epsilon$ and $L$. We use the methods introduced by \citet{hoffman2014,hoffman2021}, as implemented by TensorFlow Probability, to automatically tune (``autotune'') the hyperparameters during the first 80\%\footnote{As recommended by Tensorflow Probability (see \url{https://www.tensorflow.org/probability/api_docs/python/tfp/mcmc/DualAveragingStepSizeAdaptation}).} of burn-in phase. They are then fixed \agu{in the remaining} burn-in steps, since their adaptation generally prevents chains from reaching the stationary distribution (hence the use of only \ag{the first} 80\% of burn-in steps for adaptation). Part of this tuning is adjusting the step size $\epsilon$ to achieve a target acceptance probability for each proposal: a step size that is too small will result in slower sampling, but a step size that is too large will result in too many rejected proposals. Optimal values for the target acceptance probability range between 0.6 to 0.8 \citep{betancourt2018}; we use 0.75. The remaining hyperparameter, the mass matrix $\tilde{M}$, \agu{defines the momentum distribution, and this provides a way to inform} the HMC algorithm about the scales and correlations of the parameters. We can significantly improve the sampling efficiency by setting $\tilde{M}$ to be the inverse covariance matrix of the posterior \citep[][Chap. 5]{brooks2011} --- this is called ``preconditioned'' HMC. 
+This was the main purpose of the previous section, \S\ref{sec:vi}: 
+we set $\tilde{M}=(\tilde{\Sigma}^*_{VI})^{-1}$, the inverse of the inferred covariance matrix from VI
+% \footnote{There have recently been proposals for mass matrix autotuning during burn-in as well \citep{stan}.
+% Appropriate application of these may render the VI step unnecessary. 
+% However, these adaptation methods remain experimental for now, thus in this paper, we use VI to estimate the appropriate mass matrix $\tilde{M}$.} 
+as defined by \cref{eqn:vi}. \agu{There have been proposals \citep[e.g.,][]{sountsov2021} to adapt the mass matrix $\tilde{M}$ on the fly during the burn-in steps, which may render the VI step irrelevant. For now, these methods are not yet well-tested (however, they may be incorporated in future work), hence VI remains a necessary step of our modeling pipeline. Note that a secondary use of the VI step is that each of the $n_{HMC}$ chains are initialized (see \cref{tab:pipeline}) by sampling from the VI posterior, $\mathcal{N}(\tilde{\mu}_{VI}^*, \tilde{\Sigma}_{VI}^*)$.} 
+
+We show in \cref{fig:demo-posterior-samples} the posterior samples for our reference system generated using $n_{HMC}=50$ chains and $n_{burn},n_{sample}=250,750$. \agu{As with the VI step, these hyperparameters were roughly tuned on the reference system.}
+We report two metrics that are widely used in the statistics literature to measure the degree to which our sampler has converged. These are known as the effective sample size (\ess) and potential scale reduction factor (PSRF), $\hat{R}$ \citep{gelman1992}. The former measures the effective number of independent samples we have drawn from the posterior by accounting for autocorrelation within each chain, and the latter is the ratio of the average within-chain variance to the variance of the pooled samples across all chains. A large \ess and a $\hat{R}$ that is close to 1 indicates convergence has been achieved (in \citet{gelman1992}, it is suggested that an appropriate condition is $\hat{R} < 1.1$).
+
+\begin{minipage}{\linewidth}
+\makebox[\linewidth]{
+    \includegraphics[width=0.95\textwidth]{figures/ref-corner.pdf}}
+    \captionof{figure}{A corner plot of the posterior samples for the reference system (see \cref{eqn:sim-dist} for the definition of each parameter). We show only the lensing parameters, marginalizing out all light parameters \aguu{(marginalized posteriors for all 22 parameters are shown in \cref{fig:demo-posterior-samples})}.
+The posterior samples are first obtained in unconstrained space from both VI and HMC, and then converted to physical parameters by applying the bijector $g$ (see text). 
+\agu{The samples and $0.5$, $1$, $1.5$, $2$ $\sigma$ contours (corresponding to roughly $12\%$, $39\%$, $68\%$, $86\%$ of the probability mass),} for both VI and HMC are shown in blue and grey, respectively\aguu{, and the ground truth is in red}.
+In the top right inset, we show the model reconstructed image, \aguu{residuals (normalized by the square root of the noise variance map)}, and the reconstructed source (together with the caustic shown in green and critical curve in red) using the Bayesian mean estimate. \agu{Despite the approximately Gaussian marginal distributions on the corner plot for the true posterior, we show a random cross section of the posterior that is banana-shaped (top inset), demonstrating that the full posterior is not perfectly Gaussian (see text). Since the VI ansatz is a multivariate Gaussian, this is consistent with the fact that the marginals for the VI posterior do not entirely coincide with those of the true posterior.} \label{fig:ref-corner}
+}
+\end{minipage}
+
+\begin{minipage}{\linewidth}
+\makebox[\linewidth]{
+    \includegraphics[width=\textwidth]{figures/demo-posterior.pdf}}
+    \captionof{figure}{Marginalized posterior samples for all 22 parameters of the reference system. As in \cref{fig:ref-corner}, the \agu{ground truth} (input values) are marked in red. We report the effective sample size (\ess) and potential scale reduction factor $\hat{R}$ for our posterior samples.
+    Note that for each parameter, $\ess > 26000$ and $\hat{R} < 1.01$. 
+    This is achieved with just under 36~seconds of HMC sampling (\cref{tab:pipeline}).\label{fig:demo-posterior-samples}}
+\end{minipage}
+
+\subsubsection{Comparison of HMC and \emcee}\label{sec:hmcvemcee}
+\citet{foreman2013a} implemented an affine-invariant ensemble sampler, \emcee.
+\xh{It is a popular MCMC algorithm in astrophysics.}
+This is the sampler that \texttt{lenstronomy} uses.
+Here we compare the performance of HMC with \emcee, 
+which is gradient-free, by applying both to the reference system (\cref{fig:ref-sys}). \agu{To make the comparison as fair as possible, for \emcee sampling, we initialize the sampler with the \lenstr recommended configuration, as detailed in \citet{birrer2021}, and for our HMC sampling, we initialize the sampler as detailed in \cref{tab:pipeline}. Furthermore, we run our pipeline on a single A100 GPU and \emcee on a single CPU. \lenstr uses uniform priors for each parameter whereas we use the prior described in \cref{eqn:sim-dist}. However, we have found that the difference in priors has virtually no effect on the sampling results. Finally, for both modeling pipelines, we use the supersampling factor $k_{super}=2$ and the PSF shown in \cref{fig:ref-sys}.}
+
+
+%, and then apply , to our reference system. 
+We take two axes of comparison between HMC and \emcee. 
+First, we observe that our sampling process is significantly more efficient than \emcee, as evidenced by the rate at which HMC generates independent samples, \agu{$\sim 40 \ \ess/\text{iter}$ ($\sim 300 \ \ess/\text{sec}$, on a single A100 GPU)} 
+whereas for \texttt{emcee} it is \agu{$\sim 0.2 \ \ess/\text{iter}$ ($\sim 0.04 \ \ess/\text{sec}$)} (see \cref{fig:hmc-comp}). Second, we compare the convergence of the two samplers. We find that although both sampling methods agree in terms of their central values, they exhibit dramatically different convergence behavior. 
+In \cref{fig:hmc-comp}, we show that individual \texttt{emcee} chains tend to devolve to random walks. \agu{This random walk behavior manifests itself in three ways. First, \emcee} makes slow progress exploring the posterior, whereas HMC draws virtually independent samples each iteration, traversing the posterior very efficiently. \agu{Second, compared with HMC,} we observe high inter-chain variance in \texttt{emcee}, evidenced qualitatively by the differing marginal distributions for each of the individual chains, and quantitatively by the substantially higher $\hat{R}$ for \texttt{emcee} (\cref{fig:hmc-comp}).
+\agu{Third,} in \cref{fig:autocorr} we \agu{find} that the autocorrelation time for HMC is 
+%dramatically 
+much lower than that of \texttt{emcee}: within just 10 iterations, the autocorrelation shrinks to negligible levels, compared to \texttt{emcee}, which has a characteristic autocorrelation lag of $\sim 300$. The empirical autocorrelation at lag $\tau$ for a single MC chain $\qty{f_n \mid n=1,\ldots,N}$ is defined by \citep{sokal1996}:
+
+\begin{equation}
+    \begin{gathered}
+    \hat{\rho}(\tau)=\hat{c}(\tau)/\hat{c}(0) \qc{\text{where}} \\
+    \hat{c}(\tau)=\frac{1}{N-\tau} \sum_{n=1}^{N-\tau} (f_n-\mu_f)(f_{n+\tau}-\mu_f) \qq{and} \mu_f=\frac{1}{N} \sum_{n=1}^N f_n.
+    \end{gathered}
+\end{equation}
+We emphasize that this autocorrelation is independent of the iteration number. 
+That is, burn-in does not remove autocorrelation, nor does running a chain for a very long time.
+
+
+
+
+
+\begin{minipage}{\linewidth}
+\makebox[\linewidth]{
+    \includegraphics[width=0.7\textwidth]{figures/hmc-comparison.pdf}}
+    \captionof{figure}{A comparison of HMC with \texttt{emcee} performance for the Einstein radius. 
+    We illustrate 5 randomly chosen chains (from 50 total chains) for both HMC and \texttt{emcee} over 750 sampling iterations. The times
+    shown are for HMC run on a \textit{single} A100 GPU and \emcee run on a modern CPU. Note the poor interchain mixing in \emcee, which leads to a high $\hat{R}$.  In particular, for \emcee, $\hat{R}$ is much higher than the recommended value of 1.1.
+    This is representative behavior for all other physical parameters.}
+    \label{fig:hmc-comp}
+\end{minipage}
+
+
+
+\begin{minipage}{\linewidth}
+\makebox[\linewidth]{    \includegraphics[width=0.75\textwidth]{figures/autocorr.pdf}}
+    \captionof{figure}{Autocorrelation of the Einstein radius, $\hat{\rho}(\tau)$, using HMC and \texttt{emcee} (see text). 
+    This is representative behavior for all other physical parameters. 
+    Note the vertical scale for HMC is one tenth of that of \texttt{emcee}.}
+    \label{fig:autocorr}
+\end{minipage}
+
+\ag{Our investigation of \emcee revealed undesirable characteristics even for low to moderate dimensional spaces, as shown above in the case of the reference system with $22$ parameters. While in this regime, it is possible that through tuning and longer sampling time, higher quality convergence can still be achieved using \emcee, \citet{betancourt2018} pointed out that in higher dimensions, any gradient-free sampler is likely to be much less efficient compared with HMC.} Furthermore, \cite{huijser2017} found that in moderate ($\sim 50$) to high ($> 100$) dimensions, affine-invariant ensemble samplers (such as \emcee) can have more severe problems. \agu{They showed that for high dimensional posteriors, in addition to slow convergence, an \aguu{affine invariant sampler} can misleadingly appear to converge even when it has not.}
+In strong lens modeling, it is critical to avoid \agu{this pernicious behavior}, since models for high resolution observed data that use complex light profiles such as shapelets \citep{birrer2015}, wavelets \citep{galan2021a}, or pixelization \citep{nightingale2021} can easily have $\gtrsim 50$ parameters. 
+\xh{The modeling of perturbations to the smooth lensing potential, 
+whether due to dark matter subhalos or line-of-sight halos will require even more.} 
+If we wish to fit these sophisticated models to observed data, we must be able to do robust inference in spaces of moderate to high dimensions. 
+
+\subsection{Pipeline Summary and Hyperparameter Settings}\label{sec:pipeline-sum}
+Our pipeline is a sequence of three steps
+%\footnote{We also mention a similar flow for modeling has been implemented in PyMC3 \citep{salvatier2018}. 
+%However, we designed our modeling procedure independently of PyMC3.} 
+with the ultimate goal of producing a collection of samples from the posterior distribution from which robust statistical inferences can be made. 
+We summarize these three steps in \cref{tab:pipeline}, and report the hyperparameter and initialization settings that we used for the reference system.
+
+From our experience of using \texttt{lenstronomy}, the PSO initialization usually needs to be at least somewhat close to the optimum. With multi-start gradient descent, we \aguu{find this to be unnecessary}. While samples that start near the optimum are virtually assured to reach it, as expected, those that start far away can often succeed as well (see \cref{fig:ref-grad-desc}). This suggests that multi-start gradient descent has a much weaker dependence on initialization than PSO. In the next section, we will show the application of our pipeline to 100 simulated systems. We find that the MAP initialization in \cref{tab:pipeline} does not need to be adjusted to successfully model these systems, providing further evidence that multi-start gradient descent is not sensitive to initialization\agu{, so long as the prior is broad and $n_{MAP}$ is sufficiently large}. The remaining initializations (for VI and HMC) do not need to be changed either. Furthermore, the hyperparameters in \cref{tab:pipeline} that were chosen for modeling the reference system have also been found to suffice for the 100 simulated systems in \S\ref{sec:results}.
+
+\input{figures/summary_compact}
+The total execution time \ag{for our reference system} is 6 minutes on a cutting-edge A100 GPU (available through NERSC Perlmutter early access\footnote{\url{https://www.nersc.gov/systems/perlmutter/}}). On a GPU node on Perlmutter, which has 4 A100 GPUs\footnote{Currently, only the JAX implementation of our pipeline supports distributed computing over multiple GPUs, due to the lack of support for distributed computing on TensorFlow (outside of neural networks).}, it takes 105 sec.  (\cref{tab:pipeline}).
+

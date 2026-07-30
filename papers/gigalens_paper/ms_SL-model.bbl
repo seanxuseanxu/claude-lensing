@@ -1,0 +1,605 @@
+\begin{thebibliography}{}
+\expandafter\ifx\csname natexlab\endcsname\relax\def\natexlab#1{#1}\fi
+\providecommand{\url}[1]{\href{#1}{#1}}
+\providecommand{\dodoi}[1]{doi:~\href{http://doi.org/#1}{\nolinkurl{#1}}}
+\providecommand{\doeprint}[1]{\href{http://ascl.net/#1}{\nolinkurl{http://ascl.net/#1}}}
+\providecommand{\doarXiv}[1]{\href{https://arxiv.org/abs/#1}{\nolinkurl{https://arxiv.org/abs/#1}}}
+
+\bibitem[{Abadi {et~al.}(2015)Abadi, Agarwal, Barham, Brevdo, Chen, Citro,
+  Corrado, Davis, Dean, Devin, Ghemawat, Goodfellow, Harp, Irving, Isard, Jia,
+  Jozefowicz, Kaiser, Kudlur, Levenberg, Man\'{e}, Monga, Moore, Murray, Olah,
+  Schuster, Shlens, Steiner, Sutskever, Talwar, Tucker, Vanhoucke, Vasudevan,
+  Vi\'{e}gas, Vinyals, Warden, Wattenberg, Wicke, Yu, \& Zheng}]{TensorFlow}
+Abadi, M., Agarwal, A., Barham, P., {et~al.} 2015, {TensorFlow}: Large-Scale
+  Machine Learning on Heterogeneous Systems.
+\newblock \url{https://www.tensorflow.org/}
+
+\bibitem[{{Barkana}(1998)}]{barkana1998a}
+{Barkana}, R. 1998, \apj, 502, 531, \dodoi{10.1086/305950}
+
+\bibitem[{Baydin {et~al.}(2018)Baydin, Pearlmutter, Radul, \&
+  Siskind}]{baydin2018}
+Baydin, A.~G., Pearlmutter, B.~A., Radul, A.~A., \& Siskind, J.~M. 2018,
+  Journal of Machine Learning Research, 18, 1.
+\newblock \url{http://jmlr.org/papers/v18/17-468.html}
+
+\bibitem[{Betancourt(2018)}]{betancourt2018}
+Betancourt, M. 2018, A Conceptual Introduction to Hamiltonian Monte Carlo.
+\newblock \doarXiv{1701.02434}
+
+\bibitem[{Betancourt(2015)}]{betancourt2015}
+Betancourt, M.~J. 2015, Adiabatic Monte Carlo.
+\newblock \doarXiv{1405.3489}
+
+\bibitem[{Birrer(2021)}]{birrer2021}
+Birrer, S. 2021, \texttt{lenstronomy} Starting Guide.
+\newblock
+  \url{https://github.com/sibirrer/lenstronomy_extensions/blob/main/lenstronomy_extensions/Notebooks/starting_guide.ipynb}
+
+\bibitem[{{Birrer} \& {Amara}(2018)}]{birrer2018a}
+{Birrer}, S., \& {Amara}, A. 2018, Physics of the Dark Universe, 22, 189,
+  \dodoi{10.1016/j.dark.2018.11.002}
+
+\bibitem[{Birrer {et~al.}(2015)Birrer, Amara, \& Refregier}]{birrer2015}
+Birrer, S., Amara, A., \& Refregier, A. 2015, \apj, 813, 102,
+  \dodoi{10.1088/0004-637x/813/2/102}
+
+\bibitem[{Birrer {et~al.}(2020)Birrer, Shajib, Galan, Millon, Treu, Agnello,
+  Auger, Chen, Christensen, Collett, \& et~al.}]{birrer2020a}
+Birrer, S., Shajib, A.~J., Galan, A., {et~al.} 2020, \aap, 643, A165,
+  \dodoi{10.1051/0004-6361/202038861}
+
+\bibitem[{Blei {et~al.}(2017)Blei, Kucukelbir, \& McAuliffe}]{blei2017}
+Blei, D.~M., Kucukelbir, A., \& McAuliffe, J.~D. 2017, Journal of the American
+  Statistical Association, 112, 859–877,
+  \dodoi{10.1080/01621459.2017.1285773}
+
+\bibitem[{{Bolton} {et~al.}(2006){Bolton}, {Burles}, {Koopmans}, {Treu}, \&
+  {Moustakas}}]{bolton2006a}
+{Bolton}, A.~S., {Burles}, S., {Koopmans}, L.~V.~E., {Treu}, T., \&
+  {Moustakas}, L.~A. 2006, \apj, 638, 703, \dodoi{10.1086/498884}
+
+\bibitem[{{Bonvin} {et~al.}(2017){Bonvin}, {Courbin}, {Suyu}, {Marshall},
+  {Rusu}, {Sluse}, {Tewes}, {Wong}, {Collett}, {Fassnacht}, {Treu}, {Auger},
+  {Hilbert}, {Koopmans}, {Meylan}, {Rumbaugh}, {Sonnenfeld}, \&
+  {Spiniello}}]{bonvin2017a}
+{Bonvin}, V., {Courbin}, F., {Suyu}, S.~H., {et~al.} 2017, \mnras, 465, 4914,
+  \dodoi{10.1093/mnras/stw3006}
+
+\bibitem[{Bradač {et~al.}(2008)Bradač, Allen, Treu, Ebeling, Massey, Morris,
+  von~der Linden, \& Applegate}]{bradac2008a}
+Bradač, M., Allen, S.~W., Treu, T., {et~al.} 2008, \apj, 687, 959–967,
+  \dodoi{10.1086/591246}
+
+\bibitem[{Bradbury {et~al.}(2018)Bradbury, Frostig, Hawkins, Johnson, Leary,
+  Maclaurin, Necula, Paszke, Vander{P}las, Wanderman-{M}ilne, \&
+  Zhang}]{bradbury2018a}
+Bradbury, J., Frostig, R., Hawkins, P., {et~al.} 2018, {JAX}: composable
+  transformations of {P}ython+{N}um{P}y programs, 0.2.5.
+\newblock \url{http://github.com/google/jax}
+
+\bibitem[{{Broadhurst} {et~al.}(2000){Broadhurst}, {Huang}, {Frye}, \&
+  {Ellis}}]{broadhurst2000a}
+{Broadhurst}, T., {Huang}, X., {Frye}, B., \& {Ellis}, R. 2000, \apjl, 534,
+  L15, \dodoi{10.1086/312651}
+
+\bibitem[{Brooks {et~al.}(2011)Brooks, Gelman, Jones, \& Meng}]{brooks2011}
+Brooks, S., Gelman, A., Jones, G., \& Meng, X.-L., eds. 2011, Handbook of
+  {Markov} {Chain} {Monte} {Carlo} (Chapman and Hall/CRC),
+  \dodoi{10.1201/b10905}
+
+\bibitem[{{\c{C}}a{\v{g}an {\c{S}}eng{\"u}l} {et~al.}(2021){\c{C}}a{\v{g}an
+  {\c{S}}eng{\"u}l}, Dvorkin, Ostdiek, \& Tsang}]{sengul2021}
+{\c{C}}a{\v{g}an {\c{S}}eng{\"u}l}, A., Dvorkin, C., Ostdiek, B., \& Tsang, A.
+  2021, Substructure Detection Reanalyzed: Dark Perturber shown to be a
+  Line-of-Sight Halo.
+\newblock \doarXiv{2112.00749}
+
+\bibitem[{{\c{C}}a{\v{g}an {\c{S}}eng{\"u}l} {et~al.}(2020){\c{C}}a{\v{g}an
+  {\c{S}}eng{\"u}l}, {Tsang}, {Diaz Rivero}, {Dvorkin}, {Zhu}, \&
+  {Seljak}}]{cagansengul2020a}
+{\c{C}}a{\v{g}an {\c{S}}eng{\"u}l}, A., {Tsang}, A., {Diaz Rivero}, A.,
+  {et~al.} 2020, \prd, 102, 063502, \dodoi{10.1103/PhysRevD.102.063502}
+
+\bibitem[{Cañameras {et~al.}(2020)Cañameras, Schuldt, Suyu, Taubenberger,
+  Meinhardt, Leal-Taixé, Lemon, Rojas, \& Savary}]{canameras2020a}
+Cañameras, R., Schuldt, S., Suyu, S.~H., {et~al.} 2020, \aap, 644, A163,
+  \dodoi{10.1051/0004-6361/202038219}
+
+\bibitem[{{Collett}(2015)}]{collett2015a}
+{Collett}, T.~E. 2015, \apj, 811, 20, \dodoi{10.1088/0004-637X/811/1/20}
+
+\bibitem[{Dey {et~al.}(2019)Dey, Schlegel, Lang, Blum, Burleigh, Fan, Findlay,
+  Finkbeiner, Herrera, Juneau, Landriau, Levi, McGreer, \& et~al.}]{dey2019}
+Dey, A., Schlegel, D.~J., Lang, D., {et~al.} 2019, The Astronomical Journal,
+  157, 168, \dodoi{10.3847/1538-3881/ab089d}
+
+\bibitem[{{Diaz Rivero} \& {Dvorkin}(2020)}]{diazrivero2020a}
+{Diaz Rivero}, A., \& {Dvorkin}, C. 2020, \prd, 101, 023515,
+  \dodoi{10.1103/PhysRevD.101.023515}
+
+\bibitem[{Dillon {et~al.}(2017)Dillon, Langmore, Tran, Brevdo, Vasudevan,
+  Moore, Patton, Alemi, Hoffman, \& Saurous}]{dillon2017a}
+Dillon, J.~V., Langmore, I., Tran, D., {et~al.} 2017, TensorFlow Distributions.
+\newblock \doarXiv{1711.10604}
+
+\bibitem[{Ding {et~al.}(2021)Ding, Liao, Birrer, Shajib, Treu, \&
+  Yang}]{ding2021}
+Ding, X., Liao, K., Birrer, S., {et~al.} 2021, \mnras, 504, 5621,
+  \dodoi{10.1093/mnras/stab1240}
+
+\bibitem[{Duane {et~al.}(1987)Duane, Kennedy, Pendleton, \& Roweth}]{duan1987a}
+Duane, S., Kennedy, A., Pendleton, B.~J., \& Roweth, D. 1987, Physics Letters
+  B, 195, 216, \dodoi{10.1016/0370-2693(87)91197-X}
+
+\bibitem[{Dutta \& Genton(2014)}]{dutta2014b}
+Dutta, S., \& Genton, M.~G. 2014, Journal of Multivariate Analysis, 132, 82,
+  \dodoi{https://doi.org/10.1016/j.jmva.2014.07.007}
+
+\bibitem[{Earl \& Deem(2005)}]{earl2005}
+Earl, D.~J., \& Deem, M.~W. 2005, Physical Chemistry Chemical Physics, 7, 3910,
+  \dodoi{10.1039/b509983h}
+
+\bibitem[{Foreman-Mackey(2016)}]{foreman2016a}
+Foreman-Mackey, D. 2016, The Journal of Open Source Software, 1, 24,
+  \dodoi{10.21105/joss.00024}
+
+\bibitem[{Foreman-Mackey {et~al.}(2013)Foreman-Mackey, Hogg, Lang, \&
+  Goodman}]{foreman2013a}
+Foreman-Mackey, D., Hogg, D.~W., Lang, D., \& Goodman, J. 2013, Publications of
+  the Astronomical Society of the Pacific, 125, 306–312,
+  \dodoi{10.1086/670067}
+
+\bibitem[{Foxley-Marrable {et~al.}(2018)Foxley-Marrable, Collett, Vernardos,
+  Goldstein, \& Bacon}]{foster2018}
+Foxley-Marrable, M., Collett, T.~E., Vernardos, G., Goldstein, D.~A., \& Bacon,
+  D. 2018, \mnras, 478, 5081–5090, \dodoi{10.1093/mnras/sty1346}
+
+\bibitem[{{Freedman} {et~al.}(2019){Freedman}, {Madore}, {Hatt}, {Hoyt},
+  {Jang}, {Beaton}, {Burns}, {Lee}, {Monson}, {Neeley}, {Phillips}, {Rich}, \&
+  {Seibert}}]{freedman2019a}
+{Freedman}, W.~L., {Madore}, B.~F., {Hatt}, D., {et~al.} 2019, \apj, 882, 34,
+  \dodoi{10.3847/1538-4357/ab2f73}
+
+\bibitem[{{Freedman} {et~al.}(2020){Freedman}, {Madore}, {Hoyt}, {Jang},
+  {Beaton}, {Lee}, {Monson}, {Neeley}, \& {Rich}}]{freedman2020a}
+{Freedman}, W.~L., {Madore}, B.~F., {Hoyt}, T., {et~al.} 2020, \apj, 891, 57,
+  \dodoi{10.3847/1538-4357/ab7339}
+
+\bibitem[{Galan {et~al.}(2021)Galan, Peel, Joseph, Courbin, \&
+  Starck}]{galan2021a}
+Galan, A., Peel, A., Joseph, R., Courbin, F., \& Starck, J.-L. 2021, \aap, 647,
+  A176, \dodoi{10.1051/0004-6361/202039363}
+
+\bibitem[{Gelman \& Rubin(1992)}]{gelman1992}
+Gelman, A., \& Rubin, D.~B. 1992, Statistical Science, 7, 457 ,
+  \dodoi{10.1214/ss/1177011136}
+
+\bibitem[{Gilman {et~al.}(2021)Gilman, Bovy, Treu, Nierenberg, Birrer, Benson,
+  \& Sameie}]{gilman2021}
+Gilman, D., Bovy, J., Treu, T., {et~al.} 2021, Monthly Notices of the Royal
+  Astronomical Society, 507, 2432–2447, \dodoi{10.1093/mnras/stab2335}
+
+\bibitem[{{Goldstein} \& {Nugent}(2017)}]{goldstein2017a}
+{Goldstein}, D.~A., \& {Nugent}, P.~E. 2017, \apjl, 834, L5,
+  \dodoi{10.3847/2041-8213/834/1/L5}
+
+\bibitem[{Goldstein {et~al.}(2019)Goldstein, Nugent, \&
+  Goobar}]{goldstein2018a}
+Goldstein, D.~A., Nugent, P.~E., \& Goobar, A. 2019, \apjs, 243, 6,
+  \dodoi{10.3847/1538-4365/ab1fe0}
+
+\bibitem[{{Goldstein} {et~al.}(2018){Goldstein}, {Nugent}, {Kasen}, \&
+  {Collett}}]{goldstein2018b}
+{Goldstein}, D.~A., {Nugent}, P.~E., {Kasen}, D.~N., \& {Collett}, T.~E. 2018,
+  \apj, 855, 22, \dodoi{10.3847/1538-4357/aaa975}
+
+\bibitem[{{Goobar} {et~al.}(2017){Goobar}, {Amanullah}, {Kulkarni}, {Nugent},
+  {Johansson}, {Steidel}, {Law}, {M{\"o}rtsell}, {Quimby}, {Blagorodnova},
+  {Brandeker}, {Cao}, {Cooray}, {Ferretti}, {Fremling}, {Hangard}, {Kasliwal},
+  {Kupfer}, {Lunnan}, {Masci}, {Miller}, {Nayyeri}, {Neill}, {Ofek},
+  {Papadogiannakis}, {Petrushevska}, {Ravi}, {Sollerman}, {Sullivan}, {Taddia},
+  {Walters}, {Wilson}, {Yan}, \& {Yaron}}]{goobar2017a}
+{Goobar}, A., {Amanullah}, R., {Kulkarni}, S.~R., {et~al.} 2017, Science, 356,
+  291, \dodoi{10.1126/science.aal2729}
+
+\bibitem[{Grillo {et~al.}(2015)Grillo, Suyu, Rosati, Mercurio, Balestra,
+  Munari, Nonino, Caminha, Lombardi, De~Lucia, \& et~al.}]{grillo2015a}
+Grillo, C., Suyu, S.~H., Rosati, P., {et~al.} 2015, \apj, 800, 38,
+  \dodoi{10.1088/0004-637x/800/1/38}
+
+\bibitem[{Gy{\"o}rgy \& Kocsis(2011)}]{gyorgy2011}
+Gy{\"o}rgy, A., \& Kocsis, L. 2011, Journal of Artificial Intelligence
+  Research, 41, 407, \dodoi{10.1613/jair.3313}
+
+\bibitem[{Harris {et~al.}(2020)Harris, Millman, van~der Walt, Gommers,
+  Virtanen, Cournapeau, Wieser, Taylor, Berg, Smith, Kern, Picus, Hoyer, van
+  Kerkwijk, Brett, Haldane, del R{\'{i}}o, Wiebe, Peterson,
+  G{\'{e}}rard-Marchant, Sheppard, Reddy, Weckesser, Abbasi, Gohlke, \&
+  Oliphant}]{harris2020a}
+Harris, C.~R., Millman, K.~J., van~der Walt, S.~J., {et~al.} 2020, \nat, 585,
+  357, \dodoi{10.1038/s41586-020-2649-2}
+
+\bibitem[{Hessel {et~al.}(2020)Hessel, Budden, Viola, Rosca, Sezener, \&
+  Hennigan}]{optax2020}
+Hessel, M., Budden, D., Viola, F., {et~al.} 2020, Optax: composable gradient
+  transformation and optimisation, in JAX!, 0.0.1.
+\newblock \url{http://github.com/deepmind/optax}
+
+\bibitem[{{Hezaveh} {et~al.}(2016){Hezaveh}, {Dalal}, {Marrone}, {Mao},
+  {Morningstar}, {Wen}, {Blandford}, {Carlstrom}, {Fassnacht}, {Holder},
+  {Kemball}, {Marshall}, {Murray}, {Perreault Levasseur}, {Vieira}, \&
+  {Wechsler}}]{hezaveh2016a}
+{Hezaveh}, Y.~D., {Dalal}, N., {Marrone}, D.~P., {et~al.} 2016, \apj, 823, 37,
+  \dodoi{10.3847/0004-637X/823/1/37}
+
+\bibitem[{Hoffman {et~al.}(2021)Hoffman, Radul, \& Sountsov}]{hoffman2021}
+Hoffman, M., Radul, A., \& Sountsov, P. 2021, in International Conference on
+  Artificial Intelligence and Statistics, PMLR, 3907--3915
+
+\bibitem[{Hoffman {et~al.}(2013)Hoffman, Blei, Wang, \& Paisley}]{hoffman2013}
+Hoffman, M.~D., Blei, D.~M., Wang, C., \& Paisley, J. 2013, Journal of Machine
+  Learning Research, 14
+
+\bibitem[{Hoffman {et~al.}(2014)Hoffman, Gelman, {et~al.}}]{hoffman2014}
+Hoffman, M.~D., Gelman, A., {et~al.} 2014, Journal of Machine Learning
+  Research, 15
+
+\bibitem[{Hogg \& Blandford(1994)}]{hogg1994}
+Hogg, D.~W., \& Blandford, R.~D. 1994, Monthly Notices of the Royal
+  Astronomical Society, 268, 889, \dodoi{10.1093/mnras/268.4.889}
+
+\bibitem[{Horne(1986)}]{horne1986}
+Horne, K. 1986, Publications of the Astronomical Society of the Pacific, 98,
+  609, \dodoi{10.1086/131801}
+
+\bibitem[{{Huang} {et~al.}(2009){Huang}, {Morokuma}, {Fakhouri}, {Aldering},
+  {Amanullah}, {Barbary}, {Brodwin}, {Connolly}, {Dawson}, {Doi}, {Faccioli},
+  {Fadeyev}, {Fruchter}, {Goldhaber}, {Gladders}, {Hennawi}, {Ihara}, {Jee},
+  {Kowalski}, {Konishi}, {Lidman}, {Meyers}, {Moustakas}, {Perlmutter},
+  {Rubin}, {Schlegel}, {Spadafora}, {Suzuki}, {Takanashi}, \&
+  {Yasuda}}]{huang2009a}
+{Huang}, X., {Morokuma}, T., {Fakhouri}, H.~K., {et~al.} 2009, \apj, 707, L12,
+  \dodoi{10.1088/0004-637X/707/1/L12}
+
+\bibitem[{Huang {et~al.}(2020)Huang, Storfer, Ravi, Pilon, Domingo, Schlegel,
+  Bailey, Dey, Gupta, Herrera, Juneau, Landriau, Lang, Meisner, Moustakas,
+  Myers, Schlafly, Valdes, Weaver, Yang, \& Y{\`{e}}che}]{huang2020a}
+Huang, X., Storfer, C., Ravi, V., {et~al.} 2020, \apj, 894, 78,
+  \dodoi{10.3847/1538-4357/ab7ffb}
+
+\bibitem[{Huang {et~al.}(2021)Huang, Storfer, Gu, Ravi, Pilon, Sheu,
+  Venguswamy, Banka, Dey, Landriau, Lang, Meisner, Moustakas, Myers, Sajith,
+  Schlafly, \& Schlegel}]{huang2021a}
+Huang, X., Storfer, C., Gu, A., {et~al.} 2021, \apj, 909, 27,
+  \dodoi{10.3847/1538-4357/abd62b}
+
+\bibitem[{{Huber} {et~al.}(2021){Huber}, {Suyu}, {Ghoshdastidar},
+  {Taubenberger}, {Bonvin}, {Chan}, {Kromer}, {Noebauer}, {Sim}, \&
+  {Leal-Taix{\'e}}}]{huber2021a}
+{Huber}, S., {Suyu}, S.~H., {Ghoshdastidar}, D., {et~al.} 2021, arXiv e-prints,
+  arXiv:2108.02789.
+\newblock \doarXiv{2108.02789}
+
+\bibitem[{Huijser {et~al.}(2017)Huijser, Goodman, \& Brewer}]{huijser2017}
+Huijser, D., Goodman, J., \& Brewer, B.~J. 2017, Properties of the Affine
+  Invariant Ensemble Sampler in high dimensions.
+\newblock \doarXiv{1509.02230}
+
+\bibitem[{Hunter(2007)}]{hunter2007a}
+Hunter, J.~D. 2007, Computing in Science \& Engineering, 9, 90,
+  \dodoi{10.1109/MCSE.2007.55}
+
+\bibitem[{{Jacobs} {et~al.}(2017){Jacobs}, {Glazebrook}, {Collett}, {More}, \&
+  {McCarthy}}]{jacobs2017a}
+{Jacobs}, C., {Glazebrook}, K., {Collett}, T., {More}, A., \& {McCarthy}, C.
+  2017, \mnras, 471, 167, \dodoi{10.1093/mnras/stx1492}
+
+\bibitem[{{Jacobs} {et~al.}(2019{\natexlab{a}}){Jacobs}, {Collett},
+  {Glazebrook}, {McCarthy}, {Qin}, {Abbott}, {Abdalla}, {Annis}, {Avila},
+  {Bechtol}, {Bertin}, {Brooks}, {Buckley-Geer}, {Burke}, {Carnero Rosell},
+  {Carrasco Kind}, {Carretero}, {da Costa}, {Davis}, {De Vicente}, {Desai},
+  {Diehl}, {Doel}, {Eifler}, {Flaugher}, {Frieman}, {Garc{\'{\i}}a-Bellido},
+  {Gaztanaga}, {Gerdes}, {Goldstein}, {Gruen}, {Gruendl}, {Gschwend},
+  {Gutierrez}, {Hartley}, {Hollowood}, {Honscheid}, {Hoyle}, {James}, {Kuehn},
+  {Kuropatkin}, {Lahav}, {Li}, {Lima}, {Lin}, {Maia}, {Martini}, {Miller},
+  {Miquel}, {Nord}, {Plazas}, {Sanchez}, {Scarpine}, {Schubnell}, {Serrano},
+  {Sevilla-Noarbe}, {Smith}, {Soares-Santos}, {Sobreira}, {Suchyta}, {Swanson},
+  {Tarle}, {Vikram}, {Walker}, {Zhang}, \& {Zuntz}}]{jacobs2019a}
+{Jacobs}, C., {Collett}, T., {Glazebrook}, K., {et~al.} 2019{\natexlab{a}},
+  \mnras, 484, 5330, \dodoi{10.1093/mnras/stz272}
+
+\bibitem[{{Jacobs} {et~al.}(2019{\natexlab{b}}){Jacobs}, {Collett},
+  {Glazebrook}, {Buckley-Geer}, {Diehl}, {Lin}, {McCarthy}, {Qin}, {Odden},
+  {Caso Escudero}, {Dial}, {Yung}, {Gaitsch}, {Pellico}, {Lindgren}, {Abbott},
+  {Annis}, {Avila}, {Brooks}, {Burke}, {Carnero Rosell}, {Carrasco Kind},
+  {Carretero}, {da Costa}, {De Vicente}, {Fosalba}, {Frieman},
+  {Garc{\'\i}a-Bellido}, {Gaztanaga}, {Goldstein}, {Gruen}, {Gruendl},
+  {Gschwend}, {Hollowood}, {Honscheid}, {Hoyle}, {James}, {Krause},
+  {Kuropatkin}, {Lahav}, {Lima}, {Maia}, {Marshall}, {Miquel}, {Plazas},
+  {Roodman}, {Sanchez}, {Scarpine}, {Serrano}, {Sevilla-Noarbe}, {Smith},
+  {Sobreira}, {Suchyta}, {Swanson}, {Tarle}, {Vikram}, {Walker}, {Zhang}, \&
+  {DES Collaboration}}]{jacobs2019b}
+---. 2019{\natexlab{b}}, \apjs, 243, 17, \dodoi{10.3847/1538-4365/ab26b6}
+
+\bibitem[{Jullo {et~al.}(2007)Jullo, Kneib, Limousin, Elíasdóttir, Marshall,
+  \& Verdugo}]{jullo2007}
+Jullo, E., Kneib, J.-P., Limousin, M., {et~al.} 2007, New Journal of Physics,
+  9, 447–447, \dodoi{10.1088/1367-2630/9/12/447}
+
+\bibitem[{{Jullo} {et~al.}(2010){Jullo}, {Natarajan}, {Kneib}, {D'Aloisio},
+  {Limousin}, {Richard}, \& {Schimd}}]{jullo2010a}
+{Jullo}, E., {Natarajan}, P., {Kneib}, J.~P., {et~al.} 2010, Science, 329, 924,
+  \dodoi{10.1126/science.1185759}
+
+\bibitem[{{Kelly} {et~al.}(2015){Kelly}, {Filippenko}, {Burke}, {Hicken},
+  {Ganeshalingam}, \& {Zheng}}]{kelly2015a}
+{Kelly}, P.~L., {Filippenko}, A.~V., {Burke}, D.~L., {et~al.} 2015, Science,
+  347, 1459, \dodoi{10.1126/science.1261475}
+
+\bibitem[{Kingma \& Ba(2017)}]{kingma2017}
+Kingma, D.~P., \& Ba, J. 2017, Adam: A Method for Stochastic Optimization.
+\newblock \doarXiv{1412.6980}
+
+\bibitem[{Kingma {et~al.}(2017)Kingma, Salimans, Jozefowicz, Chen, Sutskever,
+  \& Welling}]{kingma2017a}
+Kingma, D.~P., Salimans, T., Jozefowicz, R., {et~al.} 2017, Improving
+  Variational Inference with Inverse Autoregressive Flow.
+\newblock \doarXiv{1606.04934}
+
+\bibitem[{{Kochanek}(1991)}]{kochanek1991a}
+{Kochanek}, C.~S. 1991, \apj, 373, 354, \dodoi{10.1086/170057}
+
+\bibitem[{{Koopmans} \& {Treu}(2002)}]{koopmans2002a}
+{Koopmans}, L.~V.~E., \& {Treu}, T. 2002, \apjl, 568, L5,
+  \dodoi{10.1086/340143}
+
+\bibitem[{{Koopmans} {et~al.}(2006){Koopmans}, {Treu}, {Bolton}, {Burles}, \&
+  {Moustakas}}]{koopmans2006a}
+{Koopmans}, L.~V.~E., {Treu}, T., {Bolton}, A.~S., {Burles}, S., \&
+  {Moustakas}, L.~A. 2006, \apj, 649, 599, \dodoi{10.1086/505696}
+
+\bibitem[{Krist {et~al.}(2011)Krist, Hook, \& Stoehr}]{krist2011a}
+Krist, J.~E., Hook, R.~N., \& Stoehr, F. 2011, in Optical Modeling and
+  Performance Predictions V, Vol. 8127, International Society for Optics and
+  Photonics, 81270J
+
+\bibitem[{Mart{\'\i}(2003)}]{marti2003}
+Mart{\'\i}, R. 2003, in Handbook of {Metaheuristics}, ed. F.~Glover \& G.~A.
+  Kochenberger, International {Series} in {Operations} {Research} \&
+  {Management} {Science} (Boston, MA: Springer US), 355--368,
+  \dodoi{10.1007/0-306-48056-5_12}
+
+\bibitem[{{Meneghetti} {et~al.}(2020){Meneghetti}, {Davoli}, {Bergamini},
+  {Rosati}, {Natarajan}, {Giocoli}, {Caminha}, {Metcalf}, {Rasia}, {Borgani},
+  {Calura}, {Grillo}, {Mercurio}, \& {Vanzella}}]{meneghetti2020a}
+{Meneghetti}, M., {Davoli}, G., {Bergamini}, P., {et~al.} 2020, Science, 369,
+  1347, \dodoi{10.1126/science.aax5164}
+
+\bibitem[{{Metcalf} {et~al.}(2018){Metcalf}, {Meneghetti}, {Avestruz},
+  {Bellagamba}, {Bom}, {Bertin}, {Cabanac}, {Davies}, {Decenci{\`e}re},
+  {Flamary}, {Gavazzi}, {Geiger}, {Hartley}, {Huertas-Company}, {Jackson},
+  {Jullo}, {Kneib}, {Koopmans}, {Lanusse}, {Li}, {Ma}, {Makler}, {Li},
+  {Lightman}, {Enrico Petrillo}, {Serjeant}, {Sch{\"a}fer}, {Sonnenfeld},
+  {Tagore}, {Tortora}, {Tuccillo}, {Valent{\'\i}n}, {Velasco-Forero}, {Verdoes
+  Kleijn}, \& {Vernardos}}]{metcalf2018a}
+{Metcalf}, R.~B., {Meneghetti}, M., {Avestruz}, C., {et~al.} 2018, arXiv
+  e-prints, arXiv:1802.03609.
+\newblock \doarXiv{1802.03609}
+
+\bibitem[{Millon {et~al.}(2020)Millon, Galan, Courbin, Treu, Suyu, Ding,
+  Birrer, Chen, Shajib, Sluse, \& et~al.}]{millon2020a}
+Millon, M., Galan, A., Courbin, F., {et~al.} 2020, \aap, 639, A101,
+  \dodoi{10.1051/0004-6361/201937351}
+
+\bibitem[{Narayan \& Bartelmann(1997)}]{narayan1997}
+Narayan, R., \& Bartelmann, M. 1997, Lectures on Gravitational Lensing.
+\newblock \doarXiv{astro-ph/9606001}
+
+\bibitem[{{Neal}(2011)}]{neal2012a}
+{Neal}, R. 2011, {MCMC Using Hamiltonian Dynamics} (CRC Press), 113--162,
+  \dodoi{10.1201/b10905}
+
+\bibitem[{Neal(2001)}]{neal2001}
+Neal, R.~M. 2001, Statistics and Computing, 11, 125,
+  \dodoi{10.1023/A:1008923215028}
+
+\bibitem[{Nesterov(2014)}]{nesterov2014}
+Nesterov, Y. 2014, 1.2. Local Methods in Unconstrained Minimization (Springer),
+  9--46
+
+\bibitem[{Nightingale {et~al.}(2021)Nightingale, Hayes, Kelly, Amvrosiadis,
+  Etherington, He, Li, Cao, Frawley, Cole, Enia, Frenk, Harvey, Li, Massey,
+  Negrello, \& Robertson}]{nightingale2021}
+Nightingale, J.~W., Hayes, R.~G., Kelly, A., {et~al.} 2021, J. Open Source
+  Softw., 6, 2825, \dodoi{10.21105/joss.02825}
+
+\bibitem[{{Oguri} \& {Marshall}(2010)}]{oguri2010a}
+{Oguri}, M., \& {Marshall}, P.~J. 2010, \mnras, 405, 2579,
+  \dodoi{10.1111/j.1365-2966.2010.16639.x}
+
+\bibitem[{O'Riordan {et~al.}(2019)O'Riordan, Warren, \&
+  Mortlock}]{oriordan2019}
+O'Riordan, C.~M., Warren, S.~J., \& Mortlock, D.~J. 2019, \mnras, 487,
+  5143–5154, \dodoi{10.1093/mnras/stz1603}
+
+\bibitem[{Papamakarios {et~al.}(2018)Papamakarios, Pavlakou, \&
+  Murray}]{papamakarios2018}
+Papamakarios, G., Pavlakou, T., \& Murray, I. 2018, Masked Autoregressive Flow
+  for Density Estimation.
+\newblock \doarXiv{1705.07057}
+
+\bibitem[{{Pierel} \& {Rodney}(2019)}]{pierel2019a}
+{Pierel}, J.~D.~R., \& {Rodney}, S. 2019, \apj, 876, 107,
+  \dodoi{10.3847/1538-4357/ab164a}
+
+\bibitem[{{Planck Collaboration} {et~al.}(2020){Planck Collaboration}, Aghanim,
+  Akrami, Ashdown, Aumont, Baccigalupi, Ballardini, Banday, Barreiro, Bartolo,
+  Basak, \& et~al.}]{planck2020}
+{Planck Collaboration}, Aghanim, N., Akrami, Y., {et~al.} 2020, \aap, 641, A6,
+  \dodoi{10.1051/0004-6361/201833910}
+
+\bibitem[{{Quimby} {et~al.}(2014){Quimby}, {Oguri}, {More}, {More}, {Moriya},
+  {Werner}, {Tanaka}, {Folatelli}, {Bersten}, {Maeda}, \&
+  {Nomoto}}]{quimby2014a}
+{Quimby}, R.~M., {Oguri}, M., {More}, A., {et~al.} 2014, Science, 344, 396,
+  \dodoi{10.1126/science.1250903}
+
+\bibitem[{Ranganath {et~al.}(2014)Ranganath, Gerrish, \& Blei}]{ranganath2013}
+Ranganath, R., Gerrish, S., \& Blei, D. 2014, in Proceedings of Machine
+  Learning Research, Vol.~33, Proceedings of the Seventeenth International
+  Conference on Artificial Intelligence and Statistics, ed. S.~Kaski \&
+  J.~Corander (PMLR), 814--822.
+\newblock \url{https://proceedings.mlr.press/v33/ranganath14.html}
+
+\bibitem[{{Refsdal}(1964)}]{refsdal1964a}
+{Refsdal}, S. 1964, \mnras, 128, 307, \dodoi{10.1093/mnras/128.4.307}
+
+\bibitem[{Riess {et~al.}(2019)Riess, Casertano, Yuan, Macri, \&
+  Scolnic}]{riess2019}
+Riess, A.~G., Casertano, S., Yuan, W., Macri, L.~M., \& Scolnic, D. 2019, \apj,
+  876, 85, \dodoi{10.3847/1538-4357/ab1422}
+
+\bibitem[{Riess {et~al.}(2021)Riess, Yuan, Macri, Scolnic, Brout, Casertano,
+  Jones, Murakami, Breuval, Brink, Filippenko, Hoffmann, Jha, Kenworthy,
+  Mackenty, Stahl, \& Zheng}]{riess2021a}
+Riess, A.~G., Yuan, W., Macri, L.~M., {et~al.} 2021, A Comprehensive
+  Measurement of the Local Value of the Hubble Constant with 1 km/s/Mpc
+  Uncertainty from the Hubble Space Telescope and the SH0ES Team.
+\newblock \doarXiv{2112.04510}
+
+\bibitem[{{Ritondale} {et~al.}(2019){Ritondale}, {Vegetti}, {Despali}, {Auger},
+  {Koopmans}, \& {McKean}}]{ritondale2019a}
+{Ritondale}, E., {Vegetti}, S., {Despali}, G., {et~al.} 2019, \mnras, 485,
+  2179, \dodoi{10.1093/mnras/stz464}
+
+\bibitem[{Rodney {et~al.}(2021)Rodney, Brammer, Pierel, Richard, Toft,
+  O'Connor, Akhshik, \& Whitaker}]{rodney2021a}
+Rodney, S.~A., Brammer, G.~B., Pierel, J. D.~R., {et~al.} 2021, Nature
+  Astronomy, \dodoi{10.1038/s41550-021-01450-9}
+
+\bibitem[{{Rodney} {et~al.}(2016){Rodney}, {Strolger}, {Kelly}, {Brada{\v{c}}},
+  {Brammer}, {Filippenko}, {Foley}, {Graur}, {Hjorth}, {Jha}, {McCully},
+  {Molino}, {Riess}, {Schmidt}, {Selsing}, {Sharon}, {Treu}, {Weiner}, \&
+  {Zitrin}}]{rodney2016a}
+{Rodney}, S.~A., {Strolger}, L.~G., {Kelly}, P.~L., {et~al.} 2016, \apj, 820,
+  50, \dodoi{10.3847/0004-637X/820/1/50}
+
+\bibitem[{Rojas {et~al.}(2021)Rojas, Savary, Clément, Maus, Courbin, Lemon,
+  Chan, Vernardos, Joseph, Cañameras, \& Galan}]{rojas2021a}
+Rojas, K., Savary, E., Clément, B., {et~al.} 2021, Strong lens systems search
+  in the Dark Energy Survey using Convolutional Neural Networks.
+\newblock \doarXiv{2109.00014}
+
+\bibitem[{Sengupta {et~al.}(2018)Sengupta, Basak, \& Peters}]{sengupta2018}
+Sengupta, S., Basak, S., \& Peters, R. 2018, Machine Learning and Knowledge
+  Extraction, 1, 157–191, \dodoi{10.3390/make1010010}
+
+\bibitem[{S{\'e}rsic(1963)}]{sersic1963}
+S{\'e}rsic, J. 1963, Bolet{\'\i}n de la Asociaci{\'o}n Argentina de
+  Astronom{\'\i}a, 6.
+\newblock \url{http://sedici.unlp.edu.ar/handle/10915/73765}
+
+\bibitem[{Shu {et~al.}(2018)Shu, Bolton, Mao, Kang, Li, \& Soraisam}]{shu2018}
+Shu, Y., Bolton, A.~S., Mao, S., {et~al.} 2018, \apj, 864, 91,
+  \dodoi{10.3847/1538-4357/aad5ea}
+
+\bibitem[{Shu {et~al.}(2016)Shu, Bolton, Moustakas, Stern, Dey, Brownstein,
+  Burles, \& Spinrad}]{shu2016b}
+Shu, Y., Bolton, A.~S., Moustakas, L.~A., {et~al.} 2016, \apj, 820, 43,
+  \dodoi{10.3847/0004-637x/820/1/43}
+
+\bibitem[{Shu {et~al.}(2015)Shu, Bolton, Brownstein, Montero-Dorta, Koopmans,
+  Treu, Gavazzi, Auger, Czoske, Marshall, \& et~al.}]{shu2015a}
+Shu, Y., Bolton, A.~S., Brownstein, J.~R., {et~al.} 2015, \apj, 803, 71,
+  \dodoi{10.1088/0004-637x/803/2/71}
+
+\bibitem[{Shu {et~al.}(2017)Shu, Brownstein, Bolton, Koopmans, Treu,
+  Montero-Dorta, Auger, Czoske, Gavazzi, Marshall, \& et~al.}]{shu2017}
+Shu, Y., Brownstein, J.~R., Bolton, A.~S., {et~al.} 2017, \apj, 851, 48,
+  \dodoi{10.3847/1538-4357/aa9794}
+
+\bibitem[{Sokal(1996)}]{sokal1996}
+Sokal, A.~D. 1996, in Monte Carlo Methods in Statistical Mechanics: Foundations
+  and New Algorithms
+
+\bibitem[{Sountsov \& Hoffman(2021)}]{sountsov2021}
+Sountsov, P., \& Hoffman, M.~D. 2021, Focusing on Difficult Directions for
+  Learning HMC Trajectory Lengths.
+\newblock \doarXiv{2110.11576}
+
+\bibitem[{{Stan Development Team}(2021)}]{stan}
+{Stan Development Team}. 2021, {Stan Modeling Language Users Guide and
+  Reference Manual, 2.28}.
+\newblock
+  \url{https://mc-stan.org/docs/2_28/reference-manual/hmc-algorithm-parameters.html#euclidean-metric}
+
+\bibitem[{{Suyu} {et~al.}(2010){Suyu}, {Marshall}, {Auger}, {Hilbert},
+  {Blandford}, {Koopmans}, {Fassnacht}, \& {Treu}}]{suyu2010a}
+{Suyu}, S.~H., {Marshall}, P.~J., {Auger}, M.~W., {et~al.} 2010, \apj, 711,
+  201, \dodoi{10.1088/0004-637X/711/1/201}
+
+\bibitem[{{Suyu} {et~al.}(2013){Suyu}, {Auger}, {Hilbert}, {Marshall}, {Tewes},
+  {Treu}, {Fassnacht}, {Koopmans}, {Sluse}, {Blandford}, {Courbin}, \&
+  {Meylan}}]{suyu2013a}
+{Suyu}, S.~H., {Auger}, M.~W., {Hilbert}, S., {et~al.} 2013, \apj, 766, 70,
+  \dodoi{10.1088/0004-637X/766/2/70}
+
+\bibitem[{Suyu {et~al.}(2020)Suyu, Huber, Ca{\~n}ameras, Kromer, Schuldt,
+  Taubenberger, Yıldırım, Bonvin, Chan, Courbin, N{\"o}bauer, Sim, \&
+  Sluse}]{suyu2020a}
+Suyu, S.~H., Huber, S., Ca{\~n}ameras, R., {et~al.} 2020, Astronomy \&
+  Astrophysics, 644, A162, \dodoi{10.1051/0004-6361/202037757}
+
+\bibitem[{Tessore \& Metcalf(2015)}]{tessore2015a}
+Tessore, N., \& Metcalf, R. 2015, \aap, 580, A79,
+  \dodoi{10.1051/0004-6361/201526773}
+
+\bibitem[{{Treu}(2010)}]{treu2010a}
+{Treu}, T. 2010, \araa, 48, 87, \dodoi{10.1146/annurev-astro-081309-130924}
+
+\bibitem[{{Treu} \& {Marshall}(2016)}]{treu2016a}
+{Treu}, T., \& {Marshall}, P.~J. 2016, \aapr, 24, 11,
+  \dodoi{10.1007/s00159-016-0096-8}
+
+\bibitem[{{Vegetti} \& {Koopmans}(2009)}]{vegetti2009a}
+{Vegetti}, S., \& {Koopmans}, L.~V.~E. 2009, \mnras, 400, 1583,
+  \dodoi{10.1111/j.1365-2966.2009.15559.x}
+
+\bibitem[{{Vegetti} {et~al.}(2010){Vegetti}, {Koopmans}, {Bolton}, {Treu}, \&
+  {Gavazzi}}]{vegetti2010a}
+{Vegetti}, S., {Koopmans}, L.~V.~E., {Bolton}, A., {Treu}, T., \& {Gavazzi}, R.
+  2010, \mnras, 408, 1969, \dodoi{10.1111/j.1365-2966.2010.16865.x}
+
+\bibitem[{{Vegetti} {et~al.}(2012){Vegetti}, {Lagattuta}, {McKean}, {Auger},
+  {Fassnacht}, \& {Koopmans}}]{vegetti2012a}
+{Vegetti}, S., {Lagattuta}, D.~J., {McKean}, J.~P., {et~al.} 2012, \nat, 481,
+  341, \dodoi{10.1038/nature10669}
+
+\bibitem[{Waskom(2021)}]{waskom2021a}
+Waskom, M.~L. 2021, Journal of Open Source Software, 6, 3021,
+  \dodoi{10.21105/joss.03021}
+
+\bibitem[{Wengert(1964)}]{wengert1964}
+Wengert, R.~E. 1964, Communications of the ACM, 7, 463,
+  \dodoi{10.1145/355586.364791}
+
+\bibitem[{Wong {et~al.}(2020)Wong, Suyu, Chen, Rusu, Millon, Sluse, Bonvin,
+  Fassnacht, Taubenberger, Auger, Birrer, Chan, Courbin, Hilbert, Tihhonova,
+  Treu, Agnello, Ding, Jee, Komatsu, Shajib, Sonnenfeld, Blandford, Koopmans,
+  Marshall, \& Meylan}]{wong2019a}
+Wong, K.~C., Suyu, S.~H., Chen, G. C.-F., {et~al.} 2020, \mnras, 498, 1420,
+  \dodoi{10.1093/mnras/stz3094}
+
+\bibitem[{Yahalomi {et~al.}(2017)Yahalomi, Schechter, \&
+  Wambsganss}]{yahalomi2017}
+Yahalomi, D.~A., Schechter, P.~L., \& Wambsganss, J. 2017, A Quadruply Lensed
+  SN Ia: Gaining a Time-Delay \ldots Losing a Standard Candle.
+\newblock \doarXiv{1711.07919}
+
+\bibitem[{You {et~al.}(2019)You, Long, Wang, \& Jordan}]{you2019}
+You, K., Long, M., Wang, J., \& Jordan, M.~I. 2019, How Does Learning Rate
+  Decay Help Modern Neural Networks?
+\newblock \doarXiv{1908.01878}
+
+\end{thebibliography}

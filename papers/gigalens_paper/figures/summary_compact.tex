@@ -1,0 +1,33 @@
+\begin{deluxetable}{l m{3.1cm} r l m{2.8cm} c h}
+\tabletypesize{\footnotesize}
+\tablecaption{Summary of the modeling pipeline\label{tab:pipeline}}
+\tablehead{
+\colhead{\textbf{Step}} & \colhead{\textbf{Output}} & \multicolumn2c{\textbf{Hyperparameters}} & \colhead{\textbf{Initialization}} & \colhead{\textbf{Execution time}}}
+\startdata
+\arrayrulecolor{gray}
+& \multirow{3}{=}{An estimate of the posterior mode $\tilde{\Theta}^*_{MAP}$.} & $K_{MAP}$: & 300 & \multirow{3}{=}{\centering $\tilde{\Theta}_i^{(1)} \sim \tilde{p}(\tilde{\Theta})$ \\ $i=1,\ldots,n_{MAP}$} & & \multirow{3}{*}{\centering 50 min.} \\
+1. MAP (\S\ref{sec:map}) & &  $n_{MAP}$: & 300 & & 17 sec. \\
+& &  $\alpha$: & $10^{-2} \overset{\text{lin,300}}{\longrightarrow} 10^{-3}$ & \\
+\hline
+%
+& \multirow{3}{=}{An estimate of the posterior mean $\tilde{\mu}_{VI}^*$ and covariance $\tilde{\Sigma}_{VI}^*$.} & $K_{VI}$: & 1000 & \multirow{3}{=}{\centering $\tilde{\mu}^{(1)}=\tilde{\Theta}^*_{MAP}$ \\ $\tilde{\Sigma}^{(1)}=10^{-6} \mathbb{I}$} & & \multirow{3}{*}{\centering N/A} \\
+2. VI (\S\ref{sec:vi}) & & $n_{VI}$: & 500 & & 52 sec. \\
+& & $\alpha$: & $0 \overset{\text{quad,500}}{\longrightarrow} 10^{-3}$ \\
+\hline
+%
+& \multirow{5}{=}{Samples drawn from the posterior $p(\Theta \mid \mathcal{I}_{obs})$} &  $n_{burn}$: & $250$ & \multirow{5}{=}{\centering Initialize $n_{HMC}$ walkers by sampling from the VI posterior} & & \multirow{5}{*}{\centering 70 min.} \\
+& &  $n_{sample}$: & 750 & \\ 
+3. HMC (\S\ref{sec:hmc}) & & $n_{HMC}$: & 50 & & 36 sec. \\
+& &  $\epsilon$: & 0.3 & \\
+& &  $L$: & 5 & \\
+& &  $\tilde{M}$: & $(\tilde{\Sigma}^*_{VI})^{-1}$ & \\
+\hline\arrayrulecolor{black}
+%
+\textbf{Total} & & & & & \textbf{105 sec.} & \textbf{120 min.}
+\enddata
+% \tablenotetext{1}{Typical execution times in \texttt{lenstronomy} for the corresponding operations (i.e., PSO for MAP, and \emcee sampling for HMC). For PSO, 300 particles are used, and for \emcee, 50 walkers are used with 250 burn-in steps, and 750 sampling steps.}
+
+\tablecomments{The hyperparameters for each step are defined in their respective subsections (first column). 
+We adopt the notation $\alpha_1 \overset{s,k}{\longrightarrow} \alpha_2$ to indicate a learning rate that changes from $\alpha_1$ to $\alpha_2$ over $k$ iterations with a polynomial schedule $s$ (in our case, linear or quadratic). The rightmost columns indicate typical execution times for each modeling step on four A100 GPUs. \agu{On a single A100 GPU, the runtime is approximately 3.5 times longer (see \cref{fig:hmc-comp}), totaling $\sim 6$ minutes.}}
+\vspace{-2em}
+\end{deluxetable}
