@@ -1,0 +1,24 @@
+{
+  "seed": 0,
+  "n_samples": 1024,
+  "map_steps": 350,
+  "n_vi": 1000,
+  "svi_steps": 1500,
+  "n_hmc": 50,
+  "burnin": 250,
+  "num_results": 750,
+  "theta_e_center": 1.3,
+  "theta_e_width": 0.2,
+  "stages": [
+    "map",
+    "svi",
+    "hmc"
+  ],
+  "label": "inner3",
+  "git_commit": "1df3d884ea54d20234ef4f76705b100f4a36af90",
+  "timings": {
+    "map": 62.739742040634155,
+    "svi": 130.81098461151123,
+    "hmc": 288.28075671195984
+  }
+}

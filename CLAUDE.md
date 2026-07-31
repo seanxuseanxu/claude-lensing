@@ -8,7 +8,7 @@ Three unrelated top-level directories, tracked in one git repo:
 
 - `gigalens/` — a vendored copy of the GIGA-Lens package (upstream: https://github.com/giga-lens/gigalens). Source lives under `gigalens/src/gigalens/`. This is the code you will actually modify.
 - `papers/` — LaTeX sources for two papers: `gigalens_paper/` (the GIGA-Lens method paper, arXiv:2202.07663; entry point `ms_SL-model.tex`) and `strong_lens_foundry_I/` (entry point `main.tex`). Both use the AASTeX 6.31 class, which is vendored alongside.
-- `claude/DESI238/` — observational data for one lens system (see "The DESI238 dataset" below). No code here yet.
+- `claude/DESI238/` — observational data for one lens system (see "The DESI238 dataset" below) plus `claude/DESI238/model/`, a working MAP→SVI→HMC fitting pipeline for it (see "The DESI238 model pipeline" below).
 
 ## Environment
 
@@ -89,7 +89,7 @@ Values I verified directly, suitable for a `SimulatorConfig` / `ForwardProbModel
 - `delta_pix = 0.065` — from the SCI CD matrix, `sqrt(|det CD|) × 3600`. The cutout carries no WCS of its own, so this comes from its provenance as a crop.
 - `num_pix = 120`.
 - `exp_time = 1197.699`.
-- `background_rms ≈ 0.0315` — `astropy.stats.sigma_clipped_stats(cutout, sigma=3.0)`, which gives mean 0.0331, median 0.0236, std 0.0315. The std is the same order as the median, so the clip is not landing on clean sky; re-estimate from an empty corner if the noise level matters to your result.
+- `background_rms ≈ 0.0315` from `astropy.stats.sigma_clipped_stats(cutout, sigma=3.0)` — **this number is wrong for likelihood use, kept here only as a documented dead end.** The clip is dominated by galaxy light (the cutout is mostly deflector, not sky), not clean background. The corrected value, measured from six widely separated blank patches in the parent drizzle frame, is **`background_rms = 0.0075`** (range 0.0070–0.0092 across patches) — this is what `claude/DESI238/model/data.py` actually uses. Using 0.0315 down-weights the arcs into irrelevance.
 
 Three traps:
 
@@ -98,6 +98,56 @@ Three traps:
 3. **The PSF carries no WCS or scale keywords**, so its scale cannot be read off the file. It is at the same 0.065"/pix as the science image — confirmed by the repository owner, not derivable from the data. It is therefore not oversampled relative to the drizzled grid, and `subgrid_kernel` will handle any `supersample > 1` correctly on its own.
 
 On units: the data is a rate (electrons/s), not counts, which is what `ForwardProbModel`'s `sqrt(background_rms² + max(model,0)/exp_time)` expects — the Poisson variance of a rate image scales as `rate / exp_time`. Passing `exp_time = EXPTIME` is correct to first order. It is only first order, though: `NCOMBINE = 3` means coverage varies across the frame, so a single scalar exposure time understates the noise wherever fewer exposures overlap. The `WHT` extension is the proper way to build a per-pixel exposure map if that matters.
+
+## The DESI238 model pipeline
+
+`claude/DESI238/model/` fits this system through `gigalens.jax`'s MAP→SVI→HMC sequence.
+Run `python claude/DESI238/model/verify.py` before any real fit — it's a 5-minute
+pre-flight check, not the fit itself. See `claude/DESI238/model/README.md` for the JAX-0.11
+compatibility shims this needed (upstream `gigalens.jax.inference` does not run as-is
+under JAX 0.11.0; `compat.py` patches it without touching `gigalens/src`) and
+`MODELING_PLAN.md` for how the priors were derived from this specific image's flux scale.
+
+Two rounds of production fits have run. `RESULTS.md` covers round 1 (single Sersic source,
+22 params); `RESULTS_v2.md` covers round 2 (2026-07-30), an ablation that freed the
+lens-light `n_sersic` ceiling and added a second source component (29 params).
+
+- **Clump position angles in `MODELING_PLAN.md`'s table are array-space angles** (from the
+  +row axis toward +col, in the 80×80 crop), **not sky PA.** Converting them through the
+  image's WCS the standard way (North through East) places the markers on empty sky.
+- **theta_E = 1.516 ± 0.002" is the quotable value**, from round 1 — reproduced across
+  independent seeds and a differently-centered falsification prior, with no multimodality.
+  The two-source run gives 1.484 ± 0.002" but **that error bar is not usable**: 29/29
+  parameters fail Rhat < 1.01 (worst 7.17). Checked and it is slow mixing, not
+  multimodality and not label switching. The 1.515 → 1.484 shift stays uninterpretable
+  until that run gets a longer HMC.
+- **Two source-model deficiencies from round 1 are fixed.** A second Sersic source brings
+  all four clumps within 9% (the N arc was underfit 2× at 0.55) and, more importantly,
+  makes the model produce *detached clumps* rather than a smooth modulated ring. Reduced
+  chi² 1.837 → 1.302.
+- **Three parameters have pinned at prior boundaries across these runs**, so check for this
+  routinely — `diagnose.py` now flags any Uniform-prior parameter within 2% of a bound.
+  `lens_light.n_sersic` pinned at its ceiling (fixed by `Uniform(2, 10)`, lands at 7.43);
+  `source.n_sersic` pinned at its *lower* bound 0.5 and went unnoticed for a full round
+  (relieved by the second component, not by widening).
+
+Two pipeline traps, both latent for a full round before firing:
+
+- **Never use bare `argmax` to pick the best MAP start.** `jnp.argmax` propagates NaN, so
+  one diverged start out of 1024 silently selects garbage and SVI then yields NaN for
+  every step. Use `np.nanargmax`. Fixed in `run_fit.py`, including the `--stages svi,hmc`
+  resume path, which had to recompute the index rather than trust the checkpoint.
+- **Changing a prior's *support* silently rewrites old runs' physical values**, because
+  checkpoints store unconstrained samples and the bijector depends on the bounds. Bump
+  `priors.SOURCE_PRIOR_VERSION` and keep the old prior function verbatim rather than
+  editing one in place; `metadata.json` records the version. Location-scale changes (a
+  Normal's sigma) are safe — support changes are not.
+
+An upstream hazard, documented but not fixed, since `gigalens/src/**` is off limits:
+`Parameterized.__init__` does `self.params = self._params`, binding the *class* list, so
+constructing any `use_lstsq=True` profile appends `"amp"` to the class attribute and
+retroactively corrupts every already-built instance. Harmless for these runs (all
+`use_lstsq=False`) but it will bite the shapelets escalation path.
 
 ## Working notes
 
