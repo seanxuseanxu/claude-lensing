@@ -416,6 +416,56 @@ def theta_E_check(run_dir, prob_model, pnames, theta_E_center, theta_E_width):
               "truncating a solution that wants a larger Einstein radius.")
 
 
+def svi_health(run_dir):
+    """Report whether the SVI stage converged, before any Rhat is worth reading.
+
+    This is the check that would have caught the ``twosource`` run immediately. Its ELBO
+    swung by 27,000 over the last few hundred steps and left a covariance conditioned at
+    8.8e+11 -- a thousand times worse than the worst healthy run. ``hmc_single_device``
+    inverted that in float32 without complaint, producing a matrix that is not an inverse
+    (``max|inv(C)C - I| = 55``) and whose spectrum carries five negative eigenvalues. Every
+    one of that run's 29 parameters then failed Rhat, which was read as slow mixing and was
+    not: the mass matrix was effectively indefinite.
+
+    Note that the covariance itself is positive definite, so a PD test does not catch this.
+    Conditioning is the discriminant. See ``compat.check_svi_covariance``.
+
+    Read this line before the convergence table. A rejected covariance invalidates the HMC
+    output entirely -- there is nothing to diagnose downstream of it. Unlike the guard in
+    the fitting path this only reports, since by the time a run is being diagnosed the
+    samples already exist and the useful thing is to say why they cannot be trusted.
+    """
+    svi = load_checkpoint(run_dir, "svi")
+    if svi is None:
+        return
+    try:
+        min_eig, cond = compat.check_svi_covariance(scale_tril=svi["scale_tril"])
+        failed = None
+    except RuntimeError as exc:
+        failed = str(exc)
+        # Recompute unguarded so the numbers can still be printed alongside the failure.
+        s = np.linalg.svd(np.asarray(svi["scale_tril"], dtype=np.float64), compute_uv=False)
+        min_eig = float(s.min() ** 2)
+        cond = float(s.max() ** 2 / min_eig) if min_eig > 0 else np.inf
+    loss = np.asarray(svi["loss_hist"], dtype=np.float64)
+    tail = loss[-300:]
+
+    print("\n=== SVI health ===")
+    print(f"covariance min eigenvalue {min_eig:.3e}, condition {cond:.3e} "
+          f"(healthy runs 1e6-6e8, limit {compat.COND_MAX:.0e})")
+    print(f"ELBO loss final {loss[-1]:.1f}, sd over last {len(tail)} steps "
+          f"{np.std(tail):.1f}")
+    if failed is not None:
+        print(f"FAILED: {failed}")
+        print("HMC was preconditioned on this covariance, so every Rhat below is "
+              "meaningless. Do not interpret this run; re-run SVI.")
+    elif np.std(tail) > 100:
+        print("CAUTION: the ELBO is still moving at the end of the run (healthy 22-param "
+              "runs settle to sd ~10). The Gaussian ansatz may not have converged.")
+    else:
+        print("Converged: well-conditioned covariance, settled ELBO.")
+
+
 def svi_loss_plot(run_dir, out_dir):
     svi = load_checkpoint(run_dir, "svi")
     if svi is None:
@@ -489,6 +539,7 @@ def main():
     # transform old samples through the wrong prior.
     run_cfg = load_run_config(run_dir)
     n_source = int(run_cfg.get("n_source", 1))
+    n_lens_light = int(run_cfg.get("n_lens_light", 1))
     lens_light_n_max = float(run_cfg.get("lens_light_n_max", 6.0))
     theta_e_center = float(run_cfg.get("theta_e_center", args.theta_e_center))
     theta_e_width = float(run_cfg.get("theta_e_width", args.theta_e_width))
@@ -498,8 +549,16 @@ def main():
     # source.n_sersic = 0.6146 where the fit said 0.5729 -- a wrong number, silently.
     source_prior_version = int(run_cfg.get("source_prior_version",
                                            2 if "n_source" in run_cfg else 1))
-    print(f"Model variant: n_source={n_source}, lens_light_n_max={lens_light_n_max}, "
-          f"source_prior_v{source_prior_version}, "
+    # Runs predating --n-lens-light all used the single component, hence v1. Same hazard
+    # as the source version: the v2 bulge n_sersic support differs, so reading an old run
+    # through it would report a different number without raising.
+    lens_light_prior_version = int(
+        run_cfg.get("lens_light_prior_version",
+                    priors.lens_light_prior_version_for(n_lens_light))
+    )
+    print(f"Model variant: n_source={n_source}, n_lens_light={n_lens_light}, "
+          f"lens_light_n_max={lens_light_n_max}, source_prior_v{source_prior_version}, "
+          f"lens_light_prior_v{lens_light_prior_version}, "
           f"theta_E prior LogNormal(log {theta_e_center}, {theta_e_width})")
 
     image, psf, sim_config = data.load()
@@ -507,10 +566,14 @@ def main():
         theta_E_center=theta_e_center,
         theta_E_width=theta_e_width,
         n_source=n_source,
+        n_lens_light=n_lens_light,
         lens_light_n_max=lens_light_n_max,
         source_prior_version=source_prior_version,
+        lens_light_prior_version=lens_light_prior_version,
     )
-    phys_model = priors.build_phys_model(n_source=n_source)
+    phys_model = priors.build_phys_model(
+        n_source=n_source, n_lens_light=n_lens_light
+    )
     prob_model = ForwardProbModel(
         prior,
         jnp.asarray(image),
@@ -526,6 +589,10 @@ def main():
     chi2, res_path = residual_figure(out_dir, image, im_sim, label)
     print(f"Reduced chi-squared at point estimate: {chi2:.3f}")
     print(f"Residual figure: {res_path}")
+
+    # Before Rhat: a non-PD SVI covariance invalidates the HMC output outright, so this
+    # line has to be read first.
+    svi_health(run_dir)
 
     spans = priors.source_component_indices(prior)
     worst_rhat = convergence_table(run_dir, prob_model, pnames, prior=prior, spans=spans)

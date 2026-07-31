@@ -11,6 +11,7 @@ Run from the repo root:
 
 import sys
 import traceback
+from pathlib import Path
 
 import numpy as np
 
@@ -33,9 +34,9 @@ RESULTS = []
 def check(name):
     """Decorator: run a check, record pass/fail, never abort the suite on one failure.
 
-    ``name`` may contain ``{n_source}`` for checks parametrised over the model variant --
-    the label actually recorded is formatted against whatever keyword arguments the caller
-    passes to the wrapped function (e.g. ``check_params(n_source=2)``).
+    ``name`` may contain ``{n_source}`` / ``{n_lens_light}`` for checks parametrised over
+    the model variant -- the label actually recorded is formatted against whatever keyword
+    arguments the caller passes to the wrapped function (e.g. ``check_params(n_source=2)``).
     """
 
     def wrap(fn):
@@ -78,9 +79,9 @@ def check_data():
             f"corner max {corner_max:.3f}")
 
 
-@check("2. Parameter count and ordering [{n_source} source]")
-def check_params(n_source=1):
-    prior = priors.build_prior(n_source=n_source)
+@check("2. Parameter count and ordering [{n_source}src {n_lens_light}ll]")
+def check_params(n_source=1, n_lens_light=1):
+    prior = priors.build_prior(n_source=n_source, n_lens_light=n_lens_light)
     n = priors.n_params(prior)
     image = data.load_image()
     prob = ForwardProbModel(
@@ -134,11 +135,11 @@ def check_params(n_source=1):
     return f"{n} parameters, ordering verified against a perturbation probe"
 
 
-@check("3. Simulator flux scale [{n_source} source]")
-def check_simulator(n_source=1):
+@check("3. Simulator flux scale [{n_source}src {n_lens_light}ll]")
+def check_simulator(n_source=1, n_lens_light=1):
     image, psf, sim_config = data.load()
-    prior = priors.build_prior(n_source=n_source)
-    phys_model = priors.build_phys_model(n_source=n_source)
+    prior = priors.build_prior(n_source=n_source, n_lens_light=n_lens_light)
+    phys_model = priors.build_phys_model(n_source=n_source, n_lens_light=n_lens_light)
     prob = ForwardProbModel(
         prior, jnp.asarray(image),
         background_rms=data.BACKGROUND_RMS, exp_time=data.EXP_TIME,
@@ -160,7 +161,7 @@ def check_simulator(n_source=1):
     data_peak = float(image.max())
     ratio = med_peak / data_peak
     assert 1 / 3 < ratio < 3, (
-        f"[{n_source} source] median prior peak {med_peak:.2f} vs data peak "
+        f"[{n_source}src {n_lens_light}ll] median prior peak {med_peak:.2f} vs data peak "
         f"{data_peak:.2f} (ratio {ratio:.3f}) -- Ie priors are mis-scaled"
     )
 
@@ -172,13 +173,13 @@ def check_simulator(n_source=1):
             f"(ratio {ratio:.2f}), log_prob finite")
 
 
-@check("4. Shim: MAP runs and descends [{n_source} source]")
-def check_map(n_source=1):
+@check("4. Shim: MAP runs and descends [{n_source}src {n_lens_light}ll]")
+def check_map(n_source=1, n_lens_light=1):
     compat.require_single_device()
     image, psf, sim_config = data.load()
-    prior = priors.build_prior(n_source=n_source)
+    prior = priors.build_prior(n_source=n_source, n_lens_light=n_lens_light)
     n = priors.n_params(prior)
-    phys_model = priors.build_phys_model(n_source=n_source)
+    phys_model = priors.build_phys_model(n_source=n_source, n_lens_light=n_lens_light)
     prob = ForwardProbModel(
         prior, jnp.asarray(image),
         background_rms=data.BACKGROUND_RMS, exp_time=data.EXP_TIME,
@@ -212,13 +213,13 @@ def check_map(n_source=1):
     return f"MAP {est.shape}, best chi2 {best_before:.1f} -> {best_after:.1f}"
 
 
-@check("5. Short end-to-end MAP -> SVI -> HMC [{n_source} source]")
-def check_end_to_end(n_source=1):
+@check("5. Short end-to-end MAP -> SVI -> HMC [{n_source}src {n_lens_light}ll]")
+def check_end_to_end(n_source=1, n_lens_light=1):
     compat.require_single_device()
     image, psf, sim_config = data.load()
-    prior = priors.build_prior(n_source=n_source)
+    prior = priors.build_prior(n_source=n_source, n_lens_light=n_lens_light)
     n = priors.n_params(prior)
-    phys_model = priors.build_phys_model(n_source=n_source)
+    phys_model = priors.build_phys_model(n_source=n_source, n_lens_light=n_lens_light)
     prob = ForwardProbModel(
         prior, jnp.asarray(image),
         background_rms=data.BACKGROUND_RMS, exp_time=data.EXP_TIME,
@@ -236,22 +237,41 @@ def check_end_to_end(n_source=1):
     best = est[jnp.argmax(prob.log_prob(sim, est)[0])][None, :]
 
     # SVI exercises the jax.tree_map path, which MAP does not reach. Argument order is
-    # SVI(start, optimizer, ...) in JAX -- the reverse of the TF backend.
+    # SVI(start, optimizer, ...) in JAX -- the reverse of the TF backend. The schedule
+    # mirrors run_fit.py's warmup-then-decay shape rather than the old ramp-up.
+    n_svi = 10
+    warmup, peak = 1, -2e-3
     svi_opt = optax.chain(
         optax.scale_by_adam(),
         optax.scale_by_schedule(
-            optax.polynomial_schedule(-1e-6, -3e-3, power=2, transition_steps=10)
+            optax.join_schedules(
+                [
+                    optax.linear_schedule(peak / 200, peak, transition_steps=warmup),
+                    optax.polynomial_schedule(
+                        init_value=peak, end_value=peak / 10, power=0.5,
+                        transition_steps=n_svi - warmup,
+                    ),
+                ],
+                boundaries=[warmup],
+            )
         ),
     )
-    qz, loss_hist = seq.SVI(best, svi_opt, n_vi=32, num_steps=10)
+    qz, loss_hist = seq.SVI(best, svi_opt, n_vi=32, num_steps=n_svi)
     assert qz.mean().shape == (n,), f"qz mean {qz.mean().shape}"
-    assert len(loss_hist) == 10
+    assert len(loss_hist) == n_svi
 
     # Upstream HMC is unusable (pmap context-mesh error, even at one device); this is the
     # pmap-free replacement.
+    #
+    # max_cond is disabled here, and only here. Ten SVI steps cannot converge, so this
+    # covariance is ill-conditioned by construction (~1e26-1e33 at these sizes) and the
+    # production guard rejects it correctly. What this check is for is the plumbing --
+    # shapes, dtypes, the pmap-free kernel stack -- not the quality of a 10-step fit.
+    # Check 6 is what verifies the guard itself.
     samples = compat.hmc_single_device(
         prob, phys_model, sim_config, qz,
         n_hmc=4, num_burnin_steps=5, num_results=10, seed=0,
+        max_cond=np.inf,
     )
     assert samples.shape == (10, 4, n), f"hmc {samples.shape}"
     assert bool(jnp.isfinite(samples).all()), "non-finite HMC samples"
@@ -259,17 +279,79 @@ def check_end_to_end(n_source=1):
     return f"MAP {tuple(est.shape)} -> SVI {tuple(qz.mean().shape)} -> HMC {tuple(samples.shape)}"
 
 
+@check("6. SVI covariance guard fires on the known-diverged run")
+def check_svi_guard():
+    """The guard must be observed to trigger, not merely to exist.
+
+    ``runs/twosource`` is the run whose SVI left a covariance conditioned at 8.8e+11, whose
+    float32 inverse was not a valid precision matrix, and whose 29 parameters therefore all
+    failed Rhat. ``compat.check_svi_covariance`` must reject it, and the four healthy runs
+    must pass.
+
+    This check exists because the first version of the guard tested positive definiteness
+    and silently *passed* ``twosource`` -- its covariance is in fact PD. Without an
+    assertion pinned to a run known to be bad, that would have shipped.
+
+    The margin is also asserted. The guard is worthless if the threshold happens to sit a
+    few percent above the worst healthy run, so this requires an order of magnitude of
+    clearance on both sides.
+    """
+    runs = Path(__file__).parent / "runs"
+    expected = {"seed0": True, "seed1": True, "inner3": True,
+                "nsersic10": True, "twosource": False}
+    conds, checked = {}, []
+    for name, should_pass in expected.items():
+        path = runs / name / "svi.npz"
+        if not path.exists():
+            continue
+        L = np.load(path)["scale_tril"]
+        try:
+            _, cond = compat.check_svi_covariance(scale_tril=L)
+            passed = True
+        except RuntimeError:
+            s = np.linalg.svd(np.asarray(L, dtype=np.float64), compute_uv=False)
+            cond = float(s.max() ** 2 / s.min() ** 2)
+            passed = False
+        assert passed == should_pass, (
+            f"{name}: guard {'passed' if passed else 'raised'} at condition {cond:.2e}, "
+            f"expected it to {'pass' if should_pass else 'raise'}"
+        )
+        conds[name] = cond
+        checked.append(name)
+
+    if "twosource" not in checked:
+        raise AssertionError(
+            "runs/twosource/svi.npz is absent, so the guard was never observed to fire. "
+            "This check is only meaningful against that run."
+        )
+
+    worst_ok = max(c for n, c in conds.items() if expected[n])
+    assert worst_ok < compat.COND_MAX / 10, (
+        f"only {compat.COND_MAX / worst_ok:.1f}x margin between the worst healthy run "
+        f"({worst_ok:.2e}) and the threshold ({compat.COND_MAX:.0e}) -- too tight to "
+        f"separate the populations reliably"
+    )
+    assert conds["twosource"] > compat.COND_MAX * 10, (
+        f"twosource condition {conds['twosource']:.2e} is only "
+        f"{conds['twosource'] / compat.COND_MAX:.1f}x over the threshold"
+    )
+    return (f"correct on {len(checked)} stored runs; worst healthy {worst_ok:.1e}, "
+            f"limit {compat.COND_MAX:.0e}, twosource {conds['twosource']:.1e}")
+
+
 def main():
     print(f"JAX {jax.__version__}, devices: {jax.devices()}\n")
-    # Check 1 (data conditioning) doesn't depend on n_source; the rest are parametrised
-    # over both model variants so a bug specific to two source components (e.g. the
-    # source0/source1 naming split) can't hide behind a single-source-only run.
+    # Check 1 (data conditioning) doesn't depend on the model variant; the rest are
+    # parametrised over it so a bug specific to a multi-component block -- the
+    # source0/source1 or lens_light0/lens_light1 naming split, say -- can't hide behind a
+    # single-component run. The (2, 2) case is the 36-parameter bulge+disk model.
     check_data()
-    for n_source in (1, 2):
-        check_params(n_source=n_source)
-        check_simulator(n_source=n_source)
-        check_map(n_source=n_source)
-        check_end_to_end(n_source=n_source)
+    for n_source, n_lens_light in ((1, 1), (2, 1), (1, 2), (2, 2)):
+        check_params(n_source=n_source, n_lens_light=n_lens_light)
+        check_simulator(n_source=n_source, n_lens_light=n_lens_light)
+        check_map(n_source=n_source, n_lens_light=n_lens_light)
+        check_end_to_end(n_source=n_source, n_lens_light=n_lens_light)
+    check_svi_guard()
 
     print("\n" + "=" * 72)
     width = max(len(n) for n, _, _ in RESULTS)

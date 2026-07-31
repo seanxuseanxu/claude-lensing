@@ -110,38 +110,86 @@ under JAX 0.11.0; `compat.py` patches it without touching `gigalens/src`) and
 
 Two rounds of production fits have run. `RESULTS.md` covers round 1 (single Sersic source,
 22 params); `RESULTS_v2.md` covers round 2 (2026-07-30), an ablation that freed the
-lens-light `n_sersic` ceiling and added a second source component (29 params).
+lens-light `n_sersic` ceiling and added a second source component (29 params). Both carry
+inline corrections dated 2026-07-31 — read those before the sections they correct.
+
+`RESULTS_v3.md` covers round 3 (2026-07-31): `twosource_v2` (29 params, a trustworthy
+re-run of the broken round-2 fit) and `bulgedisk` (36 params, `--n-lens-light 2`). The
+second deflector component was motivated by a coherent 1–3% radial S-curve in the round-2
+core residual that a single Sersic cannot produce. Unlike the source components, the two
+lens-light components get *different* priors: bulge and disk are physically distinct, and
+identical priors would add a label-switching mode for nothing.
+
+- **The SVI fix worked.** Covariance conditioning 8.8e+11 → 3.4e+07, ELBO tail sd 7,384 →
+  6.6, worst Rhat 7.17 → 1.544. `theta_E` reproduced at 1.4837 ± 0.0024, confirming the
+  point estimate was never affected — only the error bar.
+- **The bulge+disk deflector worked.** chi²ᵥ 1.302 → **0.991**, core chi² (r ≤ 8 px)
+  7.09 → 2.97, and the coherent radial S-curve flattened into sign-alternating scatter
+  within ±0.75σ. Recovered geometry is a textbook bulge+disk (R_sersic 0.33" and 2.73",
+  an 8.4× separation from priors overlapping at ~1σ). **No arc cannibalisation** — the
+  clump ratios improved to 1.03 / 0.99 / 1.02 / 0.83 and `theta_E` moved only 1.484 →
+  1.480.
+- **Convergence was chain length, and is now fixed.** `bulgedisk_long` re-ran `bulgedisk`
+  changing only the HMC length (3000 draws after 1000 burnin, 4×): worst Rhat 3.242 →
+  **1.338**, failing count 33/36 → **10/36**, chi²ᵥ unchanged at 0.989. Rhat fell instead
+  of plateauing, so the residue was under-mixing, not the posterior ridge it was read as —
+  no reparametrization needed. What still fails is the two components' shape parameters
+  plus `source1.n_sersic`, which is pinned at the 0.5 floor and therefore cannot mix by
+  construction. All eight lens-mass parameters sit at Rhat ≤ 1.002.
+- **`theta_E = 1.480 ± 0.003"` (Rhat 1.001, ESS 94,186) is the quotable value**, from
+  `bulgedisk_long`. It supersedes round 1's 1.516 ± 0.002". The 0.036" gap between them is
+  a model systematic — an order of magnitude larger than either statistical error, and the
+  number that matters for anything downstream.
+- **Bulge+disk over single-Sersic deflector: Δlog L = +912 for 7 params, ΔBIC ≈ −1762**,
+  robust across the whole background_rms range. **But chi²ᵥ = 0.99 is not evidence the
+  noise model is right**: over the blank-patch range 0.0070–0.0092 it spans 0.82–1.05, so
+  ±10% on the noise scale is ±20% on chi². Quote the improvement, not the absolute value.
+  This makes the `WHT` per-pixel exposure map more worth building than before, not less.
 
 - **Clump position angles in `MODELING_PLAN.md`'s table are array-space angles** (from the
   +row axis toward +col, in the 80×80 crop), **not sky PA.** Converting them through the
   image's WCS the standard way (North through East) places the markers on empty sky.
-- **theta_E = 1.516 ± 0.002" is the quotable value**, from round 1 — reproduced across
-  independent seeds and a differently-centered falsification prior, with no multimodality.
-  The two-source run gives 1.484 ± 0.002" but **that error bar is not usable**: 29/29
-  parameters fail Rhat < 1.01 (worst 7.17). Checked and it is slow mixing, not
-  multimodality and not label switching. The 1.515 → 1.484 shift stays uninterpretable
-  until that run gets a longer HMC.
+- **Round 1's theta_E = 1.516 ± 0.002" is superseded** by 1.480 ± 0.003" above, though it
+  was itself solid: reproduced across independent seeds and a differently-centered
+  falsification prior, with no multimodality. Round 2's 1.484 ± 0.002" was **not** usable —
+  29/29 parameters failed Rhat (worst 7.17) because its SVI stage diverged and HMC ran on
+  the resulting ill-conditioned preconditioner (see the SVI trap below). Label switching, a
+  dead component, and multimodality were each ruled out; the "slow mixing" conclusion drawn
+  from that was wrong.
 - **Two source-model deficiencies from round 1 are fixed.** A second Sersic source brings
   all four clumps within 9% (the N arc was underfit 2× at 0.55) and, more importantly,
   makes the model produce *detached clumps* rather than a smooth modulated ring. Reduced
   chi² 1.837 → 1.302.
-- **Three parameters have pinned at prior boundaries across these runs**, so check for this
-  routinely — `diagnose.py` now flags any Uniform-prior parameter within 2% of a bound.
-  `lens_light.n_sersic` pinned at its ceiling (fixed by `Uniform(2, 10)`, lands at 7.43);
-  `source.n_sersic` pinned at its *lower* bound 0.5 and went unnoticed for a full round
-  (relieved by the second component, not by widening).
+- **Parameters keep pinning at prior boundaries**, so check for this routinely —
+  `diagnose.py` flags any Uniform-prior parameter within 2% of a bound. `lens_light.n_sersic`
+  pinned at its ceiling (fixed by `Uniform(2, 10)`, lands at 7.43); `source.n_sersic` pinned
+  at its *lower* bound 0.5 and went unnoticed for a full round. A `n_sersic` has pinned at
+  the 0.5 floor in all three rounds (`source1.n_sersic` = 0.606 in round 3). That floor is
+  deliberate — gigalens' `bn = 1.9992n − 0.3271` is 3% wrong at n = 0.5 and 13.6% wrong at
+  n = 0.3 — so the fix is a different profile, not a lower bound.
 
-Two pipeline traps, both latent for a full round before firing:
+Three pipeline traps, each latent for a full round before firing:
 
+- **A diverged SVI silently poisons HMC, and the symptom looks like slow mixing.**
+  `compat.hmc_single_device` builds the momentum distribution from
+  `inv(q_z.covariance())` in float32. If the SVI covariance is badly conditioned, that
+  inverse is not an inverse — at the 8.8e+11 seen in round 2, `max|inv(C)·C − I| = 55` and
+  the spectrum carries negative eigenvalues — so every chain samples against an
+  effectively indefinite mass matrix and *every* Rhat fails at once. Note that the
+  covariance is still positive definite, so a PD test does not catch it; **conditioning is
+  the discriminant.** `compat.check_svi_covariance` now hard-fails above 1e10 (healthy runs
+  here sit at 1e6–6e8) and `diagnose.py` prints an SVI health line ahead of the convergence
+  table. The root cause was an SVI learning-rate schedule that ramped *upward*, putting the
+  largest steps at the end of the run; it now warms up and decays.
 - **Never use bare `argmax` to pick the best MAP start.** `jnp.argmax` propagates NaN, so
   one diverged start out of 1024 silently selects garbage and SVI then yields NaN for
   every step. Use `np.nanargmax`. Fixed in `run_fit.py`, including the `--stages svi,hmc`
   resume path, which had to recompute the index rather than trust the checkpoint.
 - **Changing a prior's *support* silently rewrites old runs' physical values**, because
   checkpoints store unconstrained samples and the bijector depends on the bounds. Bump
-  `priors.SOURCE_PRIOR_VERSION` and keep the old prior function verbatim rather than
-  editing one in place; `metadata.json` records the version. Location-scale changes (a
-  Normal's sigma) are safe — support changes are not.
+  `priors.SOURCE_PRIOR_VERSION` (or `lens_light_prior_version_for`) and keep the old prior
+  function verbatim rather than editing one in place; `metadata.json` records both
+  versions. Location-scale changes (a Normal's sigma) are safe — support changes are not.
 
 An upstream hazard, documented but not fixed, since `gigalens/src/**` is off limits:
 `Parameterized.__init__` does `self.params = self._params`, binding the *class* list, so

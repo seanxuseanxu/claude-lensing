@@ -62,6 +62,24 @@ Identical priors make the two components formally exchangeable: relabelling them
 the posterior unchanged. In practice all HMC chains start from ``q_z.sample()``, a single
 unimodal Gaussian around one MAP mode, so they should stay in one labelling. diagnose.py
 measures this rather than assuming it (see ``label_switching_check``).
+
+Multiple lens-light components
+------------------------------
+
+``n_lens_light=2`` splits the deflector into bulge and disk. The motivation is measured,
+not aesthetic: the single-Sersic residual about the lens-light centre runs -2.7 sigma at
+r < 1 px, +0.4 to +0.8 sigma over r = 1.5-5.5 px, and -0.2 to -0.8 sigma over r = 6.5-11.5
+px. The amplitude is only 1-3%, but it is coherent over hundreds of pixels, and it is what
+drives a core chi2 of 7.10 against a global 1.302. A single Sersic is a one-shape family
+and cannot produce that S-curve.
+
+Unlike the source components, the two lens-light components get **different** priors. Bulge
+and disk are distinguished by the physics, so identical priors would introduce a
+label-switching mode for no benefit. The split is centred on a 1D indicator fit to the
+inner-arcsecond data profile (compact Re = 0.216", n = 0.72; extended Re = 1.150",
+n = 1.13), with sigmas of 0.5-0.8 dex so the data can overturn it -- the two ``R_sersic``
+priors overlap at about 1 sigma, which separates the components without forbidding them
+from converging on one shape.
 """
 
 import jax.numpy as jnp
@@ -85,6 +103,28 @@ N_PARAMS = 22
 # limits), because that changes how stored unconstrained samples map back to physical
 # values. run_fit.py records it in metadata.json; diagnose.py reads it back.
 SOURCE_PRIOR_VERSION = 2
+
+# Same discipline for the lens-light prior. v1 is the single-component prior that
+# seed0 / seed1 / inner3 / nsersic10 / twosource were fitted with; v2 is the bulge+disk
+# split, whose bulge ``n_sersic`` support is Uniform(1, 8) rather than
+# Uniform(2, lens_light_n_max). That is a *support* change, so it must be versioned.
+#
+# The version is a function of the component count, not a free choice: v1 describes one
+# component and v2 describes two, so ``lens_light_prior_version_for(n_lens_light)``
+# resolves it and a single-component run keeps the exact prior seed0 was fitted with. Use
+# that helper rather than a bare constant.
+LENS_LIGHT_PRIOR_VERSIONS = {1: 1, 2: 2}
+
+
+def lens_light_prior_version_for(n_lens_light):
+    """Prior version implied by the lens-light component count."""
+    try:
+        return LENS_LIGHT_PRIOR_VERSIONS[n_lens_light]
+    except KeyError:
+        raise ValueError(
+            f"no lens-light prior version defined for n_lens_light={n_lens_light}; "
+            f"known counts are {sorted(LENS_LIGHT_PRIOR_VERSIONS)}"
+        ) from None
 
 # Ie scale.
 #
@@ -152,19 +192,91 @@ def _source_component():
     )
 
 
+def _lens_light_component_v1(lens_light_n_max=10.0):
+    """The ORIGINAL single-component deflector prior (v1), as fitted in every run to date.
+
+    Kept verbatim for the same reason ``_source_component_v1`` is: checkpoints hold
+    unconstrained samples, and ``n_sersic``'s Uniform support determines what physical
+    value a stored z maps to. Reading an old run through the v2 bulge prior below --
+    ``Uniform(1, 8)`` rather than ``Uniform(2, lens_light_n_max)`` -- would report a
+    different n_sersic with no error raised.
+
+    Light second moments of the deflector give e1 = -0.017, e2 = +0.036 -- nearly round,
+    |e| = 0.04. The truncated prior below is centred on round and comfortably covers it.
+    """
+    return tfd.JointDistributionNamed(
+        dict(
+            R_sersic=tfd.LogNormal(jnp.log(0.8), 0.3),
+            n_sersic=tfd.Uniform(2.0, lens_light_n_max),
+            e1=tfd.TruncatedNormal(0.0, 0.1, -0.3, 0.3),
+            e2=tfd.TruncatedNormal(0.0, 0.1, -0.3, 0.3),
+            center_x=tfd.Normal(0.0, 0.05),
+            center_y=tfd.Normal(0.0, 0.05),
+            Ie=tfd.LogNormal(jnp.log(LENS_IE), 0.5),
+        )
+    )
+
+
+def _lens_light_component(which):
+    """One deflector light component's prior (v2): ``which`` is "bulge" or "disk".
+
+    Deliberately NOT identical across components, which is the opposite of the choice made
+    for the source. The source components are exchangeable on purpose -- the data decides
+    the morphology there. Here the two components mean distinct physical things, and giving
+    them identical priors would only add a label-switching mode to the posterior.
+
+    The centres are the 1D indicator fit's recovered geometry rescaled to this model's Ie
+    convention (``LENS_IE`` = 80 for the total light; the indicator fit's Ie = 1.965 and
+    0.240 are in data units and carry the 1.965 : 0.240 ratio, which is what is preserved).
+    The sigmas are wide -- 0.5 dex on R_sersic, 0.8 on Ie -- so the split is a starting
+    point, not a constraint. The two R_sersic priors overlap at about 1 sigma.
+
+    ``n_sersic`` bounds differ by component and both stay inside the range where gigalens'
+    ``bn = 1.9992 n - 0.3271`` approximation is accurate: the error is -0.37% at n = 1 and
+    below 0.02% for n >= 2 (see the module docstring's table).
+    """
+    if which == "bulge":
+        return tfd.JointDistributionNamed(
+            dict(
+                R_sersic=tfd.LogNormal(jnp.log(0.25), 0.5),
+                n_sersic=tfd.Uniform(1.0, 8.0),
+                e1=tfd.TruncatedNormal(0.0, 0.1, -0.3, 0.3),
+                e2=tfd.TruncatedNormal(0.0, 0.1, -0.3, 0.3),
+                center_x=tfd.Normal(0.0, 0.05),
+                center_y=tfd.Normal(0.0, 0.05),
+                Ie=tfd.LogNormal(jnp.log(LENS_IE * 2.0), 0.8),
+            )
+        )
+    if which == "disk":
+        return tfd.JointDistributionNamed(
+            dict(
+                R_sersic=tfd.LogNormal(jnp.log(1.2), 0.5),
+                n_sersic=tfd.Uniform(0.5, 2.5),
+                e1=tfd.TruncatedNormal(0.0, 0.1, -0.3, 0.3),
+                e2=tfd.TruncatedNormal(0.0, 0.1, -0.3, 0.3),
+                center_x=tfd.Normal(0.0, 0.05),
+                center_y=tfd.Normal(0.0, 0.05),
+                Ie=tfd.LogNormal(jnp.log(LENS_IE * 0.25), 0.8),
+            )
+        )
+    raise ValueError(f"unknown lens-light component {which!r}; expected bulge or disk")
+
+
 def build_prior(
     theta_E_center=1.5,
     theta_E_width=0.35,
     shear_width=0.1,
     n_source=1,
+    n_lens_light=1,
     lens_light_n_max=10.0,
     source_prior_version=2,
+    lens_light_prior_version=None,
 ):
     """Build the nested prior over ``[lens, lens_light, source_light]``.
 
     Returns a ``tfd.JointDistributionSequential`` of ``JointDistributionNamed`` dicts,
     matching the structure ``ProbabilisticModel.pack_bij`` expects. 22 free parameters at
-    ``n_source=1``, 29 at ``n_source=2``.
+    ``n_source=1, n_lens_light=1``; 29 with a second source; 36 with both.
 
     Args:
         theta_E_center: median of the Einstein-radius LogNormal, in arcsec. The default
@@ -179,14 +291,24 @@ def build_prior(
         n_source: number of Sersic source components. Must match ``build_phys_model``'s
             ``n_source``, or ``LensSimulator``'s ``zip`` over profiles and parameters
             silently drops the extra one. Components get identical priors.
-        lens_light_n_max: upper bound of the lens-light ``n_sersic`` Uniform. The first
-            production run pinned at the old ceiling of 6; the default 10 frees it while
-            staying in the range where gigalens' b_n approximation is exact to 0.01%.
+        n_lens_light: number of Sersic deflector-light components, 1 or 2. Must match
+            ``build_phys_model``'s ``n_lens_light`` for the same zip reason. At 2 the
+            components get *different* (bulge / disk) priors -- see the module docstring.
+        lens_light_n_max: upper bound of the lens-light ``n_sersic`` Uniform. Applies to
+            the v1 single-component prior only; the v2 bulge/disk priors carry their own
+            bounds. The first production run pinned at the old ceiling of 6; the default 10
+            frees it while staying in the range where gigalens' b_n approximation is exact
+            to 0.01%.
         source_prior_version: 2 (default) for the wide priors described above; 1 for the
             narrow originals used by seed0 / seed1 / inner3. **Reading an old run's
             checkpoints requires version 1** -- the stored samples are unconstrained, and
             a different Uniform support maps the same value to a different number without
             raising. diagnose.py selects this from metadata.json.
+        lens_light_prior_version: 1 for the single-component prior every run to date used,
+            2 for the bulge/disk split. Defaults to whatever ``n_lens_light`` implies,
+            which is the only consistent pairing -- the versions differ in component count,
+            so they are not independently selectable. Same checkpoint hazard as
+            ``source_prior_version``: the bulge ``n_sersic`` support differs from v1's.
     """
     if n_source < 1:
         raise ValueError(f"n_source must be >= 1, got {n_source}")
@@ -196,6 +318,17 @@ def build_prior(
         )
     if source_prior_version == 1 and n_source != 1:
         raise ValueError("source_prior_version=1 only ever described a single component")
+    if n_lens_light not in (1, 2):
+        raise ValueError(f"n_lens_light must be 1 or 2, got {n_lens_light}")
+    expected_llv = lens_light_prior_version_for(n_lens_light)
+    if lens_light_prior_version is None:
+        lens_light_prior_version = expected_llv
+    elif lens_light_prior_version != expected_llv:
+        raise ValueError(
+            f"lens_light_prior_version={lens_light_prior_version} does not describe "
+            f"n_lens_light={n_lens_light} (which implies v{expected_llv}). The versions "
+            f"differ in component count, so they cannot be mixed."
+        )
     lens_prior = tfd.JointDistributionSequential(
         [
             tfd.JointDistributionNamed(
@@ -221,23 +354,13 @@ def build_prior(
         ]
     )
 
-    # Light second moments of the deflector give e1 = -0.017, e2 = +0.036 -- nearly round,
-    # |e| = 0.04. The truncated prior below is centred on round and comfortably covers it.
-    lens_light_prior = tfd.JointDistributionSequential(
-        [
-            tfd.JointDistributionNamed(
-                dict(
-                    R_sersic=tfd.LogNormal(jnp.log(0.8), 0.3),
-                    n_sersic=tfd.Uniform(2.0, lens_light_n_max),
-                    e1=tfd.TruncatedNormal(0.0, 0.1, -0.3, 0.3),
-                    e2=tfd.TruncatedNormal(0.0, 0.1, -0.3, 0.3),
-                    center_x=tfd.Normal(0.0, 0.05),
-                    center_y=tfd.Normal(0.0, 0.05),
-                    Ie=tfd.LogNormal(jnp.log(LENS_IE), 0.5),
-                )
-            )
-        ]
-    )
+    # One component per entry, each a fresh object. Unlike the source, the components are
+    # NOT interchangeable at v2 -- bulge and disk carry distinct priors on purpose.
+    if lens_light_prior_version == 1:
+        lens_light_parts = [_lens_light_component_v1(lens_light_n_max)]
+    else:
+        lens_light_parts = [_lens_light_component(w) for w in ("bulge", "disk")]
+    lens_light_prior = tfd.JointDistributionSequential(lens_light_parts)
 
     # One component per entry, each a fresh object. Identical priors at v2: the data
     # chooses the morphology, not the prior.
@@ -251,8 +374,8 @@ def build_prior(
     )
 
 
-def build_phys_model(n_source=1):
-    """EPL + external shear deflector, one Sersic lens light, ``n_source`` Sersic sources.
+def build_phys_model(n_source=1, n_lens_light=1):
+    """EPL + shear deflector, ``n_lens_light`` Sersic lens lights, ``n_source`` sources.
 
     ``use_lstsq=False`` throughout, which pairs with ``ForwardProbModel``. The escalation
     path -- shapelets with ``use_lstsq=True`` -- requires ``BackwardProbModel`` instead.
@@ -283,9 +406,11 @@ def build_phys_model(n_source=1):
     """
     if n_source < 1:
         raise ValueError(f"n_source must be >= 1, got {n_source}")
+    if n_lens_light not in (1, 2):
+        raise ValueError(f"n_lens_light must be 1 or 2, got {n_lens_light}")
     return PhysicalModel(
         [epl.EPL(50), shear.Shear()],
-        [sersic.SersicEllipse(use_lstsq=False)],
+        [sersic.SersicEllipse(use_lstsq=False) for _ in range(n_lens_light)],
         [sersic.SersicEllipse(use_lstsq=False) for _ in range(n_source)],
     )
 

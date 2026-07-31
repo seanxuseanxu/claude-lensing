@@ -132,10 +132,36 @@ def main():
         help="Number of Sersic source components (1 or 2)",
     )
     parser.add_argument(
+        "--n-lens-light",
+        type=int,
+        default=1,
+        help="Number of Sersic deflector-light components (1, or 2 for bulge+disk)",
+    )
+    parser.add_argument(
         "--lens-light-n-max",
         type=float,
         default=10.0,
-        help="Upper bound of the lens-light n_sersic Uniform prior",
+        help="Upper bound of the lens-light n_sersic Uniform prior (n_lens_light=1 only)",
+    )
+    parser.add_argument(
+        "--svi-peak-lr",
+        type=float,
+        default=2e-3,
+        help="Peak SVI learning rate, reached at the end of warmup. Lower this if the "
+             "ELBO destabilises at high parameter counts.",
+    )
+    parser.add_argument(
+        "--svi-warmup-frac",
+        type=float,
+        default=0.1,
+        help="Fraction of SVI steps spent ramping up to --svi-peak-lr",
+    )
+    parser.add_argument(
+        "--max-leapfrog",
+        type=int,
+        default=30,
+        help="Ceiling on HMC leapfrog steps per trajectory. 30 was tuned at 22 "
+             "parameters; use 60 at 29 or more.",
     )
 
     args = parser.parse_args()
@@ -164,9 +190,12 @@ def main():
         theta_E_center=args.theta_e_center,
         theta_E_width=args.theta_e_width,
         n_source=args.n_source,
+        n_lens_light=args.n_lens_light,
         lens_light_n_max=args.lens_light_n_max,
     )
-    phys_model = priors.build_phys_model(n_source=args.n_source)
+    phys_model = priors.build_phys_model(
+        n_source=args.n_source, n_lens_light=args.n_lens_light
+    )
     param_names = priors.param_names(prior)
 
     prob_model = ForwardProbModel(
@@ -193,12 +222,21 @@ def main():
         "label": args.label,
         "git_commit": get_git_commit(),
         "n_source": args.n_source,
+        "n_lens_light": args.n_lens_light,
         "lens_light_n_max": args.lens_light_n_max,
-        # Pin the prior version explicitly. Checkpoints store unconstrained samples, so
+        "svi_peak_lr": args.svi_peak_lr,
+        "svi_warmup_frac": args.svi_warmup_frac,
+        "max_leapfrog": args.max_leapfrog,
+        # Pin the prior versions explicitly. Checkpoints store unconstrained samples, so
         # reading them back through a different prior support silently yields different
         # physical values -- diagnose.py needs to know which one produced this run.
         "source_prior_version": priors.SOURCE_PRIOR_VERSION,
+        "lens_light_prior_version": priors.lens_light_prior_version_for(
+            args.n_lens_light
+        ),
     }
+    print(f"Model: {len(param_names)} parameters "
+          f"(n_source={args.n_source}, n_lens_light={args.n_lens_light})")
 
     timings = {}
 
@@ -317,18 +355,43 @@ def main():
         print("=" * 60)
         t0 = time.time()
 
+        # Warmup, then decay -- the same shape MAP uses.
+        #
+        # The previous schedule ramped *upward* (init -1e-6, end -3e-3, power 2), so the
+        # largest steps landed at the very end of the run, where the ELBO should be
+        # settling. At 22 parameters it survived that; at 29 it did not. The twosource run
+        # sat at ELBO -17,850 for most of the run, swung to +10,550, and ended at -16,659
+        # with sd = 7,384 over the final 300 steps. The resulting covariance had a negative
+        # eigenvalue, HMC preconditioned on its inverse, and all 29 parameters failed Rhat.
+        # See compat.check_svi_covariance, which now refuses that outright.
+        #
+        # Peak LR here is below the 3e-3 the old schedule reached, and it arrives early --
+        # where the ELBO is far from the optimum and a large step is safe -- rather than at
+        # the end.
+        #
         # JAX SVI signature: SVI(start, optimizer, n_vi=..., num_steps=...)
         # NOTE: start FIRST, optimizer SECOND. This is opposite to TensorFlow backend.
-        optimizer = optax.chain(
-            optax.scale_by_adam(),
-            optax.scale_by_schedule(
+        #
+        # Learning rates are NEGATIVE throughout: optax composes them with scale_by_adam
+        # as a scaling, so descent needs the sign.
+        warmup = max(1, int(args.svi_steps * args.svi_warmup_frac))
+        peak = -abs(args.svi_peak_lr)
+        schedule = optax.join_schedules(
+            [
+                optax.linear_schedule(peak / 200.0, peak, transition_steps=warmup),
                 optax.polynomial_schedule(
-                    init_value=-1e-6,
-                    end_value=-3e-3,
-                    power=2,
-                    transition_steps=args.svi_steps,
-                )
-            ),
+                    init_value=peak,
+                    end_value=peak / 10.0,
+                    power=0.5,
+                    transition_steps=args.svi_steps - warmup,
+                ),
+            ],
+            boundaries=[warmup],
+        )
+        print(f"SVI schedule: warmup {warmup} steps to lr {abs(peak):.1e}, "
+              f"then decay to {abs(peak) / 10:.1e} over {args.svi_steps - warmup} steps")
+        optimizer = optax.chain(
+            optax.scale_by_adam(), optax.scale_by_schedule(schedule)
         )
 
         qz, loss_hist = sequence.SVI(
@@ -340,10 +403,23 @@ def main():
 
         print(f"SVI completed in {timings['svi']:.1f}s")
 
-        # Save checkpoint
+        # Save the checkpoint BEFORE the health check, so a diverged run is still
+        # inspectable after the raise rather than being thrown away.
         svi_npz = out_dir / "svi.npz"
         save_svi_checkpoint(svi_npz, qz, loss_hist)
         print(f"SVI checkpoint saved to {svi_npz}")
+
+        # Report the two numbers that distinguish a converged SVI from a diverged one, and
+        # fail here rather than letting HMC run on an indefinite mass matrix. HMC checks
+        # this too, but reporting it at the stage that produced it is what makes the
+        # failure legible.
+        tail = np.asarray(loss_hist)[-300:]
+        print(f"ELBO loss: final {float(tail[-1]):.1f}, "
+              f"sd over last {len(tail)} steps {float(np.std(tail)):.1f} "
+              f"(healthy 22-param runs sit near 10)")
+        min_eig, cond = compat.check_svi_covariance(scale_tril=qz.scale_tril)
+        print(f"SVI covariance: min eigenvalue {min_eig:.3e}, condition {cond:.3e} "
+              f"(healthy runs 1e6-6e8, limit {compat.COND_MAX:.0e})")
 
     else:
         # Load SVI checkpoint
@@ -383,7 +459,7 @@ def main():
             n_hmc=args.n_hmc,
             num_burnin_steps=args.burnin,
             num_results=args.num_results,
-            max_leapfrog_steps=30,
+            max_leapfrog_steps=args.max_leapfrog,
             seed=args.seed,
         )
 

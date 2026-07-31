@@ -51,7 +51,37 @@ The two source components did not split into "two separated clumps"; they became
 Both are compact — neither is an extended host. Given identical, deliberately wide priors
 (R spanning 0.10–1.62" at 1–99%), this is the data's choice, not the prior's.
 
-## Convergence got worse, and it is not label switching
+## Convergence got worse — CORRECTED 2026-07-31: the SVI stage had diverged
+
+> **This section's conclusion was wrong.** The three checks below are each individually
+> correct and are left as written. What was wrong is the inference drawn from them: having
+> ruled out label switching, a dead component, and multimodality, the section concluded
+> "slow mixing" and prescribed a longer HMC. A longer HMC would not have helped.
+>
+> The actual cause is upstream of HMC. The SVI learning-rate schedule used here ramped
+> *upward* — `init_value=-1e-6, end_value=-3e-3, power=2` — so the largest steps landed at
+> the very end of the run. At 29 parameters that destabilised. The ELBO sat near −17,850
+> for most of the run, swung to +10,550, and ended at −16,659, with sd = 7,384 over the
+> final 300 steps against ~10 for the healthy 22-parameter runs.
+>
+> That left a covariance conditioned at **8.8e+11**, a thousand times worse than the worst
+> healthy run (seed0, 5.9e+08). `compat.hmc_single_device` inverts that covariance in
+> float32 to build the HMC momentum distribution, and at that conditioning the float32
+> inverse is not an inverse: `max|inv(C)·C − I| = 55`, and its spectrum carries five
+> negative eigenvalues reaching −3.2e+07. **HMC sampled against an effectively indefinite
+> mass matrix, which is why all 29 parameters failed Rhat.**
+>
+> One caveat on the mechanism, since a wrong version of it briefly circulated: the
+> covariance itself is positive definite (min eigenvalue +5.7e-13). An earlier audit
+> reported −1.76e-12 and blamed a negative eigenvalue; that number came from forming
+> `L @ L.T` in float32 during the audit, which is rounding noise in a matrix spanning
+> twelve orders of magnitude, not a property of the fit. Conditioning is the real
+> discriminant, and a positive-definiteness test does not catch this.
+>
+> `compat.check_svi_covariance` now rejects any covariance conditioned above 1e10 before
+> HMC starts, and `run_fit.py`'s schedule warms up and then decays instead of ramping.
+> `diagnose.py` reports the condition number and the ELBO tail sd as an "SVI health" line
+> ahead of the convergence table. This run is superseded by `twosource_v2`.
 
 29/29 parameters fail Rhat < 1.01, worst 7.17, ESS down to 58. Three candidate
 explanations, checked rather than assumed:
@@ -65,13 +95,16 @@ explanations, checked rather than assumed:
 3. **Multimodality?** No. Per-chain `theta_E` means form a single unimodal cluster
    spanning 1.479–1.488. But between-chain sd (0.0018) exceeds within-chain sd (0.0013) —
    each chain explores a narrow slice of a posterior wider than one chain covers in 750
-   draws. **This is slow mixing, not separated modes.** The 29-parameter posterior is more
-   strongly correlated and the trajectory length tuned at 22 parameters is too short.
+   draws. ~~This is slow mixing, not separated modes.~~ **Superseded — see the correction
+   above.** The between-chain spread is real, but its cause is the indefinite mass matrix,
+   not a too-short trajectory. (Trajectory length was nevertheless raised to
+   `--max-leapfrog 60` for the re-runs, on the independent grounds that 30 was tuned at 22
+   parameters.)
 
 So run B's chi-squared and clump fluxes are trustworthy (they are point-estimate
-quantities), and its **error bars are not**. `theta_E = 1.484 ± 0.002"` in particular
-should not be quoted: the ±0.002 is a within-chain width, and the between-chain spread is
-larger than it.
+quantities, and the MAP/SVI point estimate is unaffected by the momentum distribution),
+and its **error bars are not**. `theta_E = 1.484 ± 0.002"` in particular should not be
+quoted.
 
 ## Run A, in isolation
 

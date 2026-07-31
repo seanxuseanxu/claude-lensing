@@ -94,6 +94,31 @@ being <3% of the image area. The outer region (arcs + background, 6197 px) has m
 1.63 — closer to unity, and consistent with the known first-order approximation that a
 scalar `exp_time` understates noise near the deflector (per `CLAUDE.md` / `README.md`).
 
+> **Correction, 2026-07-31 — the core excess is not a centroid offset.** The sub-pixel
+> astrometric explanation given two paragraphs above is right for the *arcs*, where a ~1 px
+> offset does produce large point-wise sigma at matched aperture flux. It is wrong for the
+> central region, and that was tested directly: scanning the model over a ±0.6 px shift
+> grid, the fitted position is optimal to within 0.15 px and the chi² surface rises steeply
+> in every direction — core chi² 7.10 at centre, 9.48 one 0.15 px step away, 45+ at the
+> edges. There is no better centroid to move to.
+>
+> It is an amplitude/shape mismatch. The residual about the lens-light centre, in sigma:
+>
+>     r [px]   0.5    1.5    2.5    3.5    4.5    5.5    6.5    7.5    8.5    9.5   10.5
+>     res/sig -2.68  +0.66  +0.58  +0.83  +0.44  +0.71  -0.23  -0.38  -0.58  -0.77  -0.72
+>
+> Over-bright at the centre, uniformly too faint at r = 1.5–5.5 px, too bright again
+> further out. The amplitude is only 1–3%, but it is coherent over hundreds of pixels,
+> which is what makes it dominate the core chi². A single Sersic is a one-shape family and
+> cannot produce that S-curve; the fix is a second deflector light component (round 3).
+>
+> One further correction to an earlier reading of the residual figure: the apparent
+> "striping" in the core is a plotting artefact, not a rendering one. Nyquist (2-pixel)
+> power is 0.0000 in the model against 0.0025 in the data — the model has no 2-pixel
+> structure at all. The barcode appearance is the diverging colormap saturating on adjacent
+> pixels that straddle zero in a smooth dipole. Only the coherent radial pattern above is
+> real.
+
 ## Verdict on the four-image interpretation
 
 **Supported, with one exception.** The wide-prior fit reproduces three of the four

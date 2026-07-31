@@ -142,6 +142,7 @@ def compare(run_dir, out_dir, radius=3.0):
     """
     run_cfg = diagnose.load_run_config(run_dir)
     n_source = int(run_cfg.get("n_source", 1))
+    n_lens_light = int(run_cfg.get("n_lens_light", 1))
     lens_light_n_max = float(run_cfg.get("lens_light_n_max", 6.0))
     theta_e_center = float(run_cfg.get("theta_e_center", 1.5))
     theta_e_width = float(run_cfg.get("theta_e_width", 0.35))
@@ -150,9 +151,15 @@ def compare(run_dir, out_dir, radius=3.0):
     source_prior_version = int(
         run_cfg.get("source_prior_version", 2 if "n_source" in run_cfg else 1)
     )
+    # Runs predating --n-lens-light all used the single component, hence v1.
+    lens_light_prior_version = int(
+        run_cfg.get("lens_light_prior_version",
+                    priors.lens_light_prior_version_for(n_lens_light))
+    )
     print(
-        f"Model variant: n_source={n_source}, lens_light_n_max={lens_light_n_max}, "
-        f"source_prior_v{source_prior_version}"
+        f"Model variant: n_source={n_source}, n_lens_light={n_lens_light}, "
+        f"lens_light_n_max={lens_light_n_max}, source_prior_v{source_prior_version}, "
+        f"lens_light_prior_v{lens_light_prior_version}"
     )
 
     image, psf, sim_config = data.load()
@@ -160,10 +167,14 @@ def compare(run_dir, out_dir, radius=3.0):
         theta_E_center=theta_e_center,
         theta_E_width=theta_e_width,
         n_source=n_source,
+        n_lens_light=n_lens_light,
         lens_light_n_max=lens_light_n_max,
         source_prior_version=source_prior_version,
+        lens_light_prior_version=lens_light_prior_version,
     )
-    phys_model = priors.build_phys_model(n_source=n_source)
+    phys_model = priors.build_phys_model(
+        n_source=n_source, n_lens_light=n_lens_light
+    )
     prob_model = ForwardProbModel(
         prior,
         jnp.asarray(image),

@@ -1,0 +1,32 @@
+{
+  "seed": 0,
+  "n_samples": 1024,
+  "map_steps": 350,
+  "n_vi": 1000,
+  "svi_steps": 1500,
+  "n_hmc": 50,
+  "burnin": 250,
+  "num_results": 750,
+  "theta_e_center": 1.5,
+  "theta_e_width": 0.35,
+  "stages": [
+    "map",
+    "svi",
+    "hmc"
+  ],
+  "label": "bulgedisk",
+  "git_commit": "07631a686774204b05184fea2f124dca464639e5",
+  "n_source": 2,
+  "n_lens_light": 2,
+  "lens_light_n_max": 10.0,
+  "svi_peak_lr": 0.002,
+  "svi_warmup_frac": 0.1,
+  "max_leapfrog": 60,
+  "source_prior_version": 2,
+  "lens_light_prior_version": 2,
+  "timings": {
+    "map": 72.43678116798401,
+    "svi": 169.24073576927185,
+    "hmc": 272.14531683921814
+  }
+}
