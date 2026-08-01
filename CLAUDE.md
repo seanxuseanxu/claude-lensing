@@ -137,9 +137,10 @@ identical priors would add a label-switching mode for nothing.
   plus `source1.n_sersic`, which is pinned at the 0.5 floor and therefore cannot mix by
   construction. All eight lens-mass parameters sit at Rhat ≤ 1.002.
 - **`theta_E = 1.480 ± 0.003"` (Rhat 1.001, ESS 94,186) is the quotable value**, from
-  `bulgedisk_long`. It supersedes round 1's 1.516 ± 0.002". The 0.036" gap between them is
-  a model systematic — an order of magnitude larger than either statistical error, and the
-  number that matters for anything downstream.
+  `bulgedisk_long`. It supersedes round 1's 1.516 ± 0.002". **The 0.036" gap between them
+  is not a systematic** (corrected 2026-07-31): round 1 is rejected at ΔBIC ≈ −5294, so the
+  gap is a bias that was removed, not an uncertainty that remains. Quote ± 0.003". A
+  model-to-model spread is only a systematic when the evidences are comparable.
 - **Bulge+disk over single-Sersic deflector: Δlog L = +912 for 7 params, ΔBIC ≈ −1762**,
   robust across the whole background_rms range. **But chi²ᵥ = 0.99 is not evidence the
   noise model is right**: over the blank-patch range 0.0070–0.0092 it spans 0.82–1.05, so

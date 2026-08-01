@@ -1,10 +1,17 @@
 # DESI238 fit results
 
-> **Round 1. Partly superseded by `RESULTS_v2.md` (2026-07-30).** The N-arc underfit
-> reported here is fixed there by a two-component source, and both boundary pinnings are
-> resolved. The theta_E value below (1.516 ± 0.002") is still the quotable one — the
-> two-source run that supersedes the *fit* has not converged well enough to supersede the
-> *error bar*.
+> **Round 1. Fully superseded by `RESULTS_v3.md` (2026-07-31). Do not quote any number
+> from this file.** The N-arc underfit reported here is fixed by a two-component source
+> (`RESULTS_v2.md`), and the core residual by a bulge+disk deflector (`RESULTS_v3.md`).
+> **`theta_E = 1.480 ± 0.003"` (Rhat 1.001, ESS 94,186) is the quotable value**, from
+> `bulgedisk_long`.
+>
+> ~~The theta_E value below (1.516 ± 0.002") is still the quotable one.~~ The round-1
+> model is rejected by the data at Δlog L ≈ +2708 for 14 added parameters,
+> **ΔBIC ≈ −5294**. The 0.036" difference from the round-3 value is a *bias that has been
+> removed*, not a systematic uncertainty to carry — see the correction in `RESULTS_v3.md`
+> under "The Einstein radius." Everything below is retained as a record of what round 1
+> found and how, not as a source of numbers.
 
 Three fits, all through the MAP → SVI → HMC pipeline in `run_fit.py`, HMC at 50 chains ×
 750 draws:
@@ -37,9 +44,11 @@ in the plan — badly for seed0 (18/22 parameters), much better for inner3 (3/22
 low as 108) because it is pinned at the prior's upper bound of 6 (median 5.99 in both
 seed0 and seed1) — the light profile wants a steeper core than the prior allows, and HMC
 struggles to mix along a boundary. `theta_E` itself has good Rhat (1.007–1.017) and is not
-the problem parameter; the light-profile block is. **Report theta_E = 1.516 ± 0.002" with
+the problem parameter; the light-profile block is. ~~**Report theta_E = 1.516 ± 0.002" with
 the caveat that the joint chain has not fully converged**, driven by the light profile, not
-the lensing parameters.
+the lensing parameters.~~ **Superseded 2026-07-31: do not report this value.** The round-3
+`bulgedisk_long` fit gives `theta_E = 1.480 ± 0.003"` (Rhat 1.001) from a model preferred at
+ΔBIC ≈ −5294 over this one. See the file header.
 
 **A second boundary pinning went unnoticed here and is recorded in `RESULTS_v2.md`:**
 `source.n_sersic` sits at its *lower* bound (0.573 against a floor of 0.5) in seed0. There

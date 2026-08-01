@@ -36,10 +36,10 @@ light profile, and a two-component S\'ersic source: 36 free parameters. It gives
 $\chisqv = 0.989$ and is preferred over the single-component deflector light by
 $\Delta\mathrm{BIC} \approx -1762$. The Einstein radius is
 $\thetaE = 1.480 \pm 0.003\arcsec$ (\mbox{$\hat{R} = 1.001$}, $\mathrm{ESS} = 94{,}186$).
-A single-source, single-lens-light fit of the same data gave $1.516 \pm 0.002\arcsec$; the
-$0.036\arcsec$ difference is a model systematic an order of magnitude larger than either
-statistical error, and it, not the quoted $\pm 0.003\arcsec$, is the number that should
-propagate downstream.
+A single-source, single-lens-light fit of the same data gave $1.516 \pm 0.002\arcsec$, but
+that model is rejected by the data at $\Delta\mathrm{BIC} \approx -5294$ and is superseded
+rather than competing; the $0.036\arcsec$ difference is therefore a bias removed, not a
+systematic uncertainty to be carried.
 \end{abstract}
 
 \section{Data and model}
@@ -393,10 +393,26 @@ This is the first error bar from a multi-component fit of this system that survi
 own diagnostic. It supersedes the $1.516 \pm 0.002\arcsec$ obtained from a
 single-source, single-lens-light model of the same data. The two do not agree within their
 quoted uncertainties, and they should not be expected to: the difference is a model
-change, not a sampling one, and the newer model is preferred by $\Delta\mathrm{BIC}
-\approx -1762$. \textbf{Treat the $0.036\arcsec$ gap as the honest systematic floor on
-\thetaE\ from light-profile choice.} It is an order of magnitude larger than either
-statistical error, and it is the number that matters for anything downstream.
+change, not a sampling one.
+
+A model-to-model spread of this kind is a systematic uncertainty only when the models are
+competitive --- when the data cannot decide between them, so both remain live and the
+spread measures a genuine ambiguity. That is not the case here. Evaluated at the point
+estimates over $N = 6400$ pixels, the round-1 model gives $\chi^2 \approx 11{,}757$ for
+$k = 22$ against $6340.6$ for $k = 36$: $\Delta \log L \approx +2708$ for $14$ added
+parameters, or $\Delta\mathrm{BIC} \approx -5294$ against a BIC penalty of only $123$.
+\textbf{The single-component model is decisively rejected, so the $0.036\arcsec$ gap is
+the size of a bias that has been removed, not an uncertainty that remains.} The quotable
+uncertainty is the $\pm 0.003\arcsec$ above; inflating it to span a rejected model would
+report a range the data has already excluded.
+
+Two caveats survive. All $\Delta\log L$ and $\Delta\mathrm{BIC}$ values here are evaluated
+at point estimates, so they are maximum-likelihood comparisons rather than Bayes factors;
+a marginal likelihood would penalise the larger prior volume of the 36-parameter model
+more heavily, though not by enough to close a gap of this size. And $\pm 0.003\arcsec$ is
+the statistical error \emph{within the adopted model family}: it does not cover the noise
+model, the single-scalar exposure time, or the EPL mass parametrisation, none of which
+this comparison probes.
 
 Four things remain open, in the order in which they gate a stronger result:
 

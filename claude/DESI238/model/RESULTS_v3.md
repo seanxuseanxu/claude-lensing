@@ -15,8 +15,11 @@ Three results, in order of how much they matter:
 
 1. **`theta_E = 1.480 ± 0.003"`, Rhat 1.001, ESS 94,186** — the first error bar from a
    multi-component fit that survives its own diagnostic. It supersedes round 1's
-   `1.516 ± 0.002"`, and the 0.036" gap between them is a model systematic an order of
-   magnitude larger than either statistical error.
+   `1.516 ± 0.002"`. ~~The 0.036" gap between them is a model systematic an order of
+   magnitude larger than either statistical error.~~ **Corrected 2026-07-31 (see the
+   correction under "The Einstein radius" below): the round-1 model is decisively rejected
+   by the data, so the gap is a bias that has been removed, not a systematic uncertainty
+   that remains. Quote `± 0.003"`.**
 2. **The bulge+disk deflector is preferred by ΔBIC ≈ −1762** and fixes the coherent core
    residual, without cannibalising arc flux.
 3. **The SVI divergence that broke round 2 is fixed**, and the residual non-convergence it
@@ -183,9 +186,34 @@ error bar from a multi-component fit that survives its own diagnostic, and it su
 round 1's `1.516 ± 0.002"` as the best available value. The two do not agree within their
 quoted uncertainties; the shift is a *model* difference (a second source component and a
 second deflector component), not a sampling difference, and the round-3 model is the better
-one by ΔBIC ≈ −1762. Treat the 0.036" gap as the honest systematic floor on `theta_E` from
+one by ΔBIC ≈ −1762. ~~Treat the 0.036" gap as the honest systematic floor on `theta_E` from
 light-profile choice — it is an order of magnitude larger than either statistical error bar,
-which is the more important number for any downstream use.
+which is the more important number for any downstream use.~~
+
+> **Correction, 2026-07-31.** The struck sentence is wrong, and the reasoning behind it was
+> backwards. Treating a model-to-model spread as a systematic uncertainty is only valid when
+> the models are *competitive* — when the data cannot decide between them, so both remain
+> live descriptions and the spread measures a real ambiguity. That is not the situation
+> here. Round 1's single-Sérsic-source, single-Sérsic-deflector model is rejected far more
+> decisively than round 2 was: at the point estimates, chi² total ≈ 11,757 (k = 22) against
+> `bulgedisk`'s 6,340.6 (k = 36), giving **Δlog L ≈ +2708 for 14 added parameters and
+> ΔBIC ≈ −5294** (the BIC penalty is 123, i.e. irrelevant at this margin).
+>
+> A model the data rejects at ΔBIC ≈ −5294 is not a competing estimate of `theta_E`; it is
+> a wrong one. Its value does not belong in an error budget. **The correct statement is that
+> round 1 is superseded, and the 0.036" is the size of a bias that has been removed — not an
+> uncertainty that remains.** The quotable uncertainty on `theta_E` is `± 0.003"` (Rhat
+> 1.001, ESS 94,186), and inflating it to cover a rejected model would be reporting a range
+> the data has already ruled out.
+>
+> Two caveats that do survive. First, all the Δlog L / ΔBIC figures here are evaluated at
+> point estimates, so they are maximum-likelihood comparisons, not Bayes factors; a proper
+> marginal likelihood would penalise the 36-parameter model's larger prior volume more
+> heavily, though nowhere near enough to close gaps of this size. Second, `± 0.003"` is the
+> statistical error *within the adopted model family*. It does not cover systematics this
+> comparison never probed — the noise model (§ "What chi² does and does not establish"), the
+> single-scalar exposure time, or the EPL mass parametrisation itself. Those remain open;
+> they are simply not measured by the round-1/round-3 difference.
 
 What still fails Rhat is confined and interpretable: the two deflector components' shape
 parameters (`lens_light1.n_sersic` 1.096, `R_sersic` 1.042, `e2` 1.040) and
