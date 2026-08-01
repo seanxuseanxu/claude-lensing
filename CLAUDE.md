@@ -8,7 +8,7 @@ Three unrelated top-level directories, tracked in one git repo:
 
 - `gigalens/` — a vendored copy of the GIGA-Lens package (upstream: https://github.com/giga-lens/gigalens). Source lives under `gigalens/src/gigalens/`. This is the code you will actually modify.
 - `papers/` — LaTeX sources for two papers: `gigalens_paper/` (the GIGA-Lens method paper, arXiv:2202.07663; entry point `ms_SL-model.tex`) and `strong_lens_foundry_I/` (entry point `main.tex`). Both use the AASTeX 6.31 class, which is vendored alongside.
-- `claude/DESI238/` — observational data for one lens system (see "The DESI238 dataset" below) plus `claude/DESI238/model/`, a working MAP→SVI→HMC fitting pipeline for it (see "The DESI238 model pipeline" below).
+- `claude/` — the lens-modelling work. `claude/pipeline/` is a lens-independent MAP→SVI→HMC fitting pipeline (see "The modelling pipeline" below); `claude/<LENS>/` holds one system's data, its `config.py`, its `runs/`, and its own README. `LENS_MODELING_GUIDE.md` and `WORKING_WITH_AGENTS.md` are lessons learned, using DESI238 as the worked case.
 
 ## Environment
 
@@ -74,130 +74,89 @@ The JAX inference code `pmap`s across devices and silently truncates `n_samples`
 
 Subclass `MassProfile` (implement `deriv`) or `LightProfile` (implement `light`), set the class-level `_name` and `_params`, add the module to `gigalens/{tf,jax}/profiles/{mass,light}/__init__.py`, mirror it in the other backend, and add a lenstronomy-parity test. Parameters arrive as keyword arguments broadcastable against the `(H, W, bs)` coordinate grids.
 
-## The DESI238 dataset
+## The modelling pipeline
 
-One lens system, HST WFC3/IR in F140W, `EXPTIME = 1197.699` s, `NCOMBINE = 3`.
+`claude/pipeline/` fits a lens through `gigalens.jax`'s MAP→SVI→HMC sequence. It is
+lens-independent: nothing in it names a specific system. Each lens gets a directory
+`claude/<LENS>/` holding its data, its `config.py`, its `runs/`, and its own README.
 
-| File | Contents |
-|---|---|
-| `final_94_drz.fits` | DrizzlePac product. HDU1 `SCI` (2258×1997, float32, `BUNIT = ELECTRONS/S`, full WCS), HDU2 `WHT`, HDU3 `CTX`, HDU4 `HDRTAB`. HDU0 has no data. |
-| `cutout238.npy` | 120×120, dtype `>f4`. **Bit-for-bit identical to `SCI[1010:1130, 1165:1285]`** — verified, not inferred. |
-| `psf238.fits` | Single HDU, 27×27, dtype `>f8`. |
+```bash
+export PYTHONPATH=gigalens/src:claude/pipeline
+NCCL_NVLS_ENABLE=0 CUDA_VISIBLE_DEVICES=0 python claude/pipeline/verify.py --lens DESI238
+NCCL_NVLS_ENABLE=0 CUDA_VISIBLE_DEVICES=0 python claude/pipeline/run_fit.py --lens DESI238 --label baseline
+python claude/pipeline/diagnose.py claude/DESI238/runs/baseline
+```
 
-Values I verified directly, suitable for a `SimulatorConfig` / `ForwardProbModel`:
+`verify.py` is a ~5-minute pre-flight check, not the fit; run it before spending a
+GPU-hour. `run_fit.py` requires `--lens` and writes to `claude/<LENS>/runs/<label>/`. The
+read-only tools (`diagnose`, `dump_params`, `plot_overview`, `plot_corner`, `plot_source`,
+`clumps`) take a run directory and infer the lens from its `metadata.json`.
 
-- `delta_pix = 0.065` — from the SCI CD matrix, `sqrt(|det CD|) × 3600`. The cutout carries no WCS of its own, so this comes from its provenance as a crop.
-- `num_pix = 120`.
-- `exp_time = 1197.699`.
-- `background_rms ≈ 0.0315` from `astropy.stats.sigma_clipped_stats(cutout, sigma=3.0)` — **this number is wrong for likelihood use, kept here only as a documented dead end.** The clip is dominated by galaxy light (the cutout is mostly deflector, not sky), not clean background. The corrected value, measured from six widely separated blank patches in the parent drizzle frame, is **`background_rms = 0.0075`** (range 0.0070–0.0092 across patches) — this is what `claude/DESI238/model/data.py` actually uses. Using 0.0315 down-weights the arcs into irrelevance.
+**One GPU per process.** Upstream's pmap path is broken under JAX 0.11 (sharding mismatch
+at `gigalens/jax/inference.py:55`) and `compat.require_single_device` refuses to start with
+more than one device visible. `compat.py` carries the JAX-0.11 shims without touching
+`gigalens/src`. Run several lenses concurrently as separate processes.
 
-Three traps:
+See `claude/pipeline/README.md` for the file-by-file breakdown and for how to add a lens.
 
-1. **Both arrays are big-endian, and JAX refuses them.** `jnp.asarray(np.load(...))` raises `TypeError: Error interpreting argument ... as a JAX value`. Cast first: `.astype(np.float32)`.
-2. **The PSF is not normalized** — it sums to 1.1445. Divide by its sum before passing it as `kernel` unless you have a reason not to. It is odd-sized and centered (flux centroid within 0.12 px of pixel 13,13), so no recentering is needed.
-3. **The PSF carries no WCS or scale keywords**, so its scale cannot be read off the file. It is at the same 0.065"/pix as the science image — confirmed by the repository owner, not derivable from the data. It is therefore not oversampled relative to the drizzled grid, and `subgrid_kernel` will handle any `supersample > 1` correctly on its own.
+### The config seam
 
-On units: the data is a rate (electrons/s), not counts, which is what `ForwardProbModel`'s `sqrt(background_rms² + max(model,0)/exp_time)` expects — the Poisson variance of a rate image scales as `rate / exp_time`. Passing `exp_time = EXPTIME` is correct to first order. It is only first order, though: `NCOMBINE = 3` means coverage varies across the frame, so a single scalar exposure time understates the noise wherever fewer exposures overlap. The `WHT` extension is the proper way to build a per-pixel exposure map if that matters.
+A prior is built from a **version**, which fixes the functional form and in particular each
+parameter's *support*, and a **`LensConfig`**, which supplies location and scale within that
+form. The division is load-bearing:
 
-## The DESI238 model pipeline
+- **Supports live in `pipeline/priors.py`, keyed by version.** A config cannot reach them.
+- **Locations and scales live in `claude/<LENS>/config.py`.**
 
-`claude/DESI238/model/` fits this system through `gigalens.jax`'s MAP→SVI→HMC sequence.
-Run `python claude/DESI238/model/verify.py` before any real fit — it's a 5-minute
-pre-flight check, not the fit itself. See `claude/DESI238/model/README.md` for the JAX-0.11
-compatibility shims this needed (upstream `gigalens.jax.inference` does not run as-is
-under JAX 0.11.0; `compat.py` patches it without touching `gigalens/src`) and
-`MODELING_PLAN.md` for how the priors were derived from this specific image's flux scale.
+This is what makes the versioning invariant hold by construction rather than by
+documentation. See the trap below for why it matters.
 
-Two rounds of production fits have run. `RESULTS.md` covers round 1 (single Sersic source,
-22 params); `RESULTS_v2.md` covers round 2 (2026-07-30), an ablation that freed the
-lens-light `n_sersic` ceiling and added a second source component (29 params). Both carry
-inline corrections dated 2026-07-31 — read those before the sections they correct.
+### Reading a finished run
 
-`RESULTS_v3.md` covers round 3 (2026-07-31): `twosource_v2` (29 params, a trustworthy
-re-run of the broken round-2 fit) and `bulgedisk` (36 params, `--n-lens-light 2`). The
-second deflector component was motivated by a coherent 1–3% radial S-curve in the round-2
-core residual that a single Sersic cannot produce. Unlike the source components, the two
-lens-light components get *different* priors: bulge and disk are physically distinct, and
-identical priors would add a label-switching mode for nothing.
+`diagnose.rebuild_model(run_dir)` reconstructs the exact model a run was fitted with from
+its `metadata.json`, and every read-only tool calls it. Its fallbacks are the values that
+runs *predating each key* actually used — never today's defaults. Do not reimplement it.
 
-- **The SVI fix worked.** Covariance conditioning 8.8e+11 → 3.4e+07, ELBO tail sd 7,384 →
-  6.6, worst Rhat 7.17 → 1.544. `theta_E` reproduced at 1.4837 ± 0.0024, confirming the
-  point estimate was never affected — only the error bar.
-- **The bulge+disk deflector worked.** chi²ᵥ 1.302 → **0.991**, core chi² (r ≤ 8 px)
-  7.09 → 2.97, and the coherent radial S-curve flattened into sign-alternating scatter
-  within ±0.75σ. Recovered geometry is a textbook bulge+disk (R_sersic 0.33" and 2.73",
-  an 8.4× separation from priors overlapping at ~1σ). **No arc cannibalisation** — the
-  clump ratios improved to 1.03 / 0.99 / 1.02 / 0.83 and `theta_E` moved only 1.484 →
-  1.480.
-- **Convergence was chain length, and is now fixed.** `bulgedisk_long` re-ran `bulgedisk`
-  changing only the HMC length (3000 draws after 1000 burnin, 4×): worst Rhat 3.242 →
-  **1.338**, failing count 33/36 → **10/36**, chi²ᵥ unchanged at 0.989. Rhat fell instead
-  of plateauing, so the residue was under-mixing, not the posterior ridge it was read as —
-  no reparametrization needed. What still fails is the two components' shape parameters
-  plus `source1.n_sersic`, which is pinned at the 0.5 floor and therefore cannot mix by
-  construction. All eight lens-mass parameters sit at Rhat ≤ 1.002.
-- **`theta_E = 1.480 ± 0.003"` (Rhat 1.001, ESS 94,186) is the quotable value**, from
-  `bulgedisk_long`. It supersedes round 1's 1.516 ± 0.002". **The 0.036" gap between them
-  is not a systematic** (corrected 2026-07-31): round 1 is rejected at ΔBIC ≈ −5294, so the
-  gap is a bias that was removed, not an uncertainty that remains. Quote ± 0.003". A
-  model-to-model spread is only a systematic when the evidences are comparable.
-- **Bulge+disk over single-Sersic deflector: Δlog L = +912 for 7 params, ΔBIC ≈ −1762**,
-  robust across the whole background_rms range. **But chi²ᵥ = 0.99 is not evidence the
-  noise model is right**: over the blank-patch range 0.0070–0.0092 it spans 0.82–1.05, so
-  ±10% on the noise scale is ±20% on chi². Quote the improvement, not the absolute value.
-  This makes the `WHT` per-pixel exposure map more worth building than before, not less.
-
-- **Clump position angles in `MODELING_PLAN.md`'s table are array-space angles** (from the
-  +row axis toward +col, in the 80×80 crop), **not sky PA.** Converting them through the
-  image's WCS the standard way (North through East) places the markers on empty sky.
-- **Round 1's theta_E = 1.516 ± 0.002" is superseded** by 1.480 ± 0.003" above, though it
-  was itself solid: reproduced across independent seeds and a differently-centered
-  falsification prior, with no multimodality. Round 2's 1.484 ± 0.002" was **not** usable —
-  29/29 parameters failed Rhat (worst 7.17) because its SVI stage diverged and HMC ran on
-  the resulting ill-conditioned preconditioner (see the SVI trap below). Label switching, a
-  dead component, and multimodality were each ruled out; the "slow mixing" conclusion drawn
-  from that was wrong.
-- **Two source-model deficiencies from round 1 are fixed.** A second Sersic source brings
-  all four clumps within 9% (the N arc was underfit 2× at 0.55) and, more importantly,
-  makes the model produce *detached clumps* rather than a smooth modulated ring. Reduced
-  chi² 1.837 → 1.302.
-- **Parameters keep pinning at prior boundaries**, so check for this routinely —
-  `diagnose.py` flags any Uniform-prior parameter within 2% of a bound. `lens_light.n_sersic`
-  pinned at its ceiling (fixed by `Uniform(2, 10)`, lands at 7.43); `source.n_sersic` pinned
-  at its *lower* bound 0.5 and went unnoticed for a full round. A `n_sersic` has pinned at
-  the 0.5 floor in all three rounds (`source1.n_sersic` = 0.606 in round 3). That floor is
-  deliberate — gigalens' `bn = 1.9992n − 0.3271` is 3% wrong at n = 0.5 and 13.6% wrong at
-  n = 0.3 — so the fix is a different profile, not a lower bound.
-
-Three pipeline traps, each latent for a full round before firing:
+### Traps, each latent for a full round before firing
 
 - **A diverged SVI silently poisons HMC, and the symptom looks like slow mixing.**
-  `compat.hmc_single_device` builds the momentum distribution from
-  `inv(q_z.covariance())` in float32. If the SVI covariance is badly conditioned, that
-  inverse is not an inverse — at the 8.8e+11 seen in round 2, `max|inv(C)·C − I| = 55` and
-  the spectrum carries negative eigenvalues — so every chain samples against an
-  effectively indefinite mass matrix and *every* Rhat fails at once. Note that the
-  covariance is still positive definite, so a PD test does not catch it; **conditioning is
-  the discriminant.** `compat.check_svi_covariance` now hard-fails above 1e10 (healthy runs
-  here sit at 1e6–6e8) and `diagnose.py` prints an SVI health line ahead of the convergence
-  table. The root cause was an SVI learning-rate schedule that ramped *upward*, putting the
-  largest steps at the end of the run; it now warms up and decays.
-- **Never use bare `argmax` to pick the best MAP start.** `jnp.argmax` propagates NaN, so
-  one diverged start out of 1024 silently selects garbage and SVI then yields NaN for
-  every step. Use `np.nanargmax`. Fixed in `run_fit.py`, including the `--stages svi,hmc`
-  resume path, which had to recompute the index rather than trust the checkpoint.
+  `compat.hmc_single_device` builds the momentum distribution from `inv(q_z.covariance())`
+  in float32. If the SVI covariance is badly conditioned, that inverse is not an inverse —
+  the spectrum carries negative eigenvalues — so every chain samples against an effectively
+  indefinite mass matrix and *every* Rhat fails at once. The covariance is still positive
+  definite, so a PD test does not catch it; **conditioning is the discriminant.**
+  `compat.check_svi_covariance` hard-fails above 1e10 and `diagnose.py` prints an SVI health
+  line ahead of the convergence table. The original cause was an SVI learning-rate schedule
+  that ramped *upward*; it now warms up and decays.
+- **Never use bare `argmax` to pick the best MAP start.** `jnp.argmax` propagates NaN, so one
+  diverged start out of a thousand silently selects garbage and SVI then yields NaN for
+  every step. Use `np.nanargmax`. `run_fit.py` does, including on the `--stages svi,hmc`
+  resume path, which has to recompute the index rather than trust the checkpoint.
 - **Changing a prior's *support* silently rewrites old runs' physical values**, because
-  checkpoints store unconstrained samples and the bijector depends on the bounds. Bump
-  `priors.SOURCE_PRIOR_VERSION` (or `lens_light_prior_version_for`) and keep the old prior
-  function verbatim rather than editing one in place; `metadata.json` records both
-  versions. Location-scale changes (a Normal's sigma) are safe — support changes are not.
+  checkpoints store unconstrained samples and the bijector depends on the bounds. Add a
+  version in `priors.py` and keep the old builder verbatim rather than editing one in place;
+  `metadata.json` records the versions. Location-scale changes are safe — support changes
+  are not. This is why a config may not set a bound.
+- **Parameters pin at prior boundaries**, so check routinely — `diagnose.py` flags any
+  Uniform-prior parameter within 2% of a bound. Note that gigalens' Sersic constant
+  `bn = 1.9992n − 0.3271` is 3% wrong at n = 0.5 and 13.6% at n = 0.3, so a source
+  `n_sersic` pinned at a 0.5 floor calls for a different profile, not a lower bound.
+- **A model-to-model spread is only a systematic when the evidences are comparable.**
+  Inflating an error bar to span a model the data rejects reports a range the data excluded.
 
 An upstream hazard, documented but not fixed, since `gigalens/src/**` is off limits:
 `Parameterized.__init__` does `self.params = self._params`, binding the *class* list, so
 constructing any `use_lstsq=True` profile appends `"amp"` to the class attribute and
-retroactively corrupts every already-built instance. Harmless for these runs (all
-`use_lstsq=False`) but it will bite the shapelets escalation path.
+retroactively corrupts every already-built instance. Harmless while everything is
+`use_lstsq=False`, but it will bite the shapelets escalation path.
 
+## Modelled systems
+
+Each has its own README with the dataset, the conditioning decisions, and the results.
+
+- `claude/DESI238/` — HST WFC3/IR F140W. Three rounds fitted; `theta_E = 1.480 ± 0.003"`.
+  See `claude/DESI238/README.md`.
+- `claude/DESI257/`, `claude/DESI234/` — no data yet.
 ## Working notes
 
 - The demo notebooks (`gigalens/jax-demo.ipynb`, `tf-demo.ipynb`, `shapelets-demo.ipynb`) are the best worked examples of a full prior → MAP → SVI → HMC run, including the `optax.polynomial_schedule` learning-rate choices that actually converge. Note that optax schedules there use *negative* learning rates composed with `scale_by_adam` (i.e. descent by scaling), which is easy to misread.

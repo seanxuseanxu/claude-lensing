@@ -1,4 +1,4 @@
-"""Unlensed vs. lensed source components for a DESI238 fit.
+"""Unlensed vs. lensed source components for a lens fit.
 
 Produces one figure, ``source_components.png``, for a two-source run: each source-plane
 Sersic component next to its image-plane (lensed) contribution, plus a total row. This
@@ -8,12 +8,8 @@ neither shows what a single source component actually looks like before or after
 which matters for judging whether two components produce genuinely separate images (the
 "detached clumps" claim in RESULTS_v3.md) rather than one smeared blob.
 
-Model reconstruction follows ``clumps.py``'s ``compare()`` exactly (metadata.json ->
-build_prior/build_phys_model). Reading a run through the wrong prior variant is a silent
-failure mode documented at length in diagnose.py and clumps.py's module docstrings: the
-unconstrained samples are pushed through a bijector with different support and the
-constrained numbers come out plausible but wrong. This file does not re-derive that
-logic; it copies it.
+Model reconstruction is done by calling ``diagnose.rebuild_model``, which handles all
+fallback defaults for runs that predate ``metadata.json`` keys.
 
 Two traps specific to *this* figure that don't show up in clumps.py or diagnose.py:
 
@@ -44,56 +40,20 @@ import compat  # noqa: F401  -- applies JAX 0.11 shims on import
 
 import jax.numpy as jnp
 
-from gigalens.jax.model import ForwardProbModel
 from gigalens.jax.simulator import LensSimulator
 
-import data
 import diagnose
-import priors
+import lenses
 
 
-def build_model(run_dir):
-    """Reconstruct prior, phys_model, prob_model exactly as ``clumps.compare`` does.
-
-    Duplicated rather than imported because ``clumps.compare`` also does photometry and
-    writes its own figure; importing it here would run work this script doesn't need.
-    """
-    run_cfg = diagnose.load_run_config(run_dir)
-    n_source = int(run_cfg.get("n_source", 1))
-    n_lens_light = int(run_cfg.get("n_lens_light", 1))
-    lens_light_n_max = float(run_cfg.get("lens_light_n_max", 6.0))
-    theta_e_center = float(run_cfg.get("theta_e_center", 1.5))
-    theta_e_width = float(run_cfg.get("theta_e_width", 0.35))
-    source_prior_version = int(
-        run_cfg.get("source_prior_version", 2 if "n_source" in run_cfg else 1)
-    )
-    lens_light_prior_version = int(
-        run_cfg.get("lens_light_prior_version",
-                    priors.lens_light_prior_version_for(n_lens_light))
-    )
-
-    image, psf, sim_config = data.load()
-    prior = priors.build_prior(
-        theta_E_center=theta_e_center,
-        theta_E_width=theta_e_width,
-        n_source=n_source,
-        n_lens_light=n_lens_light,
-        lens_light_n_max=lens_light_n_max,
-        source_prior_version=source_prior_version,
-        lens_light_prior_version=lens_light_prior_version,
-    )
-    phys_model = priors.build_phys_model(n_source=n_source, n_lens_light=n_lens_light)
-    prob_model = ForwardProbModel(
-        prior,
-        jnp.asarray(image),
-        background_rms=data.BACKGROUND_RMS,
-        exp_time=data.EXP_TIME,
-    )
+def build_model(run_dir, lens=None):
+    """Reconstruct the model using diagnose.rebuild_model."""
+    rm = diagnose.rebuild_model(run_dir, lens=lens, quiet=True)
     print(
-        f"Model variant: n_source={n_source}, n_lens_light={n_lens_light}, "
-        f"source_prior_v{source_prior_version}, lens_light_prior_v{lens_light_prior_version}"
+        f"Model variant: n_source={rm.n_source}, n_lens_light={rm.n_lens_light}, "
+        f"source_prior_v{rm.source_prior_version}, lens_light_prior_v{rm.lens_light_prior_version}"
     )
-    return image, sim_config, prior, phys_model, prob_model, n_source
+    return rm.image, rm.sim_config, rm.prior, rm.phys_model, rm.prob_model, rm.n_source, rm.cfg
 
 
 def render_lensed_component(sim, beta_x, beta_y, light_profile, params):
@@ -133,7 +93,7 @@ def source_plane_grid(num_pix, half_extent):
     return X[..., np.newaxis], Y[..., np.newaxis]
 
 
-def make_figure(run_dir, out_dir):
+def make_figure(run_dir, out_dir, lens=None):
     """Build and save ``source_components.png``; return the two validation numbers.
 
     Layout is 3 rows (component 0, component 1, total) x 2 cols (unlensed source-plane,
@@ -141,7 +101,7 @@ def make_figure(run_dir, out_dir):
     third independent render -- this is what the sum-check below verifies is legitimate.
     """
     run_dir = Path(run_dir)
-    image, sim_config, prior, phys_model, prob_model, n_source = build_model(run_dir)
+    image, sim_config, prior, phys_model, prob_model, n_source, cfg = build_model(run_dir, lens=lens)
     if n_source != 2:
         raise ValueError(
             f"plot_source.py assumes a 2-row/2-col two-source layout; run has n_source={n_source}"
@@ -172,7 +132,7 @@ def make_figure(run_dir, out_dir):
 
     src_X, src_Y = source_plane_grid(sim_config.num_pix, half_extent)
 
-    image_extent = sim_config.num_pix * data.DELTA_PIX / 2
+    image_extent = sim_config.num_pix * cfg.delta_pix / 2
 
     # Unlensed source-plane light for each component, evaluated on the source-plane grid.
     unlensed = [
@@ -215,7 +175,7 @@ def make_figure(run_dir, out_dir):
           f"max abs diff = {full_max_diff:.3e}")
 
     fig_path = _draw_figure(
-        out_dir, run_dir, unlensed, lensed, centers, half_extent, image_extent,
+        out_dir, run_dir, cfg, unlensed, lensed, centers, half_extent, image_extent,
         sum_check_max_diff, full_max_diff,
     )
     return fig_path, sum_check_max_diff, full_max_diff
@@ -251,7 +211,7 @@ def _asinh_norm(arr, linthresh_frac=1e-3):
     return matplotlib.colors.SymLogNorm(linthresh=linthresh, vmin=0, vmax=vmax, base=10)
 
 
-def _draw_figure(out_dir, run_dir, unlensed, lensed, centers, half_extent, image_extent,
+def _draw_figure(out_dir, run_dir, cfg, unlensed, lensed, centers, half_extent, image_extent,
                   sum_check_max_diff, full_max_diff):
     """3x2 figure: rows = [source 0, source 1, total], cols = [source-plane, image-plane].
 
@@ -295,7 +255,7 @@ def _draw_figure(out_dir, run_dir, unlensed, lensed, centers, half_extent, image
         cb1.set_label("surface brightness (electrons/s/pix)")
 
     fig.suptitle(
-        f"DESI238 {Path(run_dir).name}: source components, unlensed vs. lensed\n"
+        f"{cfg.name} {Path(run_dir).name}: source components, unlensed vs. lensed\n"
         f"component-sum check {sum_check_max_diff:.1e}  |  "
         f"full-reconstruction check {full_max_diff:.1e}  |  "
         f"image-plane panels skip PSF convolution",
@@ -313,12 +273,13 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("run_dir", help="Run directory, e.g. runs/bulgedisk_long")
     parser.add_argument("--out", default=None, help="Output directory (default: run_dir)")
+    lenses.add_argument(parser, required=False)
     args = parser.parse_args()
 
     out_dir = args.out if args.out is not None else args.run_dir
     Path(out_dir).mkdir(parents=True, exist_ok=True)
 
-    fig_path, sum_check_max_diff, full_max_diff = make_figure(args.run_dir, out_dir)
+    fig_path, sum_check_max_diff, full_max_diff = make_figure(args.run_dir, out_dir, lens=args.lens)
     print(f"\nFigure: {fig_path}")
     print(f"Component-sum max abs diff: {sum_check_max_diff:.6e}")
     print(f"Full-reconstruction max abs diff: {full_max_diff:.6e}")

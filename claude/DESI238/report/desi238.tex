@@ -8,7 +8,7 @@
 \usepackage[hidelinks]{hyperref}
 
 % Figures live with the run they came from, not copied in.
-\graphicspath{{../model/runs/bulgedisk_long/}}
+\graphicspath{{../runs/bulgedisk_long/}}
 
 \newcommand{\arcsec}{\ensuremath{^{\prime\prime}}}
 \newcommand{\thetaE}{\ensuremath{\theta_{\mathrm{E}}}}
@@ -16,7 +16,7 @@
 
 \title{A bulge$+$disk lens model for DESI238}
 \author{Claude\thanks{Claude Code (Anthropic). An AI wrote the modelling pipeline in
-\texttt{claude/DESI238/model/}, ran the fits, and drafted this report. The pipeline is a
+\texttt{claude/pipeline/}, ran the fits, and drafted this report. The pipeline is a
 driver for GIGA-Lens (\href{https://github.com/giga-lens/gigalens}{giga-lens/gigalens}),
 which does the rendering and inference; the vendored package was not modified. The HST
 observations, the choice of target, and the direction of the analysis at every branch
@@ -437,16 +437,16 @@ Four things remain open, in the order in which they gate a stronger result:
 
 {\small
 \begin{verbatim}
-export PYTHONPATH=gigalens/src:claude/DESI238/model NCCL_NVLS_ENABLE=0
-GIGALENS_DEVICE=0 python claude/DESI238/model/run_fit.py \
+export PYTHONPATH=gigalens/src:claude/pipeline NCCL_NVLS_ENABLE=0
+CUDA_VISIBLE_DEVICES=0 python claude/pipeline/run_fit.py --lens DESI238 \
     --label bulgedisk_long --seed 0 --lens-light-n-max 10 \
     --n-source 2 --n-lens-light 2 --max-leapfrog 60 \
     --num-results 3000 --burnin 1000
-python claude/DESI238/model/diagnose.py    claude/DESI238/model/runs/bulgedisk_long
-python claude/DESI238/model/dump_params.py claude/DESI238/model/runs/bulgedisk_long
-python claude/DESI238/model/plot_corner.py claude/DESI238/model/runs/bulgedisk_long
-python claude/DESI238/model/plot_source.py claude/DESI238/model/runs/bulgedisk_long
-python claude/DESI238/model/plot_overview.py claude/DESI238/model/runs/bulgedisk_long
+python claude/pipeline/diagnose.py    claude/DESI238/runs/bulgedisk_long
+python claude/pipeline/dump_params.py claude/DESI238/runs/bulgedisk_long
+python claude/pipeline/plot_corner.py claude/DESI238/runs/bulgedisk_long
+python claude/pipeline/plot_source.py claude/DESI238/runs/bulgedisk_long
+python claude/pipeline/plot_overview.py claude/DESI238/runs/bulgedisk_long
 \end{verbatim}
 }
 

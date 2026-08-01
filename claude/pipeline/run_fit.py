@@ -1,4 +1,9 @@
-"""Fit the DESI238 lens system through the MAP / SVI / HMC pipeline.
+"""Fit one lens system through the MAP / SVI / HMC pipeline.
+
+Which system is set by ``--lens``, naming a directory under ``claude/`` that defines a
+``config.py``. Results land in ``claude/<LENS>/runs/<label>/``, and the lens name is
+recorded in ``metadata.json`` so every downstream tool can rebuild the same model from the
+run directory alone.
 
 The three inference stages are checkpointed independently, so a crash in HMC does not
 lose the MAP and SVI results. Stages can be resumed: if --stages omits "map" but svi is
@@ -29,6 +34,7 @@ from gigalens.jax.inference import ModellingSequence
 from gigalens.jax.model import ForwardProbModel
 
 import data
+import lenses
 import priors
 
 
@@ -90,8 +96,9 @@ def load_hmc_checkpoint(path):
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Fit DESI238 through MAP / SVI / HMC pipeline"
+        description="Fit one lens through the MAP / SVI / HMC pipeline"
     )
+    lenses.add_argument(parser, required=True)
     parser.add_argument("--seed", type=int, default=0, help="Random seed")
     parser.add_argument("--n-samples", type=int, default=1024, help="MAP batch size")
     parser.add_argument("--map-steps", type=int, default=350, help="MAP optimization steps")
@@ -103,14 +110,14 @@ def main():
     parser.add_argument(
         "--theta-e-center",
         type=float,
-        default=1.5,
-        help="Einstein radius prior center (arcsec)",
+        default=None,
+        help="Einstein radius prior center (arcsec). Default: the lens config's value.",
     )
     parser.add_argument(
         "--theta-e-width",
         type=float,
-        default=0.35,
-        help="Einstein radius prior width (log space)",
+        default=None,
+        help="Einstein radius prior width (log space). Default: the lens config's value.",
     )
     parser.add_argument(
         "--stages",
@@ -122,7 +129,7 @@ def main():
         "--out",
         type=str,
         default=None,
-        help="Output directory (default: claude/DESI238/model/runs/<label>)",
+        help="Output directory (default: claude/<LENS>/runs/<label>)",
     )
     parser.add_argument("--label", type=str, default="baseline", help="Run label")
     parser.add_argument(
@@ -174,21 +181,37 @@ def main():
         if s not in valid_stages:
             raise ValueError(f"Invalid stage: {s}. Must be one of {valid_stages}")
 
-    # Set output directory
+    cfg = lenses.load(args.lens)
+
+    # Set output directory. Derived from the lens config, not from this file's location --
+    # the pipeline lives outside any one lens's directory.
     if args.out is None:
-        out_dir = Path(__file__).parent / "runs" / args.label
+        out_dir = cfg.runs_dir / args.label
     else:
         out_dir = Path(args.out)
     out_dir.mkdir(parents=True, exist_ok=True)
 
+    # Resolve the theta_E prior now rather than passing None through. metadata.json must
+    # record the value actually fitted: diagnose.py reads these back to rebuild the prior,
+    # and a null there would silently substitute today's default for whatever this run used.
+    theta_e_center = (
+        cfg.mass_prior.theta_E_median if args.theta_e_center is None
+        else args.theta_e_center
+    )
+    theta_e_width = (
+        cfg.mass_prior.theta_E_logsigma if args.theta_e_width is None
+        else args.theta_e_width
+    )
+
     # Load data and build model
-    image, psf, sim_config = data.load()
+    image, psf, sim_config = data.load(cfg)
     # n_source must match between build_prior and build_phys_model: LensSimulator zips
     # profiles against parameters positionally, so a mismatch silently drops the extra
     # source component instead of raising.
     prior = priors.build_prior(
-        theta_E_center=args.theta_e_center,
-        theta_E_width=args.theta_e_width,
+        cfg,
+        theta_E_center=theta_e_center,
+        theta_E_width=theta_e_width,
         n_source=args.n_source,
         n_lens_light=args.n_lens_light,
         lens_light_n_max=args.lens_light_n_max,
@@ -201,13 +224,14 @@ def main():
     prob_model = ForwardProbModel(
         prior,
         observed_image=image,
-        background_rms=data.BACKGROUND_RMS,
-        exp_time=data.EXP_TIME,
+        background_rms=cfg.background_rms,
+        exp_time=cfg.exp_time,
     )
 
     sequence = ModellingSequence(phys_model, prob_model, sim_config)
 
     config = {
+        "lens": cfg.name,
         "seed": args.seed,
         "n_samples": args.n_samples,
         "map_steps": args.map_steps,
@@ -216,8 +240,8 @@ def main():
         "n_hmc": args.n_hmc,
         "burnin": args.burnin,
         "num_results": args.num_results,
-        "theta_e_center": args.theta_e_center,
-        "theta_e_width": args.theta_e_width,
+        "theta_e_center": theta_e_center,
+        "theta_e_width": theta_e_width,
         "stages": stages,
         "label": args.label,
         "git_commit": get_git_commit(),
@@ -235,6 +259,7 @@ def main():
             args.n_lens_light
         ),
     }
+    print(f"Lens: {cfg.name}  ->  {out_dir}")
     print(f"Model: {len(param_names)} parameters "
           f"(n_source={args.n_source}, n_lens_light={args.n_lens_light})")
 

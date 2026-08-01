@@ -1,10 +1,10 @@
 """Print a posterior summary table (median, mean, sd, 16/84%, Rhat, ESS) for one run.
 
-Reuses diagnose.py's loading/transform machinery (load_checkpoint, load_run_config,
-to_constrained, priors.param_names, and the tfp Rhat/ESS calls it uses in
-convergence_table) rather than reimplementing any of it. diagnose.py is safe to import:
-its argument parsing and side effects are gated under `if __name__ == "__main__":`, so
-`import diagnose` only defines functions/constants.
+Reuses diagnose.py's loading/transform machinery (load_checkpoint, rebuild_model,
+to_constrained, and the tfp Rhat/ESS calls it uses in convergence_table) rather than
+reimplementing any of it. diagnose.py is safe to import: its argument parsing and side
+effects are gated under `if __name__ == "__main__":`, so `import diagnose` only defines
+functions/constants.
 
 Column order matches priors.param_names(prior): blocks in order lens, shear, lens_light,
 source, alphabetical by key within each block (e.g. "lens.theta_E", "shear.gamma1",
@@ -20,49 +20,20 @@ import numpy as np
 import tensorflow_probability.substrates.jax as tfp
 
 import diagnose
-import data
-import priors
-from gigalens.jax.model import ForwardProbModel
-import jax.numpy as jnp
+import lenses
 
 
 def main():
     ap = argparse.ArgumentParser(description="Posterior summary table for one run")
     ap.add_argument("run_dir", help="Directory containing map/svi/hmc .npz checkpoints")
+    lenses.add_argument(ap, required=False)
     args = ap.parse_args()
 
     run_dir = Path(args.run_dir)
 
-    run_cfg = diagnose.load_run_config(run_dir)
-    n_source = int(run_cfg.get("n_source", 1))
-    n_lens_light = int(run_cfg.get("n_lens_light", 1))
-    lens_light_n_max = float(run_cfg.get("lens_light_n_max", 6.0))
-    theta_e_center = float(run_cfg.get("theta_e_center", 1.5))
-    theta_e_width = float(run_cfg.get("theta_e_width", 0.35))
-    source_prior_version = int(run_cfg.get("source_prior_version",
-                                           2 if "n_source" in run_cfg else 1))
-    lens_light_prior_version = int(
-        run_cfg.get("lens_light_prior_version",
-                    priors.lens_light_prior_version_for(n_lens_light))
-    )
-
-    image, psf, sim_config = data.load()
-    prior = priors.build_prior(
-        theta_E_center=theta_e_center,
-        theta_E_width=theta_e_width,
-        n_source=n_source,
-        n_lens_light=n_lens_light,
-        lens_light_n_max=lens_light_n_max,
-        source_prior_version=source_prior_version,
-        lens_light_prior_version=lens_light_prior_version,
-    )
-    prob_model = ForwardProbModel(
-        prior,
-        jnp.asarray(image),
-        background_rms=data.BACKGROUND_RMS,
-        exp_time=data.EXP_TIME,
-    )
-    pnames = priors.param_names(prior)
+    rm = diagnose.rebuild_model(run_dir, lens=args.lens, quiet=True)
+    prob_model = rm.prob_model
+    pnames = rm.pnames
 
     hmc = diagnose.load_checkpoint(run_dir, "hmc")
     if hmc is None:

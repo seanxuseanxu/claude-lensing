@@ -1,6 +1,6 @@
 # pdflatex is not on the default PATH on this cluster:
 #     module load texlive/2024
-# Figures are pulled from ../model/runs/bulgedisk_long/ via \graphicspath,
+# Figures are pulled from ../runs/bulgedisk_long/ via \graphicspath,
 # not copied here, so the report always reflects the run it describes.
 
 desi238.pdf: desi238.tex

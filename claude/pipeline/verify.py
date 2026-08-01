@@ -1,12 +1,18 @@
-"""Pre-flight checks for the DESI238 pipeline.
+"""Pre-flight checks for one lens's fit, before spending a GPU-hour on it.
 
 Every check here corresponds to a way the fit can fail *silently* -- producing numbers
-that look plausible and are wrong. They are cheap; run them before spending a GPU-hour.
+that look plausible and are wrong. They are cheap.
 
 Run from the repo root:
 
-    NCCL_NVLS_ENABLE=0 CUDA_VISIBLE_DEVICES=1 PYTHONPATH=gigalens/src:claude/DESI238/model \\
-        python claude/DESI238/model/verify.py
+    NCCL_NVLS_ENABLE=0 CUDA_VISIBLE_DEVICES=1 PYTHONPATH=gigalens/src:claude/pipeline \\
+        python claude/pipeline/verify.py --lens DESI238
+
+Checks 1 and 6 lean on facts about the specific system -- whether a companion galaxy is in
+frame, and which stored runs are known to have diverged. Those come from the lens config
+(``companion_max``, ``svi_guard_reference``) and report themselves skipped when a new lens
+has not yet supplied them. A skipped check is honest; a check silently weakened to pass is
+not.
 """
 
 import sys
@@ -25,7 +31,10 @@ from gigalens.jax.model import ForwardProbModel
 from gigalens.jax.simulator import LensSimulator
 from gigalens.jax.inference import ModellingSequence
 
+import argparse
+
 import data
+import lenses
 import priors
 
 RESULTS = []
@@ -56,37 +65,46 @@ def check(name):
 
 
 @check("1. Data conditioning")
-def check_data():
-    image = data.load_image()
-    psf = data.load_psf()
+def check_data(cfg):
+    image = data.load_image(cfg)
+    psf = data.load_psf(cfg)
 
-    assert image.shape == (80, 80), f"crop shape {image.shape}, expected (80, 80)"
+    want = (cfg.num_pix, cfg.num_pix)
+    assert image.shape == want, f"crop shape {image.shape}, expected {want}"
     assert image.dtype == np.float32, f"dtype {image.dtype}, expected float32"
     # JAX rejects big-endian arrays outright. byteorder '=' or '|' means native.
     assert image.dtype.byteorder in "=|", f"non-native byteorder {image.dtype.byteorder!r}"
     assert np.isfinite(image).all(), "non-finite pixels in the crop"
 
-    assert psf.shape == (27, 27), f"psf shape {psf.shape}"
     assert abs(psf.sum() - 1.0) < 1e-6, f"psf sums to {psf.sum()}, expected 1"
     assert psf.shape[0] % 2 == 1, "psf must be odd-sized for a centred convolution"
 
-    # The companion galaxy sits at cutout ~(11, 11), outside this crop. gigalens has no
-    # pixel masking, so a companion inside the frame would be fit as part of the system.
-    corner_max = float(image[:20, :20].max())
-    assert corner_max < 0.15, f"corner max {corner_max:.3f} e/s -- companion may be in frame"
+    # gigalens has no pixel masking, so a companion galaxy inside the frame is fitted as
+    # though it were part of the lens system. Whether one is in frame is a fact about this
+    # field, so the threshold comes from the config; a lens that has not supplied one says
+    # so rather than passing a check it never ran.
+    corner_max = float(image[: cfg.num_pix // 4, : cfg.num_pix // 4].max())
+    if cfg.companion_max is None:
+        corner_note = f"corner max {corner_max:.3f} (no companion_max set -- not checked)"
+    else:
+        assert corner_max < cfg.companion_max, (
+            f"corner max {corner_max:.3f} exceeds companion_max {cfg.companion_max} -- "
+            f"a companion may be in frame, and it would be fitted as part of the system"
+        )
+        corner_note = f"corner max {corner_max:.3f} < {cfg.companion_max}"
 
-    return (f"crop {image.shape} max {image.max():.2f} e/s, psf sum 1.0, "
-            f"corner max {corner_max:.3f}")
+    return (f"crop {image.shape} max {image.max():.2f}, psf {psf.shape} sum 1.0, "
+            f"{corner_note}")
 
 
 @check("2. Parameter count and ordering [{n_source}src {n_lens_light}ll]")
-def check_params(n_source=1, n_lens_light=1):
-    prior = priors.build_prior(n_source=n_source, n_lens_light=n_lens_light)
+def check_params(cfg, n_source=1, n_lens_light=1):
+    prior = priors.build_prior(cfg, n_source=n_source, n_lens_light=n_lens_light)
     n = priors.n_params(prior)
-    image = data.load_image()
+    image = data.load_image(cfg)
     prob = ForwardProbModel(
         prior, jnp.asarray(image),
-        background_rms=data.BACKGROUND_RMS, exp_time=data.EXP_TIME,
+        background_rms=cfg.background_rms, exp_time=cfg.exp_time,
     )
     sample = prior.sample(4, seed=jax.random.PRNGKey(0))
     z = jnp.stack(prob.bij.inverse(sample)).T
@@ -136,13 +154,13 @@ def check_params(n_source=1, n_lens_light=1):
 
 
 @check("3. Simulator flux scale [{n_source}src {n_lens_light}ll]")
-def check_simulator(n_source=1, n_lens_light=1):
-    image, psf, sim_config = data.load()
-    prior = priors.build_prior(n_source=n_source, n_lens_light=n_lens_light)
+def check_simulator(cfg, n_source=1, n_lens_light=1):
+    image, psf, sim_config = data.load(cfg)
+    prior = priors.build_prior(cfg, n_source=n_source, n_lens_light=n_lens_light)
     phys_model = priors.build_phys_model(n_source=n_source, n_lens_light=n_lens_light)
     prob = ForwardProbModel(
         prior, jnp.asarray(image),
-        background_rms=data.BACKGROUND_RMS, exp_time=data.EXP_TIME,
+        background_rms=cfg.background_rms, exp_time=cfg.exp_time,
     )
 
     bs = 64
@@ -151,7 +169,8 @@ def check_simulator(n_source=1, n_lens_light=1):
     sim = LensSimulator(phys_model, sim_config, bs=bs)
     out = sim.simulate(prob.bij.forward(list(z.T)))
 
-    assert out.shape == (bs, 80, 80), f"got {out.shape}"
+    want = (bs, cfg.num_pix, cfg.num_pix)
+    assert out.shape == want, f"got {out.shape}, expected {want}"
     assert bool(jnp.isfinite(out).all()), "non-finite pixels in simulated images"
 
     # This is the check that catches a flux-scale error before it wastes a fit. Ie must be
@@ -174,15 +193,15 @@ def check_simulator(n_source=1, n_lens_light=1):
 
 
 @check("4. Shim: MAP runs and descends [{n_source}src {n_lens_light}ll]")
-def check_map(n_source=1, n_lens_light=1):
+def check_map(cfg, n_source=1, n_lens_light=1):
     compat.require_single_device()
-    image, psf, sim_config = data.load()
-    prior = priors.build_prior(n_source=n_source, n_lens_light=n_lens_light)
+    image, psf, sim_config = data.load(cfg)
+    prior = priors.build_prior(cfg, n_source=n_source, n_lens_light=n_lens_light)
     n = priors.n_params(prior)
     phys_model = priors.build_phys_model(n_source=n_source, n_lens_light=n_lens_light)
     prob = ForwardProbModel(
         prior, jnp.asarray(image),
-        background_rms=data.BACKGROUND_RMS, exp_time=data.EXP_TIME,
+        background_rms=cfg.background_rms, exp_time=cfg.exp_time,
     )
     seq = ModellingSequence(phys_model, prob, sim_config)
 
@@ -214,15 +233,15 @@ def check_map(n_source=1, n_lens_light=1):
 
 
 @check("5. Short end-to-end MAP -> SVI -> HMC [{n_source}src {n_lens_light}ll]")
-def check_end_to_end(n_source=1, n_lens_light=1):
+def check_end_to_end(cfg, n_source=1, n_lens_light=1):
     compat.require_single_device()
-    image, psf, sim_config = data.load()
-    prior = priors.build_prior(n_source=n_source, n_lens_light=n_lens_light)
+    image, psf, sim_config = data.load(cfg)
+    prior = priors.build_prior(cfg, n_source=n_source, n_lens_light=n_lens_light)
     n = priors.n_params(prior)
     phys_model = priors.build_phys_model(n_source=n_source, n_lens_light=n_lens_light)
     prob = ForwardProbModel(
         prior, jnp.asarray(image),
-        background_rms=data.BACKGROUND_RMS, exp_time=data.EXP_TIME,
+        background_rms=cfg.background_rms, exp_time=cfg.exp_time,
     )
     seq = ModellingSequence(phys_model, prob, sim_config)
 
@@ -280,25 +299,33 @@ def check_end_to_end(n_source=1, n_lens_light=1):
 
 
 @check("6. SVI covariance guard fires on the known-diverged run")
-def check_svi_guard():
+def check_svi_guard(cfg):
     """The guard must be observed to trigger, not merely to exist.
 
-    ``runs/twosource`` is the run whose SVI left a covariance conditioned at 8.8e+11, whose
+    ``cfg.svi_guard_reference`` names stored runs whose SVI conditioning is known to be
+    healthy or diverged; ``compat.check_svi_covariance`` must classify each correctly. For
+    DESI238 the diverged one is ``twosource``, whose covariance came out at 8.8e+11, whose
     float32 inverse was not a valid precision matrix, and whose 29 parameters therefore all
-    failed Rhat. ``compat.check_svi_covariance`` must reject it, and the four healthy runs
-    must pass.
+    failed Rhat at once.
 
     This check exists because the first version of the guard tested positive definiteness
-    and silently *passed* ``twosource`` -- its covariance is in fact PD. Without an
-    assertion pinned to a run known to be bad, that would have shipped.
+    and silently *passed* that run -- its covariance is in fact PD. Without an assertion
+    pinned to a run known to be bad, that would have shipped. A lens with no reference runs
+    yet cannot make this assertion, and says so rather than passing vacuously.
 
     The margin is also asserted. The guard is worthless if the threshold happens to sit a
     few percent above the worst healthy run, so this requires an order of magnitude of
     clearance on both sides.
     """
-    runs = Path(__file__).parent / "runs"
-    expected = {"seed0": True, "seed1": True, "inner3": True,
-                "nsersic10": True, "twosource": False}
+    expected = dict(cfg.svi_guard_reference)
+    if not expected:
+        return "SKIPPED: no svi_guard_reference runs in the lens config"
+    if not any(not ok for ok in expected.values()):
+        raise AssertionError(
+            "svi_guard_reference names only healthy runs, so the guard would never be "
+            "observed to fire. Include at least one run known to have diverged."
+        )
+    runs = cfg.runs_dir
     conds, checked = {}, []
     for name, should_pass in expected.items():
         path = runs / name / "svi.npz"
@@ -319,39 +346,55 @@ def check_svi_guard():
         conds[name] = cond
         checked.append(name)
 
-    if "twosource" not in checked:
+    diverged = [n for n in checked if not expected[n]]
+    if not diverged:
         raise AssertionError(
-            "runs/twosource/svi.npz is absent, so the guard was never observed to fire. "
-            "This check is only meaningful against that run."
+            f"none of the diverged reference runs "
+            f"({[n for n, ok in expected.items() if not ok]}) has an svi.npz under "
+            f"{runs}, so the guard was never observed to fire. This check is only "
+            f"meaningful against a run known to be bad."
+        )
+    healthy = [n for n in checked if expected[n]]
+    if not healthy:
+        raise AssertionError(
+            f"no healthy reference run found under {runs}, so the threshold's margin "
+            f"above normal conditioning cannot be checked."
         )
 
-    worst_ok = max(c for n, c in conds.items() if expected[n])
+    worst_ok = max(conds[n] for n in healthy)
     assert worst_ok < compat.COND_MAX / 10, (
         f"only {compat.COND_MAX / worst_ok:.1f}x margin between the worst healthy run "
         f"({worst_ok:.2e}) and the threshold ({compat.COND_MAX:.0e}) -- too tight to "
         f"separate the populations reliably"
     )
-    assert conds["twosource"] > compat.COND_MAX * 10, (
-        f"twosource condition {conds['twosource']:.2e} is only "
-        f"{conds['twosource'] / compat.COND_MAX:.1f}x over the threshold"
+    worst_bad = min(conds[n] for n in diverged)
+    assert worst_bad > compat.COND_MAX * 10, (
+        f"the mildest diverged run is at {worst_bad:.2e}, only "
+        f"{worst_bad / compat.COND_MAX:.1f}x over the threshold"
     )
     return (f"correct on {len(checked)} stored runs; worst healthy {worst_ok:.1e}, "
-            f"limit {compat.COND_MAX:.0e}, twosource {conds['twosource']:.1e}")
+            f"limit {compat.COND_MAX:.0e}, mildest diverged {worst_bad:.1e}")
 
 
 def main():
-    print(f"JAX {jax.__version__}, devices: {jax.devices()}\n")
+    ap = argparse.ArgumentParser(description="Pre-flight checks for one lens's fit")
+    lenses.add_argument(ap, required=True)
+    args = ap.parse_args()
+    cfg = lenses.load(args.lens)
+
+    print(f"JAX {jax.__version__}, devices: {jax.devices()}")
+    print(f"Lens: {cfg.name}  ({cfg.notes})\n" if cfg.notes else f"Lens: {cfg.name}\n")
     # Check 1 (data conditioning) doesn't depend on the model variant; the rest are
     # parametrised over it so a bug specific to a multi-component block -- the
     # source0/source1 or lens_light0/lens_light1 naming split, say -- can't hide behind a
     # single-component run. The (2, 2) case is the 36-parameter bulge+disk model.
-    check_data()
+    check_data(cfg)
     for n_source, n_lens_light in ((1, 1), (2, 1), (1, 2), (2, 2)):
-        check_params(n_source=n_source, n_lens_light=n_lens_light)
-        check_simulator(n_source=n_source, n_lens_light=n_lens_light)
-        check_map(n_source=n_source, n_lens_light=n_lens_light)
-        check_end_to_end(n_source=n_source, n_lens_light=n_lens_light)
-    check_svi_guard()
+        check_params(cfg, n_source=n_source, n_lens_light=n_lens_light)
+        check_simulator(cfg, n_source=n_source, n_lens_light=n_lens_light)
+        check_map(cfg, n_source=n_source, n_lens_light=n_lens_light)
+        check_end_to_end(cfg, n_source=n_source, n_lens_light=n_lens_light)
+    check_svi_guard(cfg)
 
     print("\n" + "=" * 72)
     width = max(len(n) for n, _, _ in RESULTS)

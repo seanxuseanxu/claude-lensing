@@ -1,13 +1,11 @@
-"""One 2x2 overview figure for a DESI238 fit: data, model+critical curve, normalised
+"""One 2x2 overview figure for a lens fit: data, model+critical curve, normalised
 residual, and source plane + caustics.
 
 This duplicates ``diagnose.residual_figure``'s data/model/normalised-residual panels
 (same err_map convention, same point estimate) rather than importing them, because the
 fourth panel needs the raw lens parameters that ``residual_figure`` never surfaces, and
-because this file is not allowed to modify ``diagnose.py``. The model-rebuild logic
-(metadata.json -> build_prior/build_phys_model) is copied verbatim from
-``clumps.compare`` for the same reason: reconstructing the wrong prior variant silently
-produces plausible, wrong physical values (see that module's docstring).
+because this file is not allowed to modify ``diagnose.py``. The model reconstruction is
+now done by calling ``diagnose.rebuild_model``.
 
 Critical curves and caustics are computed on a fresh, non-supersampled coordinate grid
 built here -- NOT the simulator's internal grid, which is tied to a batch size and is
@@ -35,57 +33,15 @@ import compat  # noqa: F401 -- applies JAX 0.11 shims before gigalens.jax.* impo
 
 import jax.numpy as jnp
 
-from gigalens.jax.model import ForwardProbModel
 
-import data
 import diagnose
-import priors
+import lenses
 
 
-def build_model(run_dir):
-    """Rebuild ``(prior, phys_model, prob_model, sim_config, image)`` for ``run_dir``.
-
-    Copied from ``clumps.compare`` rather than imported: the fallback defaults for a
-    pre-revision run (no ``n_source`` key) matter, and this keeps that logic in one place
-    per file rather than risking drift if it's refactored elsewhere.
-    """
-    run_cfg = diagnose.load_run_config(run_dir)
-    n_source = int(run_cfg.get("n_source", 1))
-    n_lens_light = int(run_cfg.get("n_lens_light", 1))
-    lens_light_n_max = float(run_cfg.get("lens_light_n_max", 6.0))
-    theta_e_center = float(run_cfg.get("theta_e_center", 1.5))
-    theta_e_width = float(run_cfg.get("theta_e_width", 0.35))
-    source_prior_version = int(
-        run_cfg.get("source_prior_version", 2 if "n_source" in run_cfg else 1)
-    )
-    lens_light_prior_version = int(
-        run_cfg.get("lens_light_prior_version",
-                    priors.lens_light_prior_version_for(n_lens_light))
-    )
-    print(
-        f"Model variant: n_source={n_source}, n_lens_light={n_lens_light}, "
-        f"lens_light_n_max={lens_light_n_max}, source_prior_v{source_prior_version}, "
-        f"lens_light_prior_v{lens_light_prior_version}"
-    )
-
-    image, psf, sim_config = data.load()
-    prior = priors.build_prior(
-        theta_E_center=theta_e_center,
-        theta_E_width=theta_e_width,
-        n_source=n_source,
-        n_lens_light=n_lens_light,
-        lens_light_n_max=lens_light_n_max,
-        source_prior_version=source_prior_version,
-        lens_light_prior_version=lens_light_prior_version,
-    )
-    phys_model = priors.build_phys_model(n_source=n_source, n_lens_light=n_lens_light)
-    prob_model = ForwardProbModel(
-        prior,
-        jnp.asarray(image),
-        background_rms=data.BACKGROUND_RMS,
-        exp_time=data.EXP_TIME,
-    )
-    return prior, phys_model, prob_model, sim_config, image
+def build_model(run_dir, lens=None):
+    """Rebuild the model for ``run_dir`` using diagnose.rebuild_model."""
+    rm = diagnose.rebuild_model(run_dir, lens=lens)
+    return rm.prior, rm.phys_model, rm.prob_model, rm.sim_config, rm.image, rm.cfg
 
 
 def _deflection(phys_model, lens_params, Xg, Yg):
@@ -206,8 +162,8 @@ def render_source_plane(phys_model, source_params, extent, n=400):
     return Xg, Yg, img
 
 
-def make_figure(run_dir, out_dir):
-    prior, phys_model, prob_model, sim_config, image = build_model(run_dir)
+def make_figure(run_dir, out_dir, lens=None):
+    prior, phys_model, prob_model, sim_config, image, cfg = build_model(run_dir, lens=lens)
 
     z_unc, label = diagnose.point_estimate(run_dir)
     im_sim = diagnose.simulate_from_unconstrained(prob_model, phys_model, sim_config, z_unc)
@@ -224,7 +180,7 @@ def make_figure(run_dir, out_dir):
         {k: float(np.asarray(v).squeeze()) for k, v in p.items()} for p in lens_params
     ]
 
-    npix, delta = data.NUM_PIX, data.DELTA_PIX
+    npix, delta = cfg.num_pix, cfg.delta_pix
     half_extent_image = npix / 2 * delta
 
     Xg, Yg, detA, curves, caustics = critical_curves_and_caustics(
@@ -233,7 +189,7 @@ def make_figure(run_dir, out_dir):
     check_theta_E(curves, lens_center, theta_E)
 
     # --- Panel 3 data: normalised residual, same convention as diagnose.residual_figure ---
-    err_map = np.sqrt(data.BACKGROUND_RMS ** 2 + np.clip(im_sim, 0, np.inf) / data.EXP_TIME)
+    err_map = np.sqrt(cfg.background_rms ** 2 + np.clip(im_sim, 0, np.inf) / cfg.exp_time)
     norm_res = (image - im_sim) / err_map
     chi2 = float(np.mean(norm_res ** 2))
     print(f"Reduced chi-squared (mean of normalised-residual^2): {chi2:.4f}")
@@ -264,7 +220,7 @@ def make_figure(run_dir, out_dir):
     )
 
     _draw(
-        out_dir, image, im_sim, norm_res, chi2, label,
+        out_dir, image, im_sim, norm_res, chi2, label, cfg,
         Xg, Yg, curves, caustics, lens_center, theta_E,
         Xs, Ys, src_img, src_centers, (xmin, xmax, ymin, ymax),
         npix, delta,
@@ -272,7 +228,7 @@ def make_figure(run_dir, out_dir):
     return chi2
 
 
-def _draw(out_dir, image, im_sim, norm_res, chi2, label,
+def _draw(out_dir, image, im_sim, norm_res, chi2, label, cfg,
           Xg, Yg, curves, caustics, lens_center, theta_E,
           Xs, Ys, src_img, src_centers, src_extent, npix, delta):
     """Build and save the 2x2 figure. Image-plane axes are in arcsec, centred on the
@@ -303,8 +259,8 @@ def _draw(out_dir, image, im_sim, norm_res, chi2, label,
     # 0.1% of the frame as uniform floor and hide the noise symmetry that makes an
     # over-subtracted background obvious.
     vmax = float(np.percentile(image, 99.9))
-    vmin = -5.0 * data.BACKGROUND_RMS
-    linear_width = 5.0 * data.BACKGROUND_RMS
+    vmin = -5.0 * cfg.background_rms
+    linear_width = 5.0 * cfg.background_rms
     bright_norm = AsinhNorm(linear_width=linear_width, vmin=vmin, vmax=vmax)
 
     # Panel 1: observed
@@ -374,11 +330,12 @@ def main():
     )
     ap.add_argument("run_dir", help="Directory containing map/svi/hmc .npz checkpoints")
     ap.add_argument("--out", default=None, help="Output directory (default: run_dir)")
+    lenses.add_argument(ap, required=False)
     args = ap.parse_args()
 
     out_dir = args.out or args.run_dir
     Path(out_dir).mkdir(parents=True, exist_ok=True)
-    make_figure(args.run_dir, out_dir)
+    make_figure(args.run_dir, out_dir, lens=args.lens)
 
 
 if __name__ == "__main__":

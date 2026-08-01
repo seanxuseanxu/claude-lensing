@@ -1,17 +1,15 @@
-"""Azimuthal-median clump photometry for a DESI238 fit.
+"""Azimuthal-median clump photometry for a lens fit.
 
-This is the analysis behind the table in RESULTS.md ("Residual quality: correcting an
-early misread") and the thing that will actually tell us whether a new source model fixed
-the N arc underfit. It previously existed only as throwaway ``python -c`` commands; this
-file makes it reproducible.
+This is what tells you whether a new source model actually fixed an underfit arc, as
+opposed to improving a global chi-squared by redistributing light somewhere else. It
+previously existed only as throwaway ``python -c`` commands; this file makes it
+reproducible.
 
-Two things that silently go wrong if you are not careful, both inherited from
-diagnose.py and repeated here on purpose rather than imported blind:
+Two things that silently go wrong if you are not careful:
 
-- **The clump PA values in MODELING_PLAN.md are array-space angles**, measured from the
-  +row axis toward +col in the 80x80 crop -- NOT sky position angles. Converting them
-  through the image's WCS (the "obvious" thing to do with a PA) places every marker on
-  empty sky. See RESULTS.md, "Residual quality: correcting an early misread". The
+- **A config's clump PA values are array-space angles**, measured from the +row axis
+  toward +col in the crop -- NOT sky position angles. Converting them through the image's
+  WCS (the "obvious" thing to do with a PA) places every marker on empty sky. The
   conversion used below is exactly:
 
       row = row0 + (r / delta_pix) * cos(radians(PA))
@@ -19,13 +17,12 @@ diagnose.py and repeated here on purpose rather than imported blind:
 
 - **Reading a run's checkpoints through the wrong prior silently produces plausible,
   wrong numbers.** A run's metadata.json records which prior variant it was fitted
-  against (n_source, lens_light_n_max, source_prior_version); a run with no "n_source"
-  key at all (seed0, seed1, inner3) predates that key and used source_prior_version=1,
-  the narrow original source prior -- NOT the current default. Getting this fallback
-  wrong doesn't raise an error; it just runs the stored unconstrained samples through a
-  bijector with a different support and reports a different (wrong) constrained value.
-  See diagnose.py's module docstring and priors.py's SOURCE_PRIOR_VERSION docs for the
-  concrete example (source.n_sersic: 0.5729 true vs. 0.6146 misread).
+  against, and runs predating a given key used the values in force at the time -- not
+  today's defaults. Getting a fallback wrong doesn't raise; it runs the stored
+  unconstrained samples through a bijector with a different support and reports a
+  different, wrong constrained value. That reconstruction is centralised in
+  ``diagnose.rebuild_model``, which this file calls rather than reimplementing. See
+  diagnose.py's module docstring and priors.py's SOURCE_PRIOR_VERSION docs.
 
 Why azimuthal-median subtraction at all: the deflector's own smooth light dominates the
 image by roughly an order of magnitude over the arc/clump flux, and gigalens fits no mask
@@ -47,13 +44,10 @@ import numpy as np
 
 import compat  # noqa: F401  -- applies JAX 0.11 shims on import
 
-import jax.numpy as jnp
 
-from gigalens.jax.model import ForwardProbModel
 
-import data
 import diagnose
-import priors
+import lenses
 
 
 def azimuthal_median_subtract(img, center):
@@ -92,25 +86,21 @@ def azimuthal_median_subtract(img, center):
     return img - model
 
 
-def clump_positions(center):
-    """Return ``{name: (row, col)}`` for the four clumps, in array-space pixel coords.
+def clump_positions(cfg, center):
+    """Return ``{name: (row, col)}`` for the clumps, in array-space pixel coords.
 
     Uses the array-space PA convention documented in the module docstring and in
-    RESULTS.md -- NOT a WCS/sky conversion. ``priors.CLUMP_RADII`` gives radii in
-    arcsec but not PA, so the PA values here are copied from MODELING_PLAN.md's table
-    directly (they are not otherwise recorded in the codebase).
+    RESULTS.md -- NOT a WCS/sky conversion. Clump radii and position angles come from
+    ``cfg.clumps``, which stores them as (r_arcsec, pa_deg) pairs. The PA convention is
+    array-space: measured from the +row axis toward +col within the crop. Converting these
+    through the image WCS the standard way (North through East) places the markers on
+    empty sky; that is a known trap documented in clumps.py's module docstring and in
+    RESULTS.md.
     """
     row0, col0 = center
-    # name -> (r arcsec, PA degrees, array-space convention)
-    clumps = {
-        "SW arc": (1.06, 224.0),
-        "E blob": (2.11, 88.0),
-        "W clump": (1.64, 278.0),
-        "N arc": (1.25, 339.0),
-    }
     positions = {}
-    for name, (r_arcsec, pa_deg) in clumps.items():
-        r_pix = r_arcsec / data.DELTA_PIX
+    for name, (r_arcsec, pa_deg) in cfg.clumps.items():
+        r_pix = r_arcsec / cfg.delta_pix
         pa = np.radians(pa_deg)
         row = row0 + r_pix * np.cos(pa)
         col = col0 + r_pix * np.sin(pa)
@@ -132,65 +122,29 @@ def aperture_flux(img, row, col, radius=3.0):
     return float(np.sum(img[sel]))
 
 
-def compare(run_dir, out_dir, radius=3.0):
+def compare(run_dir, out_dir, radius=3.0, lens=None):
     """Az-median-subtract data and the model's point estimate; print and plot the table.
 
-    Reconstructs the model variant from ``run_dir``'s ``metadata.json`` using exactly
-    diagnose.main's fallback logic (``load_run_config`` + the ``n_source``/
-    ``source_prior_version`` defaults), because reading a run through the wrong prior
-    silently reports wrong physical values -- see the module docstring.
+    Reconstructs the model variant from ``run_dir``'s ``metadata.json`` using
+    diagnose.rebuild_model, which handles all fallback defaults for runs that predate
+    ``metadata.json`` keys. Reading a run through the wrong prior silently reports wrong
+    physical values -- see the module docstring.
     """
-    run_cfg = diagnose.load_run_config(run_dir)
-    n_source = int(run_cfg.get("n_source", 1))
-    n_lens_light = int(run_cfg.get("n_lens_light", 1))
-    lens_light_n_max = float(run_cfg.get("lens_light_n_max", 6.0))
-    theta_e_center = float(run_cfg.get("theta_e_center", 1.5))
-    theta_e_width = float(run_cfg.get("theta_e_width", 0.35))
-    # Absence of "n_source" identifies a pre-revision run (seed0/seed1/inner3), fitted
-    # against the narrow v1 source prior -- see diagnose.main's identical fallback.
-    source_prior_version = int(
-        run_cfg.get("source_prior_version", 2 if "n_source" in run_cfg else 1)
-    )
-    # Runs predating --n-lens-light all used the single component, hence v1.
-    lens_light_prior_version = int(
-        run_cfg.get("lens_light_prior_version",
-                    priors.lens_light_prior_version_for(n_lens_light))
-    )
-    print(
-        f"Model variant: n_source={n_source}, n_lens_light={n_lens_light}, "
-        f"lens_light_n_max={lens_light_n_max}, source_prior_v{source_prior_version}, "
-        f"lens_light_prior_v{lens_light_prior_version}"
-    )
-
-    image, psf, sim_config = data.load()
-    prior = priors.build_prior(
-        theta_E_center=theta_e_center,
-        theta_E_width=theta_e_width,
-        n_source=n_source,
-        n_lens_light=n_lens_light,
-        lens_light_n_max=lens_light_n_max,
-        source_prior_version=source_prior_version,
-        lens_light_prior_version=lens_light_prior_version,
-    )
-    phys_model = priors.build_phys_model(
-        n_source=n_source, n_lens_light=n_lens_light
-    )
-    prob_model = ForwardProbModel(
-        prior,
-        jnp.asarray(image),
-        background_rms=data.BACKGROUND_RMS,
-        exp_time=data.EXP_TIME,
+    rm = diagnose.rebuild_model(run_dir, lens=lens)
+    cfg = rm.cfg
+    image, sim_config, prior, phys_model, prob_model = (
+        rm.image, rm.sim_config, rm.prior, rm.phys_model, rm.prob_model
     )
 
     z_unc, label = diagnose.point_estimate(run_dir)
     print(f"Point estimate: {label}")
     im_sim = diagnose.simulate_from_unconstrained(prob_model, phys_model, sim_config, z_unc)
 
-    center = data.CENTROID_PIX
+    center = cfg.centroid_pix
     data_sub = azimuthal_median_subtract(image, center)
     model_sub = azimuthal_median_subtract(im_sim, center)
 
-    positions = clump_positions(center)
+    positions = clump_positions(cfg, center)
 
     print(f"\n=== Azimuthal-median clump photometry (r <= {radius} px) ===")
     print(f"{'clump':<10}{'data':>10}{'model':>10}{'ratio':>10}")
@@ -238,17 +192,18 @@ def _az_median_figure(data_sub, model_sub, positions, out_dir):
 
 def main():
     ap = argparse.ArgumentParser(
-        description="Azimuthal-median clump photometry for a DESI238 fit"
+        description="Azimuthal-median clump photometry for a lens fit"
     )
     ap.add_argument("run_dir", help="Directory containing map/svi/hmc .npz checkpoints")
     ap.add_argument("--out", default=None, help="Output directory (default: run_dir)")
     ap.add_argument("--radius", type=float, default=3.0, help="Aperture radius, px")
+    lenses.add_argument(ap, required=False)
     args = ap.parse_args()
 
     run_dir = Path(args.run_dir)
     out_dir = Path(args.out) if args.out else run_dir
 
-    compare(run_dir, out_dir, radius=args.radius)
+    compare(run_dir, out_dir, radius=args.radius, lens=args.lens)
 
 
 if __name__ == "__main__":

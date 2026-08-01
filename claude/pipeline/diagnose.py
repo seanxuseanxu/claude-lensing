@@ -1,4 +1,4 @@
-"""Diagnostics for a DESI238 fit: convergence, residuals, corner plot.
+"""Diagnostics for a completed fit: convergence, residuals, corner plot.
 
 Everything ``run_fit.py`` writes to ``.npz`` is in **unconstrained** space -- MAP, SVI and
 HMC all return the internal parameterisation. Nothing in this file is interpreted
@@ -19,10 +19,12 @@ HMC samples are shaped ``(num_results, n_hmc, n_params)`` -- draws on axis 0, ch
 axis 1. This differs from upstream gigalens, which returns a 4-D pmap-shaped array. See
 ``compat.hmc_single_device`` for why.
 
-The model variant (``n_source``, ``lens_light_n_max``) is read back from the run's
-``metadata.json``, because reconstructing the wrong prior would transform the samples
-through the wrong bijector and produce plausible, wrong numbers. Runs predating those keys
-(seed0, seed1, inner3) fall back to the single-source defaults they were fitted with.
+The model variant (``n_source``, ``lens_light_n_max``, the prior versions, and which lens
+this is) is read back from the run's ``metadata.json``, because reconstructing the wrong
+prior would transform the samples through the wrong bijector and produce plausible, wrong
+numbers. Runs predating any of those keys fall back to the values they were in fact fitted
+with, not to today's defaults. That reconstruction lives in ``rebuild_model`` and every
+downstream tool calls it rather than reimplementing the fallbacks.
 """
 
 import argparse
@@ -45,6 +47,7 @@ from gigalens.jax.model import ForwardProbModel
 from gigalens.jax.simulator import LensSimulator
 
 import data
+import lenses
 import priors
 
 RHAT_THRESHOLD = 1.01
@@ -70,6 +73,126 @@ def load_run_config(run_dir):
         return {}
     with open(path) as f:
         return json.load(f)
+
+
+class RunModel:
+    """The model a run was fitted with, reconstructed from its ``metadata.json``.
+
+    Attributes:
+        cfg, image, psf, sim_config, prior, phys_model, prob_model, pnames, spans,
+        run_cfg (the raw metadata dict), and the resolved variant fields ``n_source``,
+        ``n_lens_light``, ``lens_light_n_max``, ``theta_e_center``, ``theta_e_width``.
+    """
+
+    def __init__(self, **kw):
+        self.__dict__.update(kw)
+
+    def __iter__(self):
+        """Unpack as ``image, psf, sim_config, prior, phys_model, prob_model, pnames``."""
+        return iter(
+            (
+                self.image,
+                self.psf,
+                self.sim_config,
+                self.prior,
+                self.phys_model,
+                self.prob_model,
+                self.pnames,
+            )
+        )
+
+
+def rebuild_model(run_dir, lens=None, theta_e_center=1.5, theta_e_width=0.35, quiet=False):
+    """Rebuild the exact model a run was fitted with.
+
+    Every tool that reads a checkpoint must go through here. Reconstructing a prior that
+    differs from the one a run was fitted with does not raise -- it pushes the stored
+    unconstrained samples through a different bijector and reports different physical
+    numbers. So each fallback below is the value the runs *predating that key* actually
+    used, never today's default:
+
+    - ``lens``: from ``metadata.json``, else the run directory's grandparent name, which is
+      correct for the ``claude/<LENS>/runs/<label>/`` layout. An explicit ``lens`` argument
+      overrides both, for a run whose directory was moved.
+    - ``n_source`` / ``n_lens_light``: 1, the single-component model.
+    - ``lens_light_n_max``: 6.0, the original ceiling -- not the current default of 10.
+    - ``source_prior_version``: absence of ``n_source`` identifies a pre-revision run,
+      which was fitted against the narrow v1 source prior. Reading such a run through v2
+      reports ``source.n_sersic = 0.6146`` where the fit said ``0.5729``.
+    - ``lens_light_prior_version``: whatever the component count implies, since runs
+      predating ``--n-lens-light`` all used the single component.
+
+    ``theta_e_center`` / ``theta_e_width`` are defaults used only when the run recorded
+    none; a recorded value always wins.
+    """
+    run_dir = Path(run_dir)
+    run_cfg = load_run_config(run_dir)
+
+    lens = lens or run_cfg.get("lens") or lenses.from_run_dir(run_dir)
+    cfg = lenses.load(lens)
+
+    n_source = int(run_cfg.get("n_source", 1))
+    n_lens_light = int(run_cfg.get("n_lens_light", 1))
+    lens_light_n_max = float(run_cfg.get("lens_light_n_max", 6.0))
+    theta_e_center = float(run_cfg.get("theta_e_center", theta_e_center))
+    theta_e_width = float(run_cfg.get("theta_e_width", theta_e_width))
+    source_prior_version = int(
+        run_cfg.get("source_prior_version", 2 if "n_source" in run_cfg else 1)
+    )
+    lens_light_prior_version = int(
+        run_cfg.get(
+            "lens_light_prior_version",
+            priors.lens_light_prior_version_for(n_lens_light),
+        )
+    )
+
+    if not quiet:
+        print(f"Lens: {cfg.name}")
+        print(f"Model variant: n_source={n_source}, n_lens_light={n_lens_light}, "
+              f"lens_light_n_max={lens_light_n_max}, "
+              f"source_prior_v{source_prior_version}, "
+              f"lens_light_prior_v{lens_light_prior_version}, "
+              f"theta_E prior LogNormal(log {theta_e_center}, {theta_e_width})")
+
+    image, psf, sim_config = data.load(cfg)
+    prior = priors.build_prior(
+        cfg,
+        theta_E_center=theta_e_center,
+        theta_E_width=theta_e_width,
+        n_source=n_source,
+        n_lens_light=n_lens_light,
+        lens_light_n_max=lens_light_n_max,
+        source_prior_version=source_prior_version,
+        lens_light_prior_version=lens_light_prior_version,
+    )
+    phys_model = priors.build_phys_model(
+        n_source=n_source, n_lens_light=n_lens_light
+    )
+    prob_model = ForwardProbModel(
+        prior,
+        jnp.asarray(image),
+        background_rms=cfg.background_rms,
+        exp_time=cfg.exp_time,
+    )
+    return RunModel(
+        cfg=cfg,
+        run_cfg=run_cfg,
+        image=image,
+        psf=psf,
+        sim_config=sim_config,
+        prior=prior,
+        phys_model=phys_model,
+        prob_model=prob_model,
+        pnames=priors.param_names(prior),
+        spans=priors.source_component_indices(prior),
+        n_source=n_source,
+        n_lens_light=n_lens_light,
+        lens_light_n_max=lens_light_n_max,
+        theta_e_center=theta_e_center,
+        theta_e_width=theta_e_width,
+        source_prior_version=source_prior_version,
+        lens_light_prior_version=lens_light_prior_version,
+    )
 
 
 def to_constrained(prob_model, z_unc):
@@ -128,7 +251,7 @@ def point_estimate(run_dir):
     raise FileNotFoundError(f"No checkpoints in {run_dir}; expected at least map.npz.")
 
 
-def residual_figure(out_dir, image, im_sim, label):
+def residual_figure(out_dir, cfg, image, im_sim, label):
     """Four-panel figure: observed, model, residual, normalised residual.
 
     The normalised-residual panel is the decisive one. Coherent arc-shaped structure above
@@ -136,7 +259,9 @@ def residual_figure(out_dir, image, im_sim, label):
     same parameter-dependent form ForwardProbModel uses internally:
     ``sqrt(background_rms^2 + im_sim / exp_time)``.
     """
-    err_map = np.sqrt(data.BACKGROUND_RMS**2 + np.clip(im_sim, 0, np.inf) / data.EXP_TIME)
+    err_map = np.sqrt(
+        cfg.background_rms**2 + np.clip(im_sim, 0, np.inf) / cfg.exp_time
+    )
     residual = image - im_sim
     norm_res = residual / err_map
 
@@ -383,13 +508,12 @@ def convergence_table(run_dir, prob_model, pnames, prior=None, spans=None):
     return worst
 
 
-def theta_E_check(run_dir, prob_model, pnames, theta_E_center, theta_E_width):
-    """Compare the theta_E posterior against the measured clump radii.
+def theta_E_check(run_dir, cfg, prob_model, pnames, theta_E_center, theta_E_width):
+    """Compare the theta_E posterior against the config's measured clump radii.
 
-    Under the four-image reading, the Einstein radius should land between the inner clumps
-    (1.06-1.25") and the E blob (2.11"). A posterior pinned against either prior edge means
-    the two radial scales are pulling the model apart, and that is the thing to report --
-    not the number.
+    If every clump is a counter-image of one source, the Einstein radius should land inside
+    their radial span. A posterior pinned against either prior edge means the radial scales
+    are pulling the model apart, and that is the thing to report -- not the number.
     """
     hmc = load_checkpoint(run_dir, "hmc")
     if hmc is None:
@@ -405,7 +529,7 @@ def theta_E_check(run_dir, prob_model, pnames, theta_E_center, theta_E_width):
     print("\n=== theta_E vs. measured clump radii ===")
     print(f"posterior   {med:.3f} -{med-lo:.3f} +{hi-med:.3f} arcsec")
     print(f"prior 1-99% [{p01:.3f}, {p99:.3f}]")
-    for name, r in sorted(priors.CLUMP_RADII.items(), key=lambda kv: kv[1]):
+    for name, r in sorted(cfg.clump_radii.items(), key=lambda kv: kv[1]):
         print(f"  {name:<10} {r:.2f}")
 
     if med - p01 < 0.1 * (p99 - p01):
@@ -522,9 +646,10 @@ def corner_plot(run_dir, out_dir, prob_model, pnames, subset=None):
 
 
 def main():
-    ap = argparse.ArgumentParser(description="Diagnostics for a DESI238 fit")
+    ap = argparse.ArgumentParser(description="Diagnostics for a completed fit")
     ap.add_argument("run_dir", help="Directory containing map/svi/hmc .npz checkpoints")
     ap.add_argument("--out", default=None, help="Output directory (default: run_dir)")
+    lenses.add_argument(ap, required=False)
     ap.add_argument("--theta-e-center", type=float, default=1.5)
     ap.add_argument("--theta-e-width", type=float, default=0.35)
     args = ap.parse_args()
@@ -533,60 +658,24 @@ def main():
     out_dir = Path(args.out) if args.out else run_dir
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    # Reconstruct the *same* model the run was fitted with. Runs predating these keys
-    # (seed0, seed1, inner3) used a single source and a lens-light n_sersic ceiling of 6,
-    # so those are the fallbacks -- not the current defaults, which would silently
-    # transform old samples through the wrong prior.
-    run_cfg = load_run_config(run_dir)
-    n_source = int(run_cfg.get("n_source", 1))
-    n_lens_light = int(run_cfg.get("n_lens_light", 1))
-    lens_light_n_max = float(run_cfg.get("lens_light_n_max", 6.0))
-    theta_e_center = float(run_cfg.get("theta_e_center", args.theta_e_center))
-    theta_e_width = float(run_cfg.get("theta_e_width", args.theta_e_width))
-    # Absence of "n_source" in metadata.json identifies a pre-revision run, which was
-    # fitted against the narrow v1 source prior. This is not cosmetic: checkpoints store
-    # unconstrained samples, so reading seed0 through the v2 prior reports
-    # source.n_sersic = 0.6146 where the fit said 0.5729 -- a wrong number, silently.
-    source_prior_version = int(run_cfg.get("source_prior_version",
-                                           2 if "n_source" in run_cfg else 1))
-    # Runs predating --n-lens-light all used the single component, hence v1. Same hazard
-    # as the source version: the v2 bulge n_sersic support differs, so reading an old run
-    # through it would report a different number without raising.
-    lens_light_prior_version = int(
-        run_cfg.get("lens_light_prior_version",
-                    priors.lens_light_prior_version_for(n_lens_light))
+    # Reconstruct the *same* model the run was fitted with -- see rebuild_model for why
+    # each fallback is the value old runs used rather than today's default.
+    rm = rebuild_model(
+        run_dir,
+        lens=args.lens,
+        theta_e_center=args.theta_e_center,
+        theta_e_width=args.theta_e_width,
     )
-    print(f"Model variant: n_source={n_source}, n_lens_light={n_lens_light}, "
-          f"lens_light_n_max={lens_light_n_max}, source_prior_v{source_prior_version}, "
-          f"lens_light_prior_v{lens_light_prior_version}, "
-          f"theta_E prior LogNormal(log {theta_e_center}, {theta_e_width})")
-
-    image, psf, sim_config = data.load()
-    prior = priors.build_prior(
-        theta_E_center=theta_e_center,
-        theta_E_width=theta_e_width,
-        n_source=n_source,
-        n_lens_light=n_lens_light,
-        lens_light_n_max=lens_light_n_max,
-        source_prior_version=source_prior_version,
-        lens_light_prior_version=lens_light_prior_version,
+    cfg, image, sim_config = rm.cfg, rm.image, rm.sim_config
+    prior, phys_model, prob_model, pnames = (
+        rm.prior, rm.phys_model, rm.prob_model, rm.pnames
     )
-    phys_model = priors.build_phys_model(
-        n_source=n_source, n_lens_light=n_lens_light
-    )
-    prob_model = ForwardProbModel(
-        prior,
-        jnp.asarray(image),
-        background_rms=data.BACKGROUND_RMS,
-        exp_time=data.EXP_TIME,
-    )
-    pnames = priors.param_names(prior)
 
     z_unc, label = point_estimate(run_dir)
     print(f"Point estimate: {label}")
 
     im_sim = simulate_from_unconstrained(prob_model, phys_model, sim_config, z_unc)
-    chi2, res_path = residual_figure(out_dir, image, im_sim, label)
+    chi2, res_path = residual_figure(out_dir, cfg, image, im_sim, label)
     print(f"Reduced chi-squared at point estimate: {chi2:.3f}")
     print(f"Residual figure: {res_path}")
 
@@ -594,9 +683,12 @@ def main():
     # line has to be read first.
     svi_health(run_dir)
 
-    spans = priors.source_component_indices(prior)
-    worst_rhat = convergence_table(run_dir, prob_model, pnames, prior=prior, spans=spans)
-    theta_E_check(run_dir, prob_model, pnames, theta_e_center, theta_e_width)
+    worst_rhat = convergence_table(
+        run_dir, prob_model, pnames, prior=prior, spans=rm.spans
+    )
+    theta_E_check(
+        run_dir, cfg, prob_model, pnames, rm.theta_e_center, rm.theta_e_width
+    )
 
     p = svi_loss_plot(run_dir, out_dir)
     if p:
