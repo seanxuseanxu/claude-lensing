@@ -111,14 +111,18 @@ CUDA_VISIBLE_DEVICES=0 python claude/pipeline/run_fit.py --lens DESI238 \
 
 ## Results
 
-Three rounds have run. `RESULTS.md` covers round 1 (single Sersic source, 22 params);
+Four rounds have run. `RESULTS.md` covers round 1 (single Sersic source, 22 params);
 `RESULTS_v2.md` covers round 2 (29 params); `RESULTS_v3.md` covers round 3 (`twosource_v2`
 at 29 params and `bulgedisk` at 36). Both of the first two carry inline corrections dated
-2026-07-31 — read those before the sections they correct. `MODELING_PLAN.md` records how
-the priors were derived from this image's flux scale.
+2026-07-31 — read those before the sections they correct. `RESULTS_v4.md` covers round 4
+(`bn_rational_long`), summarised below. `MODELING_PLAN.md` records how the priors were
+derived from this image's flux scale.
 
-**`theta_E = 1.480 ± 0.003"` (Rhat 1.001, ESS 94,186) is the quotable value**, from
-`bulgedisk_long`. It supersedes round 1's 1.516 ± 0.002".
+**`theta_E = 1.480 ± 0.003"` is the quotable value.** Round 4 is the run to cite: it is the
+only one converged at R̂ < 1.1 across all 36 parameters, and gives
+`theta_E = 1.4795 ± 0.0026"` (R̂ 1.001, ESS 66,778). Round 3's `bulgedisk_long` gives
+1.4796 ± 0.0026" — the same number, but with one parameter at R̂ 1.338. Both supersede
+round 1's 1.516 ± 0.002".
 
 - **The 0.036" gap between them is not a systematic.** Round 1 is rejected at ΔBIC ≈ −5294,
   so the gap is a bias that was removed, not an uncertainty that remains. Quote ± 0.003".
@@ -140,7 +144,8 @@ the priors were derived from this image's flux scale.
   plateauing, so the residue was under-mixing, not the posterior ridge it was read as — no
   reparametrization needed. What still fails is the two components' shape parameters plus
   `source1.n_sersic`, which is pinned at the 0.5 floor and therefore cannot mix by
-  construction. All eight lens-mass parameters sit at Rhat ≤ 1.002.
+  construction — the sole parameter above R̂ 1.1 in that round. All eight lens-mass
+  parameters sit at Rhat ≤ 1.002. Round 4 clears R̂ < 1.1 outright.
 - **Round 2's 1.484 ± 0.002" was not usable** — 29/29 parameters failed Rhat (worst 7.17)
   because its SVI stage diverged and HMC ran on the resulting ill-conditioned
   preconditioner. Label switching, a dead component, and multimodality were each ruled out;
@@ -170,12 +175,36 @@ priors relative to the gigalens demo.
 
 ### A recurring pinning problem
 
-A source `n_sersic` has pinned at the 0.5 floor in all three rounds (`source1.n_sersic` =
-0.606 in round 3). That floor is deliberate — gigalens' `bn = 1.9992n − 0.3271` is 3% wrong
-at n = 0.5 and 13.6% wrong at n = 0.3 — so the fix is a different profile, not a lower
-bound. `lens_light.n_sersic` also pinned at its round-1 ceiling of 6 (fixed by raising it to
-10; it lands at 7.43), and `source.n_sersic` pinned at 0.5 went unnoticed for a full round.
+A source `n_sersic` has pinned at its lower floor in every round so far.
+`lens_light.n_sersic` also pinned at its round-1 ceiling of 6 (fixed by raising it to 10; it
+lands at 7.43), and `source.n_sersic` pinned at 0.5 went unnoticed for a full round.
 `diagnose.py` now flags any Uniform-prior parameter within 2% of a bound; check it routinely.
+
+Round 4 tested whether the floor itself was responsible — see below. It was not.
+
+### Round 4: the b_n floor was not what pinned the source
+
+Full write-up in `RESULTS_v4.md`. Run `bn_rational_long` is identical to `bulgedisk_long` in
+every setting except two coupled changes: gigalens' Sérsic constant is now a rational (3,2)
+approximation accurate to 5.5e-05 over n ∈ [0.3, 8] (against −13.6% for the old linear form
+at n = 0.3), and source prior v3 lowers the `n_sersic` floor 0.5 → 0.3, which the first
+change made defensible.
+
+**The pinning is not a prior artefact.** The compact source moved from pinned at 0.5 to
+pinned at 0.3 — it tracked the boundary down rather than settling at an interior mode. The
+data want a profile flatter than this family can express, so the fix is a different source
+profile, not another version bump. **Do not lower the floor again**: 0.3 is the lowest n
+where the approximation is validated, and the evidence now points at the profile family.
+
+**All 36 parameters converge at R̂ < 1.1** (worst 1.099), the first round for which that
+holds; `bulgedisk_long` had `source1.n_sersic` at 1.338. `diagnose.py` warns at the stricter
+1.01 and so still prints a non-convergence line for the nine parameters in between. Under
+the R̂ < 1.1 convention this is a publishable result.
+
+`theta_E` is unchanged to four digits (1.4795 ± 0.0026 vs 1.4796 ± 0.0026), as are chi²ᵥ,
+`gamma`, both `R_sersic` and all four clump ratios. That a 13.6% correction to the source's
+b_n leaves the mass model untouched says the Einstein radius is set by arc positions, not by
+source concentration.
 
 ## Four JAX 0.11 breakages
 

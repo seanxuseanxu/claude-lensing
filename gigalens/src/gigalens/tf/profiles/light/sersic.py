@@ -5,6 +5,21 @@ import gigalens.profile
 
 tfd = tfp.distributions
 
+# Rational (3,2) approximation to the Sersic constant b_n, the solution of
+# gamma(2n, b_n) = Gamma(2n)/2. Numerator coefficients first, then denominator, both in
+# descending powers of n. This replaces the asymptotic linear form
+# bn = 1.9992*n - 0.3271, which is accurate to 0.02% for n >= 2 but degrades badly at low
+# n: -3.0% at n = 0.5 and -13.6% at n = 0.3. The rational form holds to 0.005% over
+# n in [0.3, 8]. Mirrors gigalens/jax/profiles/light/sersic.py; validated only in the JAX
+# backend, since TensorFlow is not installed in this environment.
+_BN_NUM = [9.76405972e+01, -1.06311838e+01, 3.50444477e-01, -1.99301509e-03]
+_BN_DEN = [4.88184193e+01, 2.82927599e+00, 4.03956637e-01]
+
+
+def _bn(n_sersic):
+    """Sersic constant b_n. Accurate to 0.005% over n in [0.3, 8]; see _BN_NUM."""
+    return tf.math.polyval(_BN_NUM, n_sersic) / tf.math.polyval(_BN_DEN, n_sersic)
+
 
 class Sersic(gigalens.profile.LightProfile):
     """A spherically symmetric Sersic light profile.
@@ -26,7 +41,7 @@ class Sersic(gigalens.profile.LightProfile):
     def light(self, x, y, R_sersic, n_sersic, center_x, center_y, Ie=None):
         Ie = tf.ones_like(R_sersic) if self.use_lstsq else Ie
         R = self.distance(x, y, center_x, center_y)
-        bn = 1.9992 * n_sersic - 0.3271
+        bn = _bn(n_sersic)
         ret = Ie * tf.math.exp(-bn * ((R / R_sersic) ** (1 / n_sersic) - 1.0))
         return ret[tf.newaxis, ...] if self.use_lstsq else ret
 
@@ -67,7 +82,7 @@ class SersicEllipse(Sersic):
     def light(self, x, y, R_sersic, n_sersic, e1, e2, center_x, center_y, Ie=None):
         Ie = tf.ones_like(R_sersic) if self.use_lstsq else Ie
         R = self.distance(x, y, center_x, center_y, e1, e2)
-        bn = 1.9992 * n_sersic - 0.3271
+        bn = _bn(n_sersic)
         ret = Ie * tf.math.exp(-bn * ((R / R_sersic) ** (1 / n_sersic) - 1.0))
         return ret[tf.newaxis, ...] if self.use_lstsq else ret
 
@@ -104,7 +119,7 @@ class CoreSersic(Sersic):
     ):
         Ie = tf.ones_like(R_sersic) if self.use_lstsq else Ie
         R = self.distance(x, y, center_x, center_y, e1, e2)
-        bn = 1.9992 * n_sersic - 0.3271
+        bn = _bn(n_sersic)
         ret = (
                 Ie
                 * (1 + (Rb / R) ** alpha) ** (gamma / alpha)

@@ -138,9 +138,18 @@ runs *predating each key* actually used — never today's defaults. Do not reimp
   `metadata.json` records the versions. Location-scale changes are safe — support changes
   are not. This is why a config may not set a bound.
 - **Parameters pin at prior boundaries**, so check routinely — `diagnose.py` flags any
-  Uniform-prior parameter within 2% of a bound. Note that gigalens' Sersic constant
-  `bn = 1.9992n − 0.3271` is 3% wrong at n = 0.5 and 13.6% at n = 0.3, so a source
-  `n_sersic` pinned at a 0.5 floor calls for a different profile, not a lower bound.
+  Uniform-prior parameter within 2% of a bound. **Widening the bound is rarely the fix.**
+  DESI238's source `n_sersic` pinned at a 0.5 floor; lowering it to 0.3 moved the posterior
+  to pinned at 0.3. A posterior that tracks a boundary down instead of settling at an
+  interior mode is telling you the profile family is wrong, not the bound.
+- **`lenstronomy` is the ground truth for profile *shape*, not for `b_n`.**
+  `lenstronomy/LensModel/Profiles/sersic_utils.py:37` implements the same asymptotic
+  `bn = 1.9992n − 0.3271` gigalens used, so a parity test on `b_n` asserts agreement with a
+  −13.6%-at-n=0.3 error. The defining relation `b_n = gammaincinv(2n, ½)` is the reference.
+  gigalens' JAX Sersic now uses a rational (3,2) approximation good to 5.5e-05 over
+  n ∈ [0.3, 8]; see `claude/pipeline/test_sersic_bn.py`, which tests shape and `b_n`
+  separately, each against a source authoritative for that claim. **This is a local
+  divergence from upstream** — refreshing the vendored copy would silently revert it.
 - **A model-to-model spread is only a systematic when the evidences are comparable.**
   Inflating an error bar to span a model the data rejects reports a range the data excluded.
 
@@ -154,8 +163,8 @@ retroactively corrupts every already-built instance. Harmless while everything i
 
 Each has its own README with the dataset, the conditioning decisions, and the results.
 
-- `claude/DESI238/` — HST WFC3/IR F140W. Three rounds fitted; `theta_E = 1.480 ± 0.003"`.
-  See `claude/DESI238/README.md`.
+- `claude/DESI238/` — HST WFC3/IR F140W. Four rounds fitted; `theta_E = 1.480 ± 0.003"`,
+  converged at R̂ < 1.1 across all 36 parameters. See `claude/DESI238/README.md`.
 - `claude/DESI257/`, `claude/DESI234/` — no data yet.
 ## Working notes
 

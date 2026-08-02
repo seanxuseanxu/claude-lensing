@@ -22,17 +22,20 @@ not add a config field for it. Keep the superseded builder verbatim so the runs 
 with it stay readable. ``run_fit.py`` records the versions in ``metadata.json`` and
 ``diagnose.py`` reads them back.
 
-A note on the Sersic index floor, which recurs across systems: gigalens hardcodes the
-Sersic constant as ``bn = 1.9992 * n - 0.3271``
-(``gigalens/jax/profiles/light/sersic.py:15``), an asymptotic fit valid at large n. Against
-the exact ``gammaincinv(2n, 0.5)``:
+A note on the Sersic index floor, which recurs across systems. gigalens *used* to hardcode
+the Sersic constant as the asymptotic ``bn = 1.9992 * n - 0.3271``, which is accurate at
+large n and badly wrong at small n -- against the exact ``gammaincinv(2n, 0.5)``:
 
     n      0.3      0.5      1.0      2.0      6.0     10.0
     err  -13.6%    -3.0%   -0.37%   -0.02%   +0.00%   -0.01%
 
-The 0.5 floor on source ``n_sersic`` is therefore deliberate. If a fit pins against it,
-dropping the bound would trade a prior artefact for a profile-accuracy artefact; the fix
-is a different profile, not a lower bound.
+That is why source ``n_sersic`` had a 0.5 floor: below it, a fitted index was reporting a
+profile-accuracy artefact rather than a morphology. ``sersic.py`` now uses a rational
+(3,2) approximation accurate to 5.5e-05 over n in [0.3, 8]
+(``claude/pipeline/test_sersic_bn.py`` validates it against the defining relation, not
+against lenstronomy -- lenstronomy carries the same linear form and the same -13.6%). The
+floor is therefore no longer required by the profile, and v3 drops it to 0.3, the lowest n
+where the approximation is verified. Do not go below 0.3 without extending that test.
 """
 
 import jax.numpy as jnp
@@ -45,7 +48,7 @@ from gigalens.jax.profiles.mass import epl, shear
 # Version of the source-component prior that build_prior produces by default. Bump this
 # whenever the source prior's *support* changes (a Uniform's bounds, a TruncatedNormal's
 # limits). See the module docstring.
-SOURCE_PRIOR_VERSION = 2
+SOURCE_PRIOR_VERSION = 3
 
 # Same discipline for the lens-light prior. v1 is the single-component prior; v2 is the
 # bulge+disk split, whose bulge ``n_sersic`` support is Uniform(1, 8) rather than
@@ -91,14 +94,17 @@ def _source_component_v1(p):
     )
 
 
-def _source_component(p):
-    """One Sersic source component's prior (v2, current). Support: n in (0.5, 6), |e| < 0.5.
+def _source_component_v2(p):
+    """The wide-n source prior (v2). Support: n in (0.5, 6), |e| < 0.5.
 
-    Components share one config prior, which makes them formally exchangeable: relabelling
-    them leaves the posterior unchanged, so the data rather than the prior decides the
-    morphology. In practice all HMC chains start from ``q_z.sample()``, a single unimodal
-    Gaussian around one MAP mode, so they should stay in one labelling -- ``diagnose.py``
-    measures that rather than assuming it (see ``label_switching_check``).
+    Superseded by v3, which lowers the floor to 0.3. Kept verbatim: the round-3 result
+    ``theta_E = 1.480 +/- 0.003"`` was fitted against this, and reading those checkpoints
+    through v3 would report different numbers without raising.
+
+    The 0.5 floor was not a statement about source morphology. It was the point below
+    which gigalens' old linear ``bn`` approximation became inaccurate enough (-3.0% at
+    n = 0.5, -13.6% at 0.3) that a fitted index measured the approximation instead of the
+    galaxy. See the module docstring.
     """
     return tfd.JointDistributionNamed(
         dict(
@@ -111,6 +117,48 @@ def _source_component(p):
             Ie=tfd.LogNormal(jnp.log(p.Ie_median), p.Ie_logsigma),
         )
     )
+
+
+def _source_component(p):
+    """One Sersic source component's prior (v3, current). Support: n in (0.3, 6), |e| < 0.5.
+
+    v3 differs from v2 in one number: the ``n_sersic`` floor, 0.5 -> 0.3. That floor was a
+    workaround for gigalens' old ``bn`` approximation, which is now accurate to 5.5e-05
+    down to n = 0.3, so the bound can express what the data supports rather than what the
+    profile could represent. 0.3 is the lowest n validated by
+    ``claude/pipeline/test_sersic_bn.py``; extending the test is a precondition for
+    lowering it again.
+
+    A floor change is a *support* change, hence a new version rather than an edit: the
+    bijector for ``Uniform(a, b)`` is ``a + (b - a) * sigmoid(z)``, so every stored
+    unconstrained sample decodes differently under v2 and v3.
+
+    Components share one config prior, which makes them formally exchangeable: relabelling
+    them leaves the posterior unchanged, so the data rather than the prior decides the
+    morphology. In practice all HMC chains start from ``q_z.sample()``, a single unimodal
+    Gaussian around one MAP mode, so they should stay in one labelling -- ``diagnose.py``
+    measures that rather than assuming it (see ``label_switching_check``).
+    """
+    return tfd.JointDistributionNamed(
+        dict(
+            R_sersic=tfd.LogNormal(jnp.log(p.R_sersic_median), p.R_sersic_logsigma),
+            n_sersic=tfd.Uniform(0.3, 6.0),
+            e1=tfd.TruncatedNormal(0.0, p.ellip_sigma, -0.5, 0.5),
+            e2=tfd.TruncatedNormal(0.0, p.ellip_sigma, -0.5, 0.5),
+            center_x=tfd.Normal(0.0, p.center_sigma),
+            center_y=tfd.Normal(0.0, p.center_sigma),
+            Ie=tfd.LogNormal(jnp.log(p.Ie_median), p.Ie_logsigma),
+        )
+    )
+
+
+# Every source prior version that has ever been written, so a run fitted with any of them
+# stays readable. Add an entry here when adding a version; never repoint an existing one.
+_SOURCE_COMPONENT_BUILDERS = {
+    1: _source_component_v1,
+    2: _source_component_v2,
+    3: _source_component,
+}
 
 
 def _lens_light_component_v1(p, lens_light_n_max=10.0):
@@ -211,8 +259,9 @@ def build_prior(
         lens_light_n_max: upper bound of the v1 lens-light ``n_sersic`` Uniform. A bound,
             so it is a command-line argument recorded per run, not a config field. Applies
             to v1 only; the v2 bulge/disk priors carry their own bounds.
-        source_prior_version: 2 (default) for the current wide priors; 1 for the narrow
-            originals. **Reading an old run's checkpoints requires its own version** -- the
+        source_prior_version: 3 (default) drops the ``n_sersic`` floor to 0.3; 2 keeps it
+            at 0.5; 1 is the narrow original, ``n`` in (0.5, 4).
+            **Reading an old run's checkpoints requires its own version** -- the
             stored samples are unconstrained, and a different support maps the same value
             to a different number without raising. ``diagnose.py`` selects this from
             ``metadata.json``.
@@ -223,9 +272,10 @@ def build_prior(
     """
     if n_source < 1:
         raise ValueError(f"n_source must be >= 1, got {n_source}")
-    if source_prior_version not in (1, 2):
+    if source_prior_version not in _SOURCE_COMPONENT_BUILDERS:
         raise ValueError(
-            f"source_prior_version must be 1 or 2, got {source_prior_version}"
+            f"source_prior_version must be one of "
+            f"{sorted(_SOURCE_COMPONENT_BUILDERS)}, got {source_prior_version}"
         )
     if source_prior_version == 1 and n_source != 1:
         raise ValueError("source_prior_version=1 only ever described a single component")
@@ -289,9 +339,10 @@ def build_prior(
                 f"{cfg.name}: source_prior_version=1 requested but the config defines no "
                 f"legacy_source_prior. Old runs cannot be read back without it."
             )
-        source_p, make_one = cfg.legacy_source_prior, _source_component_v1
+        source_p = cfg.legacy_source_prior
     else:
-        source_p, make_one = cfg.source_prior, _source_component
+        source_p = cfg.source_prior
+    make_one = _SOURCE_COMPONENT_BUILDERS[source_prior_version]
     source_light_prior = tfd.JointDistributionSequential(
         [make_one(source_p) for _ in range(n_source)]
     )

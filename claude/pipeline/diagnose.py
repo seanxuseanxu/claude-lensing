@@ -118,7 +118,10 @@ def rebuild_model(run_dir, lens=None, theta_e_center=1.5, theta_e_width=0.35, qu
     - ``lens_light_n_max``: 6.0, the original ceiling -- not the current default of 10.
     - ``source_prior_version``: absence of ``n_source`` identifies a pre-revision run,
       which was fitted against the narrow v1 source prior. Reading such a run through v2
-      reports ``source.n_sersic = 0.6146`` where the fit said ``0.5729``.
+      reports ``source.n_sersic = 0.6146`` where the fit said ``0.5729``. A run that
+      records ``n_source`` but no version predates the key and used v2 -- note the literal
+      2 below, deliberately *not* ``priors.SOURCE_PRIOR_VERSION``. Every version bump
+      would otherwise silently retag those runs with the newest prior.
     - ``lens_light_prior_version``: whatever the component count implies, since runs
       predating ``--n-lens-light`` all used the single component.
 
