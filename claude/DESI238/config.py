@@ -188,19 +188,14 @@ LENS_LIGHT_DISK = SersicPrior(
     Ie_logsigma=0.8,
 )
 
-# The ORIGINAL source prior, as fitted in runs seed0 / seed1 / inner3. Kept verbatim so
-# those runs stay readable: their checkpoints hold unconstrained samples, and the
-# constrained value depends on the bijector. Reading seed0 through the current prior
-# silently reports source.n_sersic = 0.6146 where the fit actually said 0.5729 -- no error,
-# just a wrong number. Do not delete this to tidy up.
-SOURCE_PRIOR_V1 = SersicPrior(
-    R_sersic_median=0.25,
-    R_sersic_logsigma=0.2,
-    ellip_sigma=0.15,
-    center_sigma=0.3,
-    Ie_median=SOURCE_IE,
-    Ie_logsigma=0.6,
-)
+# The pre-scene-API runs (seed0 / seed1 / inner3 / nsersic10 / twosource) were fitted with
+# an earlier source prior and against a different flat-z column order. They are not
+# readable by the current pipeline at all -- diagnose.rebuild_model refuses a run whose
+# metadata lacks "api": "scene" rather than decoding it wrongly -- so the legacy
+# location-scale parameters that used to live here have gone with it. To read those runs,
+# check out the commit that preceded the port; it carries both the prior and the code that
+# understands them. Their svi.npz files are still used, at any commit, by verify.py's
+# conditioning check: that statistic does not depend on the parameterisation.
 
 CONFIG = LensConfig(
     name="DESI238",
@@ -224,8 +219,6 @@ CONFIG = LensConfig(
         "disk": LENS_LIGHT_DISK,
     },
     clumps=CLUMPS,
-    legacy_source_prior=SOURCE_PRIOR_V1,
-    legacy_lens_light_prior=LENS_LIGHT_SINGLE,
     # The companion galaxy sits at cutout ~(11, 11), which CROP excludes. The corner of
     # the crop should therefore be sky plus deflector wings only.
     companion_max=0.15,

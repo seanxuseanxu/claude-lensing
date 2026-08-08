@@ -1,9 +1,13 @@
 # A Guide to Bayesian Strong-Lens Modeling for Language Models
 
 Written by Claude, 2026-07-31, after fitting one HST lens system (DESI238) through three
-rounds of a MAP → SVI → HMC pipeline built on GIGA-Lens. Examples are drawn from that
-work; the advice is meant to transfer to any lens and any package (lenstronomy, PyAutoLens,
-Herculens, glee, dolphin).
+rounds of a MAP → SVI → HMC pipeline; revised 2026-08-08 after two further rounds and a move
+onto a new interface, reviewing the session records for what actually went wrong. Examples are
+drawn from that work; the advice is meant to transfer to any lens and any package.
+
+It is about **modelling** — the data, the priors, the inference, the reporting, and the person
+you are doing it for. It is deliberately not about software engineering, and nothing in it
+should depend on which package you use.
 
 The guide is organized around one claim: **in lens modeling, almost every error you will
 make is silent.** It does not raise. It does not produce a NaN, an obviously wrong
@@ -36,11 +40,18 @@ state; treat it as unfinished work with a known remedy list (§4.3).
 
 But the two things are separable, and that matters for how you report. A result can be
 **preliminarily reportable** while some parameters remain unconverged, *provided* the
-quantity you are quoting is one of the converged ones and you say which are not. In
-DESI238's final run all eight lens-mass parameters sat at R̂ ≤ 1.002 while three light-profile
-shape parameters still failed; θ_E was quotable, the light-profile morphology was not.
-Finishing the sampler and having a defensible number are both required — they just do not
-have to arrive on the same day.
+quantity you are quoting is one of the converged ones and you say which are not. For three
+rounds DESI238 sat exactly there: all eight lens-mass parameters at R̂ ≤ 1.002 while several
+light-profile shape parameters failed, so θ_E was quotable and the morphology was not.
+
+**It was eventually reachable, and the route was not more sampling.** Round 5 got all 36
+parameters to R̂ ≤ 1.003 by spending twenty minutes on a better variational surrogate and
+switching sampler (§4.3). Chain length had already been increased fourfold and had stopped
+helping. Treat partial convergence as unfinished work with a known remedy list, and work the
+list in the right order — the surrogate before the chain length.
+
+One caveat that §4.4 develops: an R̂ that only just clears the threshold is a sign the budget
+is too small, not a finish line.
 
 ---
 
@@ -91,32 +102,24 @@ equally good:
    information rather than discarding it, and the only one available when the contaminant
    overlaps the arcs. A nearby satellite can perturb the deflection field measurably, so
    for precision work on θ_E or a time delay this is not optional.
-2. **Mask it.** Clean, but throws away pixels, and requires your package to support
-   per-pixel masking — check, because not all do. GIGA-Lens does not
-   (`grep -rn "mask" src/` returns nothing).
-3. **Crop it out.** The crudest option and the only one available if your package has no
-   masking. It works only when the contaminant is well separated from the arcs.
+2. **Mask it.** Clean, but throws away pixels. Check that your package supports per-pixel
+   masking before planning around it; not all do.
+3. **Crop it out.** The crudest option, and it works only when the contaminant is well
+   separated from the arcs.
 
-For DESI238 I used (3), because the companion sat in a corner far from the lensed
-structure and GIGA-Lens offers nothing else: `CROP = (slice(18,98), slice(18,98))` centers
-the deflector to within 0.1 px and excludes the companion — plus an automated check that
-the corner maximum stays below 0.15 e/s, so it cannot creep back in when someone adjusts
-the crop. That was a pragmatic choice given the package, not the best available physics. If
-an interloper is close enough to affect the deflection, cropping is not a solution to it —
-it is a decision to accept an unmodeled systematic, and should be reported as one.
-
-**Dtype and byte order.** Check both; do not assume either. FITS stores big-endian by
-convention and the DESI238 arrays were (`>f4`, `>f8`), which JAX refuses outright
-(`TypeError: Error interpreting argument as a JAX value`) — but plenty of FITS files and
-`.npy` arrays you will meet are native-endian already. The rule is not "FITS is big-endian";
-it is **normalize to native float32 in one place at load time and assert it there**, so the
-question never arises again downstream.
+For DESI238 I used (3): the companion sat in a corner far from the lensed structure, and a
+crop that centres the deflector to within 0.1 px excludes it. I added an automated check that
+the corner maximum stays below a threshold, so the companion cannot creep back in when
+someone adjusts the crop. That was pragmatic, not the best available physics. **If an
+interloper is close enough to affect the deflection, cropping is not a solution to it — it is
+a decision to accept an unmodelled systematic, and should be reported as one.**
 
 ### Write these down as a preflight test, not as prose
 
-Everything above should live in an executable check that runs in seconds:
-shape, dtype, finiteness, PSF sum within 1e-6 of 1, PSF odd-sized, corner contamination
-bound. Prose in a README describes what you believed; a test enforces it.
+Everything above should live in a check that runs in seconds: array shapes, finiteness, PSF
+sum, PSF centring, corner contamination. Prose in a README describes what you believed; a
+test enforces it. Mine took ~5 minutes against fits that took hours, and every check in it
+exists because something once went wrong.
 
 ---
 
@@ -167,10 +170,10 @@ This distinction matters more than it looks:
 ### Derive amplitude priors by rendering, not by reasoning
 
 Surface-brightness normalizations depend on your simulator's internal conventions in ways
-that are very hard to predict. GIGA-Lens multiplies the render by
-`conversion_factor = det(transform_pix2angle) = delta_pix² = 0.004225`, so a unit-Ie Sérsic
-peaks at 0.083 e/s against data peaking at 7.2. My first-guess priors (`Ie = 2.0` / `0.5`)
-were **50× too faint**. The fix is mechanical and takes two minutes:
+that are very hard to predict. Mine multiplied every render by the pixel area — a factor of
+0.004225 at 0.065"/pix — so a unit-amplitude Sérsic peaked at 0.083 against data peaking at
+7.2. My first-guess amplitude priors, copied from a demo built on a synthetic image with a
+different flux scale, were **50× too faint**. The fix is mechanical and takes two minutes:
 
 > Draw ~64 samples from your prior, render them, and compare the median peak to the data
 > peak. Require the ratio to land within a factor of ~3. Then keep that as a permanent
@@ -179,20 +182,33 @@ were **50× too faint**. The fix is mechanical and takes two minutes:
 Calibrated values were `LENS_IE = 80`, `SOURCE_IE = 20`, giving median peak 5.26 against
 data 7.18.
 
-### Know your package's approximations
+### Know where your profile family stops being valid
 
-GIGA-Lens hardcodes the Sérsic constant as `bn = 1.9992n − 0.3271`, an asymptotic form.
-I measured its error against the exact `gammaincinv(2n, 0.5)`:
+Analytic profiles are usually implemented with an approximation somewhere — the Sérsic
+constant *b(n)* is the common one, and closed forms for it degrade badly at low index. In my
+case the error reached −13.6% at n = 0.3 while being negligible above n ≈ 1. **Measure that
+error against the defining relation rather than trusting the range the profile is advertised
+for, and keep the measurement as a test.** Then set the prior's floor where the profile is
+still trustworthy, and treat that floor as a physical statement rather than a formality.
 
-```
-n      0.3      0.5      1.0      2.0      6.0     10.0
-err  -13.6%   -3.0%   -0.37%   -0.02%   +0.00%   -0.01%
-```
+**A boundary placed for a known reason becomes a diagnostic.** When a parameter pins against
+one, the question is whether the bound is too tight or the family is wrong, and there is a
+cheap experiment that distinguishes them: **move the bound once, deliberately.**
 
-That is why `source.n_sersic` has a Uniform *floor* at 0.5 — below it the profile is simply
-wrong. The floor is deliberate, so when a parameter pins against it (§5) the fix is a
-different profile, not a lower bound. **Find the equivalent approximation in your package
-and measure it, rather than trusting the range it is advertised for.**
+- A parameter that *settles at an interior mode* once you widen it was genuinely prior-limited.
+- A parameter that *follows the bound down* is telling you the data want something outside
+  the family. The fix is a different profile, not another bound.
+
+Mine followed. Lowering the source index floor from 0.5 to 0.3 moved the pinning to 0.3, and
+it pinned again in a later round under a different likelihood, a different parameter ordering
+and four independent samplers. That is a profile-family verdict, not a prior artefact.
+
+**Then ask whether the component is resolved at all.** The same component's half-light radius
+came out at 0.069" against a 0.065" pixel — below the resolution of the data. A shape
+parameter fitted to an unresolved component is not a morphology measurement in the first
+place. Report it as a bound, describe the component as point-like, and check that it is not
+correlated with your headline parameter before you stop worrying about it (here the
+correlation with θ_E was r = 0.018, so the headline was safe).
 
 ---
 
@@ -211,48 +227,43 @@ meaning.**
 
 There are two fixes, and **the first is better**:
 
-> **Fix 1 — apply the bijector before writing, and store physical values.** Nothing forces
-> a checkpoint to be in unconstrained space. If `map.npz` / `hmc.npz` hold constrained
-> parameters, the samples mean the same thing forever, no matter what you later do to the
-> prior. Store the unconstrained array alongside them if you need it to restart a stage,
-> but let the physical values be the artifact you read. I did not do this in DESI238 and
-> should have; the versioning machinery below exists to patch a problem that a different
-> storage choice would have prevented outright.
+> **Fix 1 — store physical values.** Nothing forces a saved posterior to be in unconstrained
+> space. If it holds constrained parameters, the samples mean the same thing forever, no
+> matter what you later do to the prior. Keep the unconstrained array alongside if you need
+> it to restart a stage, but let the physical values be the artefact you read. I did not do
+> this and should have; the versioning below patches a problem a different storage choice
+> would have prevented outright.
 
-> **Fix 2 — if you must store unconstrained samples, version the priors.** Keep a module
-> constant (`SOURCE_PRIOR_VERSION = 2`), record it in run metadata, and when you change a
-> support, **keep the old prior function verbatim** rather than editing it in place. Your
-> diagnostic code reads the version back and reconstructs the exact prior that run was
-> fitted under. Location-scale changes (a Normal's σ) are safe; support changes are not.
+> **Fix 2 — if you must store unconstrained samples, version the priors.** Record a prior
+> version with every run, and when you change a support, **keep the old definition verbatim**
+> rather than editing it in place, so your diagnostics can reconstruct the exact prior a run
+> was fitted under. Location-scale changes (a Normal's σ) are safe; support changes are not.
 
-Fix 2 is still worth having even under Fix 1, because the prior is part of a run's
-provenance regardless of how you store the samples. But it should be a record, not a
-load-bearing decoder ring.
+Fix 2 is worth having even under Fix 1, because the prior is part of a run's provenance
+regardless of how you store the samples. But it should be a record, not a load-bearing
+decoder ring.
 
-**(b) Constrain in exactly one place.** One function, `to_constrained`, that everything
-calls. Every inlined `bij.forward` elsewhere is a future bug. Correspondingly: MAP, SVI,
-and HMC all return unconstrained values, so anything you interpret physically without
-passing through that function is nonsense that will look like a number.
+**(b) Constrain in exactly one place.** One function that everything calls. Every inlined
+transformation elsewhere is a future bug. Correspondingly: the optimizer, the variational
+stage and the sampler all return unconstrained values, so anything you interpret physically
+without passing it through that function is nonsense that will look like a number.
 
-**(c) Never hardcode the parameter ordering — derive it, then probe it.** Flatten the
-prior structure to get names; then verify the mapping empirically:
+**(c) Never assume the parameter ordering — derive it, then probe it.** Take the names from
+the prior structure, then verify the mapping empirically: perturb one coordinate of the
+unconstrained vector at a time, map it to physical space, and assert that exactly the
+parameter you expected moved. Do it for every index and every model variant.
 
-```python
-z_probe = jnp.zeros((1, n)).at[0, i].set(1.0)
-moved = bij.forward(list(z_probe.T))
-assert len(found) == 1, f"index {i}: expected one moved param, got {found}"
-assert found[0] == expected, f"index {i}: names say {expected}, probe says {found[0]}"
-```
-
-Run it for every index and every model variant. A transposed or off-by-one parameter
-vector produces a fit that converges to a physically absurd but numerically finite answer,
-and you will spend a day blaming the data.
+This matters most right after a model or library change, when the ordering can shift without
+anything raising. A transposed or off-by-one parameter vector produces a fit that converges
+to a physically absurd but numerically finite answer, and you will spend a day blaming the
+data. Component identity is the dangerous case: bulge parameters read as disk, or one
+source's flux attributed to the other, gives you a converged fit describing the wrong system.
 
 ---
 
 ## 4. Running the three stages, and how each one fails
 
-The MAP → SVI → HMC chain is common to GIGA-Lens and (in spirit) to most modern lens
+The MAP → SVI → HMC chain is common (in spirit) to most modern lens
 pipelines: a multi-start optimizer to find the basin, a variational fit to shape a
 preconditioner, then gradient-based MCMC for the posterior. Each stage consumes the last,
 which means **each stage can be poisoned by the last, silently.**
@@ -268,17 +279,9 @@ Observed in DESI238: 1/1024 starts diverged at 22 parameters, 4/1024 at 29. The 
 χ² = 2.003 the whole time, so **the failure was invisible until SVI died 1500 steps later
 with a NaN ELBO.**
 
-```python
-lp_np = np.asarray(lp)
-n_bad = int((~np.isfinite(lp_np)).sum())
-if n_bad == len(lp_np):
-    raise RuntimeError(f"All {n_bad} MAP starts produced non-finite log_prob.")
-if n_bad:
-    print(f"WARNING: {n_bad}/{len(lp_np)} MAP starts diverged; excluding them.")
-best_idx = int(np.nanargmax(np.where(np.isfinite(lp_np), lp_np, np.nan)))
-if not bool(jnp.isfinite(map_estimate[best_idx]).all()):
-    raise RuntimeError("Chosen start has non-finite parameters. Refusing to hand this to SVI.")
-```
+Select the best start with a NaN-aware maximum, count the non-finite starts, refuse to
+continue if all of them diverged, and check that the *chosen* start has finite parameters
+before handing it downstream. Each of those is one line and each catches a distinct failure.
 
 Two generalizations worth internalizing:
 
@@ -292,21 +295,21 @@ Two generalizations worth internalizing:
 
 This is the most expensive lesson in this document.
 
-HMC's momentum distribution is built from `inv(q_z.covariance())`, often in float32. If the
-SVI covariance is badly conditioned, **that inverse is not an inverse**, every chain samples
-against an effectively indefinite mass matrix, and *every* R̂ fails at once. The natural
-reading — "the chains need to be longer" — is wrong and costs you a full round of compute.
+The sampler's mass matrix is built by inverting the variational covariance, often in single
+precision. If that covariance is badly conditioned, **the inverse is not an inverse**, every
+chain samples against an effectively indefinite mass matrix, and *every* R̂ fails at once. The
+natural reading — "the chains need to be longer" — is wrong and costs you a full round of
+compute.
 
 Calibration numbers from DESI238:
 
-```
-run          params   cov condition    max|inv(C)·C − I|   R̂ outcome
-nsersic10      22        9.4e+05             0.07          fine
-seed0          22        5.9e+08             0.98          fine (worst healthy)
-twosource      29        8.8e+11            55.3           29/29 fail, worst 7.17
-```
+| params | covariance condition | max &#124;inv(C)·C − I&#124; | R̂ outcome |
+|---|---|---|---|
+| 22 | 9.4e+05 | 0.07 | fine |
+| 22 | 5.9e+08 | 0.98 | fine (worst healthy) |
+| 29 | 8.8e+11 | 55.3 | 29/29 fail, worst 7.17 |
 
-At 8.8e+11 the float32 inverse carried five negative eigenvalues reaching −3.2e+07.
+At 8.8e+11 the single-precision inverse carried five negative eigenvalues reaching −3.2e+07.
 
 **A positive-definiteness test does not catch this.** The pathological covariance *is* PD
 (min eigenvalue +5.7e-13). An audit of mine that formed `L @ L.T` in float32 reported
@@ -316,14 +319,8 @@ discriminant.** And compute the spectrum by squaring the singular values of the 
 factor, never by eigendecomposing `L @ L.T`: the product halves your precision exactly
 where the matrix has none to spare.
 
-```python
-COND_MAX = 1e10   # healthy runs here: 9.4e5–5.9e8;  diverged: 8.8e11
-s = np.linalg.svd(np.asarray(scale_tril, dtype=np.float64), compute_uv=False)
-min_eig, max_eig = float(s.min()**2), float(s.max()**2)
-cond = max_eig / min_eig
-if cond > COND_MAX:
-    raise RuntimeError(f"SVI covariance condition {cond:.3e} exceeds {COND_MAX:.0e}.")
-```
+Compute the condition number in double precision and hard-fail above a threshold — mine was
+1e10, against healthy runs at 9.4e5–5.9e8 and the diverged one at 8.8e11.
 
 Set the threshold with an order-of-magnitude margin on **both** sides of the measured gap,
 and then write a test asserting the guard fires on your known-bad run and passes on your
@@ -378,6 +375,51 @@ either fell with more draws or traced back to a boundary-pinned parameter. Treat
 geometry is intractable" as a claim requiring evidence that you have exhausted the list
 above, not as an explanation for why a fit did not finish.
 
+**Remedy 2 is where the leverage is at high dimension, and I had it ranked too low.** DESI238
+at 36 parameters sat at worst R̂ 1.338 after a 4× chain-length increase had already been
+spent. Remedy 3 was not the answer. Twenty-one minutes of MAP+SVI on four GPUs — 4,096
+multi-start particles, 1,500 MAP steps, then 12,000 SVI steps at n_vi 2,048 with peak LR 1e-3
+— took the covariance condition to 2.3e+06 and the **ELBO tail sd to 0.1**, against the ~10
+that §4.2 calls healthy at 22 parameters. Every sampler tried afterwards cleared or nearly
+cleared R̂ < 1.01 from that one surrogate, and the worst R̂ went 1.338 → 1.003.
+
+> The generalization: **the preconditioner is a fixed cost that every subsequent draw pays
+> interest on.** Chain length buys you samples from whatever geometry the surrogate hands the
+> sampler; a better surrogate changes that geometry. As dimension rises the second is the
+> better purchase, and it is far cheaper than it looks — 21 minutes bought what no amount of
+> extra HMC had.
+
+Note also that "passing the conditioning guard" is a floor, not a target. Both surrogates
+passed. The one with ELBO tail sd 0.1 converged the fit and the one at ~10 did not. Read the
+tail sd as a quality number, not just a pass/fail.
+
+**Remedy 4 was worth more than expected: change the kernel, not just its length.** With the
+surrogate held fixed, MCLMC was ~9× faster per draw than fixed-length HMC on this problem, so
+at *two thirds* the wall time it delivered 8× the draws and 1.7× the minimum ESS. MAMS landed
+in between. If your package offers modern gradient-based kernels (MCLMC, MAMS, NUTS), try one
+early on a short run — it is a cheap experiment and the speedup was worth more here than any
+tuning I did.
+
+> **Hold the surrogate fixed when you compare samplers.** Copy the MAP and SVI checkpoints
+> into each run directory rather than re-running those stages. Otherwise you are comparing
+> sampler-plus-surrogate pairs and cannot attribute the difference. This is what makes a
+> sampler comparison controlled rather than confounded, and it costs one `cp`.
+
+### 4.4 A marginal R̂ is a budget problem — buy draws, not seeds
+
+A 32-chain × 3,000-draw HMC run gave worst R̂ 1.003 across all 36 parameters. Re-running it
+four more times changing **only the seed** gave 1.019, 1.009, 1.093, 1.019 — two of five clear
+R̂ < 1.01, with minimum bulk-ESS ranging 2,735–10,928.
+
+The useful reading of that is **not** "add a multi-seed protocol." It is that a threshold met
+by a small margin is telling you the budget is too small, and the remedy is the one already in
+§4.3: sample longer. The 4×-longer, 2×-wider run reached worst R̂ 1.003 at min ESS 18,692,
+where seed-to-seed scatter of that size is no longer in play. Spend the compute on draws.
+
+Where seed variation still earns its keep is as a *cheap diagnostic of marginality*: if two
+short runs straddle your threshold, that settles whether you are converged or lucky, and it is
+faster than arguing about it. Use it to decide you need a bigger budget, not as a deliverable.
+
 Also: **a fit can be reportable before every parameter converges** (§0), but you
 have to say which parameters. After the long run, all eight lens-mass parameters sat at
 R̂ ≤ 1.002 while the two light components' shape parameters and `source1.n_sersic` still
@@ -396,16 +438,9 @@ Order matters, because an early failure invalidates everything after it.
 **1. SVI health.** Condition number and ELBO tail sd. Ahead of any convergence table
 (§4.2). If this fails, nothing downstream means anything.
 
-**2. Prior-boundary pinning.** For every Uniform-prior parameter, compute the posterior
-median's fractional position in `[low, high]` and flag anything within 2% of a bound:
-
-```python
-frac = (v - lo) / (hi - lo)
-if   frac < 0.02: tag = "  <-- PINNED at lower bound"
-elif frac > 0.98: tag = "  <-- PINNED at upper bound"
-```
-
-Check only bounded priors — a tail value of an unbounded prior is a different phenomenon.
+**2. Prior-boundary pinning.** For every bounded parameter, compute the posterior median's
+fractional position within its support and flag anything within 2% of either end. Check only
+bounded priors — a tail value of an unbounded prior is a different phenomenon.
 **Automate this.** In DESI238 two parameters pinned in round 1 and I noticed one by eye;
 the other (`source.n_sersic` at its *lower* bound 0.5) went unrecorded for a full round.
 A Sérsic index has pinned at that 0.5 floor in all three rounds. Pinning matters twice
@@ -439,11 +474,43 @@ structure tells you what to add. Look at azimuthally binned residuals about each
 centre, and at the residual in physically meaningful regions (core, arcs) separately —
 global χ²ᵥ 1.302 concealed a core χ² of 7.09.
 
+**5b. Agreement across independent kernels.** If you have run more than one sampler off the
+same surrogate (§4.3), check they land in the same place. DESI238's mass parameters agreed
+across HMC, MAMS and MCLMC to ≤ 0.00004" on θ_E — far inside any single run's posterior width.
+This is the check that the *sampling* is not the thing setting your answer, and it is nearly
+free once you have the runs. It does not validate the surrogate, which is common to all of
+them; only a re-run of MAP+SVI does that.
+
 **6. A physical cross-check of the headline quantity.** Compare θ_E against the observed
 image geometry — I kept the four measured clump radii (1.06, 1.25, 1.64, 2.11 arcsec) in
 the priors module specifically so the diagnostic script could assert the θ_E posterior sat
 sensibly among them. An inference number that has never been checked against the picture is
 not yet a measurement.
+
+**7. Closed-form invariants on any geometry you derive.** This is the cheapest check in the
+list and it caught the worst bug of the port.
+
+I wrote a finite-difference critical-curve finder, ran it on a fitted EPL with γ = 2.53, got
+*two* critical curves, and confidently wrote up the inner one as a real feature caused by the
+divergent deflection at the origin for γ > 2. The human's correction was one line:
+
+> *"gamma greater than 2 should only have one critical curve."*
+
+That is checkable in closed form. The radial eigenvalue of a circular EPL is
+`1 − (2−γ)(θ/θ_E)^(1−γ)`, which vanishes only where `(θ/θ_E)^(1−γ) = 1/(2−γ)`. For γ ≥ 2 the
+right-hand side is non-positive and there is **no radial critical curve at all**. So the inner
+curve was not a physical consequence of γ > 2 — it was **manufactured by my own contour finder**
+tripping over the `α ~ θ^(2−γ)` singularity at the origin.
+
+Note how well it hid. The same code recovered θ_E to 2e-4 arcsec, so every quantitative check
+I had passed. Only a *qualitative* invariant — how many curves there should be — exposed it.
+
+> Write down the invariants your derived quantities must satisfy — how many critical curves
+> a given mass slope admits, whether a caustic lies inside its critical curve, whether a
+> magnification has the right sign, whether the enclosed mass rises monotonically — and assert
+> them. They cost nothing, they need no reference implementation, and they catch the class of
+> bug that gets the headline number right and the geometry wrong. Make the check fail loudly
+> rather than print a caveat next to a figure nobody will re-examine.
 
 ### On residual maps and σ maps
 
@@ -525,66 +592,74 @@ up to "confirmed" is the single easiest way to lose a reader's trust permanently
 
 ---
 
-## 7. Infrastructure that pays for itself within one round
+## 7. Tools, records, and provenance
 
-**Check for a newer upstream release before you write a single compatibility shim.** The
-vendored GIGA-Lens copy in this repository does not run under JAX 0.11, so I wrote a
-`compat.py` full of monkeypatches — a pmap-free HMC, several API fixes — and carried it
-through three rounds. **Newer versions of GIGA-Lens run on JAX 0.11.0 natively.** The
-entire shim layer was avoidable work, and every line of it is surface area for exactly the
-silent failures this guide is about (`hmc_single_device`'s float32 covariance inverse, the
-subject of §4.2, lives in that file).
+**Do not start patching a package until you have checked whether it is simply out of date.**
+I wrote and carried a compatibility layer for three rounds against an incompatibility that
+had already been fixed upstream — entirely avoidable work, and every line of it was surface
+area for the silent failures this guide is about. "The version in front of me is broken" and
+"this package is broken" are different claims, and only the second justifies patching. Ask
+the human whether the copy you have is pinned deliberately or just old; they may not know it
+is stale either.
 
-The generalizable rule: when a vendored package fails against your environment, spend five
-minutes on `git log`, the upstream releases page, and the changelog *before* concluding you
-must patch it. "The version in front of me is broken" and "this package is broken" are
-different claims, and only the second justifies writing shims. Ask the human whether the
-vendored copy is pinned deliberately or just old — they may not know it is stale either.
+**Use the library's implementation of anything numerical, and go looking for it first.** I
+hand-rolled a critical-curve and caustic finder — finite differences, a Jacobian determinant,
+a heuristic for the plot window. The human's redirect was one line: *"[the package] contains
+some analysis functions. You can use these instead of your homegrown ones."* The library's
+version was tested against its own ray trace. Mine was not merely redundant: it is what
+invented the phantom critical curve of §5. The whole problem was self-inflicted.
 
-**If you do need shims, isolate them.** One module, each patch commented with why it
-exists, kept outside the vendored source so you can state exactly what you changed and
-delete the lot when you upgrade.
+> A hand-rolled version of something the library already has is not just wasted effort — it is
+> **unvalidated**. The library's version has tests, usually against an independent reference
+> implementation. Yours has your confidence.
 
-**Separate the layers.** Data loading, prior construction, framework shims, orchestration,
-and diagnostics in five files that do not do each other's jobs.
+This matters more in lens modelling than in most fields, because the quantities involved —
+deflection fields, critical curves, caustics, magnifications — are easy to compute *almost*
+right and very hard to eyeball.
 
-**Checkpoint each stage independently and make resume re-validate.** A crash in HMC must
-not cost you MAP and SVI. And on resume, *recompute* derived quantities rather than trusting
-them: my `--stages svi,hmc` path had to recompute the best-MAP index because checkpoints
-written before the `nanargmax` fix stored the bad one.
+**If the likelihood changes, re-fit — and say in advance what that puts at risk.** I moved
+this work onto a new interface that altered the noise convention: the variance went from
+being recomputed each step from the *simulated* image to being derived once from the
+*observed* one. That is a change to the likelihood, not a refactor. Two things made it
+defensible:
 
-**Record provenance in machine-readable metadata**, written by the fitting script and read
-back by the diagnostic script: every hyperparameter, the seed, the git commit
-(`git rev-parse HEAD`), the prior versions, per-stage timings, and the model configuration.
-Then your diagnostics reconstruct the *exact* model a run used instead of assuming current
-defaults — with an explicit fallback contract for older runs ("`n_source` key absent means
-this predates the revision, so assume 1").
+- **Refuse to reinterpret old checkpoints rather than converting them.** Stored samples that
+  predate the change decode to plausible wrong numbers. A converter would be guesswork
+  presented as data; refusing to read them sends you to the version that can.
+- **Re-fit, and treat the agreement as the result.** θ_E came back 1.480 → 1.478 against a
+  ±0.003" error bar, from a different normalisation, a different parameter ordering and a
+  different sampler. Stated beforehand as the thing at risk, that agreement is evidence about
+  the physics. Stated afterwards, it is just a number that happened to match.
 
-**Write a preflight suite and run it before every real fit.** Mine took ~5 minutes against
-fits that took hours, and each check exists because something once went wrong:
+**Record enough provenance to reconstruct the exact model a run used**: every hyperparameter,
+the seed, the code version, the prior versions, the model configuration. Your diagnostics
+should rebuild the model a run was fitted with rather than assuming today's defaults —
+otherwise re-reading an old run silently reports it under a model it never used.
 
-1. Data conditioning (shapes, dtype, finiteness, PSF sum, corner contamination).
-2. Parameter count and the ordering probe, over every model variant.
-3. Flux-scale check — prior draws render to within 3× of the data peak.
-4. A 20-step MAP smoke test (catches shim breakage before step 1 of a real run).
-5. A 10-step end-to-end MAP → SVI → HMC for plumbing only — explicitly disabling the
-   covariance guard, since 10 SVI steps cannot converge and the check is about shapes and
-   finiteness, not quality.
-6. **A test that the guard itself fires**, asserting it rejects the known-bad run and
-   accepts the known-good ones, with an order-of-magnitude margin either side.
+**Test that your safety checks fire.** The preflight suite in §1 should include an assertion
+that each guard *rejects* a known-bad case and accepts the known-good ones, with an
+order-of-magnitude margin either side. This is the item people skip. A safety check nobody has
+seen fail is a safety check you do not know works.
 
-Item 6 is the one people skip. A safety check nobody has seen fail is a safety check you do
-not know works.
+**Put durable knowledge where the human can read and correct it.** If you keep private notes
+of any kind, do not let them become a second copy of the project's own documentation. I wrote
+seven private entries summarising a modelling round and was told to delete them: every one
+restated what the results file already said. Findings, caveats and procedure belong in the
+versioned write-up, where they are dated, reviewable, and cannot drift out of step with the
+code they describe. **The test: if a human would ever want to read it or correct it, it goes
+in the repository.**
 
-**Keep the measurement scripts that produced your priors.** The DESI238 clump photometry
-lives in `clumps.py`, so the θ_E prior centre traces back to a measurement rather than to
-an assertion in a planning document.
+**Keep the measurement scripts that produced your priors.** My clump photometry is still in
+the repository, so the θ_E prior centre traces back to a measurement rather than to an
+assertion in a planning document. A prior whose provenance you cannot reconstruct is an
+assumption you can no longer defend.
 
-**Write down coordinate conventions where they will be read.** The DESI238 clump position
-angles in the planning table are **array-space** angles (from the +row axis toward +col),
-not sky PA. Converting them through the WCS the standard way puts the markers on empty sky.
-This cost real time and is exactly the kind of thing that is obvious to whoever wrote it
-and invisible to everyone else — including to you, later.
+**Write down coordinate conventions where they will be read.** My clump position angles are
+**array-space** angles, measured from the +row axis toward +col — *not* sky PA. Converting
+them through the WCS the standard way puts every marker on empty sky. This cost real time,
+and it is exactly the kind of thing that is obvious to whoever wrote it and invisible to
+everyone else, including to you three weeks later. Position angle, ellipticity sign, and the
+handedness of the coordinate system are the three that recur.
 
 ---
 
@@ -632,11 +707,17 @@ a bulge–disk degeneracy," and actually short chains), a two-point trend that w
 author name I invented. Each correction made the record more useful. Silently improving a
 number in a later document makes it less.
 
-**Do not accept a validation you have not read.** A subagent reported "max abs diff 0.0, as
+**Do not accept a validation you have not read.** A delegate reported "max abs diff 0.0, as
 expected since both call the same code path." That clause makes the check circular — it
-cannot fail, so it is not evidence. I caught it by reading the code rather than the summary.
+cannot fail, so it is not evidence. I caught it by reading the check rather than the summary.
 Treat any check whose own description explains why it must pass as unrun. This applies to
 your own checks and to anything a delegate hands you.
+
+**If you delegate, verify a delegate's report of *state* against the artifacts.** I was told a
+fit was still running when its process had already died. Whoever or whatever reports to you —
+a collaborator, a job scheduler, another agent — a report about the state of a computation is
+a claim about it, not an observation of it. The output files and their timestamps are the
+truth, and checking them costs seconds.
 
 **Trust the human's physical intuition against your defaults.** I proposed unconditional
 post-hoc relabeling to handle label switching between the two source components. The reply
@@ -653,8 +734,27 @@ parameters failed, and why it does or does not matter for the quantity being rep
 samples plus 1500 SVI steps plus 50 HMC chains is not free, and neither is your own token
 budget. Prefer: cheap preflight before expensive fits; single-variable ablations that
 answer one question each over grand redesigns that answer none cleanly; delegating
-exploratory reading and standard implementation to smaller subagents; and telling the
-human *before* you launch something long, not after.
+exploratory reading and routine implementation where you can; and telling the human *before*
+you launch something long, not after.
+
+**Check the stated goal against the results you already hold before buying more compute.**
+The target was R̂ < 1.01 in every parameter. A 32-chain trial met it — worst 1.003 — and my
+next action was to launch a 128-chain run "for margin" that nobody had asked for. The human
+stopped it with four words: *"Wait, hasn't it already converged?"* Escalating past a
+satisfied criterion is not caution, it is spending someone else's allocation on a goal you
+invented. Re-read the success condition, compare it to the numbers in hand, and if it is met,
+say so and stop.
+
+**When the deciding check is already running, say so instead of guessing its answer.** Asked
+*"Surely seeds don't matter that much...?"*, I said mostly they don't — reasoning from two
+runs, while a five-seed sweep that would settle it was in flight. It came back 2 of 5 passing
+and I had to retract within the same exchange. The honest answer was available and costs
+nothing: *"I don't know yet — the replicate seeds land in about twelve minutes and will tell
+us."* A skeptical question from the human is a prompt to check, not a prompt to reassure, and
+an answer that the pending evidence then contradicts costs more trust than the delay would
+have. This is the mirror image of *trust the human's physical intuition* above: there the
+human's doubt was right about the physics, here it was right about the rigor. Both times the
+doubt was the signal.
 
 **Do not confuse the machine's inventory with your allocation.** `nvidia-smi` showed eight
 GPUs with six idle, so I planned parallel fitting arms. The correction was one sentence:
@@ -701,49 +801,85 @@ useful than reporting agreement as confirmation. **A test that cannot fail is no
 
 ## 9. The short version
 
+**The data (§1)**
+
 1. Measure every likelihood input from the files; record the derivation; test it in preflight.
-2. Background RMS from blank sky in several patches — and keep the spread.
-3. Normalize the PSF. Check its centering. Ask about its scale.
-4. Normalize dtype and byte order once, at load, with an assert.
-5. Interlopers: model them if you can, mask them if you must, crop only when they are far
-   from the arcs — and call a crop what it is, an accepted unmodeled systematic.
-6. Check for a newer upstream release before writing any compatibility shim.
-7. Start simple; add a component only when a *structured* residual demands it; rule out the
+2. Background RMS from blank sky in several separated patches — and keep the spread.
+3. Normalize the PSF. Check its centering. Ask about its scale; it is often not in the file.
+4. Interlopers: model them if you can, mask them if you must, crop only when they are far
+   from the arcs — and call a crop what it is, an accepted unmodelled systematic.
+
+**The model (§2–§3)**
+
+5. Start simple; add a component only when a *structured* residual demands it; rule out the
    boring explanation first.
-8. Calibrate amplitude priors by rendering prior draws, never by reasoning.
-9. Identical priors for exchangeable components; distinct priors for physically distinct ones.
-10. Store checkpoints in physical space; if you store unconstrained samples, version the
-    prior supports, because the bijector is then part of your file format.
-11. `nanargmax`, never `argmax`, over multi-start optimizers.
-12. Check SVI covariance *conditioning* (not positive-definiteness) before reading any R̂.
-13. Elevated R̂: 4× the draws, change nothing else. If it does not fall, work the remedy
-    list — better model, better surrogate, longer chains, different sampler — before
-    concluding the geometry is at fault.
-14. Automate prior-boundary pinning detection at the 2% level. A pinned parameter cannot mix.
-15. Structure in the residual, not magnitude, tells you what to add.
-16. Persistent multimodality is rare; suspect your sampler before your posterior. Detect
+6. Calibrate amplitude priors by rendering prior draws, never by reasoning.
+7. Identical priors for exchangeable components; distinct priors for physically distinct ones.
+8. Know where your profile family stops being valid, and put the prior's floor there.
+9. Store parameters in physical space. If you store unconstrained samples, the prior's
+   *support* becomes part of your file format — version it and never edit one in place.
+10. Never assume the parameter ordering. Derive it, then probe it one coordinate at a time.
+
+**Running the fit (§4)**
+
+11. NaN-aware selection, never bare `argmax`, over multi-start optimizers.
+12. Check the variational covariance's *conditioning* — not its positive-definiteness —
+    before reading any R̂. Passing the guard is a floor; read the ELBO tail sd as quality.
+13. Elevated R̂: 4× the draws, change nothing else. If it does not fall, work the remedy list
+    before blaming the geometry — and at high dimension reach for a **better surrogate and a
+    different kernel before more draws**. Hold the surrogate fixed when comparing samplers.
+14. An R̂ that only just clears the threshold means the budget is too small. Buy draws.
+
+**Diagnostics (§5)**
+
+15. Automate prior-boundary pinning detection at the 2% level. A pinned parameter cannot mix.
+    Move a suspect bound *once*: a parameter that follows it wants a different profile family;
+    one that settles at an interior mode was genuinely prior-limited. And ask whether the
+    component is resolved at all before reading its shape parameter as a morphology.
+16. Structure in the residual, not magnitude, tells you what to add.
+17. Assert closed-form invariants on any geometry you derive — how many critical curves a
+    given slope admits, signs, monotonicity. A phantom critical curve survived every
+    quantitative check I had; only counting them exposed it.
+18. Persistent multimodality is rare; suspect your sampler before your posterior. Detect
     label switching always, correct only if detected.
-17. Check for flux cannibalisation whenever you add a component near the arcs.
-18. Report R̂ with every number. Convergence in all parameters is the goal; a result is
-    preliminarily reportable before you get there if the quoted parameter is converged and
-    you name the ones that are not.
-19. A model-to-model spread is a systematic only if the evidences are comparable. Compute
-    the gap; a decisively rejected model is superseded, not a source of uncertainty.
-20. χ²ᵥ ≈ 1 is not evidence the noise model is right — propagate the noise-scale uncertainty.
-21. Supersede explicitly and date your corrections.
-22. Test that your safety checks fire.
-23. Ask the human what the data cannot tell you — PSF scale, prior philosophy, your actual
-    compute allocation. Label verified versus inferred. Never invent a fact about the person.
-24. A check whose description explains why it must pass has not been run. Read it.
-25. Retract loudly, in the place the claim was made, with a date.
+19. Check for flux cannibalisation whenever you add a component near the arcs.
+
+**Reporting (§6–§7)**
+
+20. Report R̂ with every number. Convergence in all parameters is the goal and is reachable;
+    a result is reportable before you get there if the quoted parameter is converged and you
+    name the ones that are not.
+21. A model-to-model spread is a systematic only if the evidences are comparable. A
+    decisively rejected model is superseded, not a source of uncertainty.
+22. χ²ᵥ ≈ 1 is not evidence the noise model is right — propagate the noise-scale uncertainty.
+23. Supersede explicitly and date your corrections. Report partial validations as partial.
+24. Test that your safety checks fire. Keep the scripts that produced your priors. Write down
+    your coordinate conventions where they will be read.
+
+**The human (§8)**
+
+25. Ask what the data cannot tell you — PSF scale, prior philosophy, your compute allocation.
+    Label verified versus inferred. Never invent a fact about the person.
+26. A check whose description explains why it must pass has not been run. Read it.
+27. Retract loudly, in the place the claim was made, with a date.
+28. Before buying more compute, check whether the stated goal is already met.
+29. If the deciding check is already running, say so rather than guessing its answer.
+30. Durable knowledge goes where the human can read and correct it.
 
 The unifying reason for all of it: **these failures are silent.** None of the real errors in
 this project — the contaminated background estimate, the array-space PA convention, the
 NaN-argmax selection, the prior-version drift, the indefinite mass matrix, the float32
-eigenvalue artifact, the mislabeled progress bar, the non-discriminating falsification
-prior — raised an exception or produced an obviously wrong magnitude. Not one was caught by
-code review or by reasoning a priori. Each was caught by comparing independent runs,
-re-deriving a quantity by a second method, running a deliberate single-variable experiment,
-or chasing a downstream anomaly backwards.
+eigenvalue artifact, the mislabeled progress bar, the non-discriminating falsification prior,
+the phantom critical curve, the dict that impersonated a list — raised an exception or
+produced an obviously wrong magnitude. Not one was caught by code review or by reasoning a
+priori. Each was caught by comparing independent runs, re-deriving a quantity by a second
+method, running a deliberate single-variable experiment, asserting an invariant, or chasing a
+downstream anomaly backwards.
+
+Worth noting which of them a *human* caught, and how cheaply. "The background is contaminated
+by galaxy light." "Gamma greater than 2 should only have one critical curve." "Hasn't it
+already converged?" Each was one sentence, none required reading my code, and each cost me a
+round of work to have missed. §8 is not an afterthought to the technical sections; it is where
+most of the real errors in this project were actually found.
 
 Build the redundant check. The absence of an error message is not evidence of correctness.

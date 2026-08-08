@@ -1,5 +1,13 @@
 # Modelling DESI238 with GIGA-Lens (JAX)
 
+> **Historical document — round 1's plan, kept for how the priors were derived.** Its
+> operational instructions are all obsolete: gigalens is no longer vendored, `compat.py` is
+> deleted (every shim it held was already fixed upstream), and neither
+> `PYTHONPATH=gigalens/src` nor `NCCL_NVLS_ENABLE=0` applies. For how to run anything, see
+> `README.md` and `claude/pipeline/README.md`; for the current result, `RESULTS_v5.md`.
+> What remains useful here is the derivation of the flux-scale and clump priors, which
+> `config.py` cites.
+
 ## Context
 
 Goal: fit a strong-lens model to DESI238 (HST WFC3/IR F140W, `claude/DESI238/`) using the

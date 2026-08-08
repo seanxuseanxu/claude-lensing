@@ -6,6 +6,22 @@ config seam works); this file covers everything specific to *this* system.
 
 Every number below was measured from the files, not read off documentation.
 
+> **Round 5 (`RESULTS_v5.md`, 2026-08-08) is the current result: `theta_E = 1.478 ± 0.003"`,
+> all 36 parameters at R̂ ≤ 1.003.** It is the first fit under the GIGA-Lens scene API, and
+> it reproduces round 4's pre-port 1.480 ± 0.003" to within 0.002" — across a changed
+> likelihood normalisation, a changed parameter ordering, a different sampler and different
+> code. That agreement was the outcome genuinely at risk in the port, so it is evidence, not
+> bookkeeping.
+>
+> **Rounds 1–4 remain unreadable by the current pipeline.** They were fitted with the old
+> `PhysicalModel` / `ForwardProbModel` interface, whose likelihood recomputed the noise map
+> from the *simulated* image each step; the scene API derives a fixed noise map once from the
+> *observed* image. The port also reordered the flat-`z` columns, so those checkpoints decode
+> to different physical values under today's code and `diagnose.rebuild_model` refuses them
+> outright rather than reporting the wrong numbers. To read them, check out the commit before
+> the port. Their `svi.npz` files stay useful at any commit — `verify.py`'s conditioning check
+> replays them, and that statistic does not depend on the parameterisation.
+
 ## The data
 
 | File | Contents |
@@ -46,60 +62,98 @@ Every number below was measured from the files, not read off documentation.
   low. The Sersic profile is there to model those wings; let it.
 - **Crop is `cutout[18:98, 18:98]`.** Puts the deflector centroid (57.48, 57.64) at
   (39.48, 39.64) against an array centre of (39.5, 39.5), and excludes the companion galaxy
-  at ~(11, 11). The exclusion matters: `grep -rn "mask" gigalens/src` returns nothing, so
-  the likelihood runs over every pixel unconditionally and an in-frame companion would be
-  fit as part of the lens system.
+  at ~(11, 11). The exclusion matters because the pipeline sets no mask, so the likelihood
+  runs over every pixel unconditionally and an in-frame companion would be fit as part of the
+  lens system. (The old justification — that gigalens had no masking at all — is obsolete:
+  `ImageData` takes a `mask=`. The pipeline still declines to set one, because which pixels
+  to drop is a per-lens judgement. Cropping remains the choice here.)
 - **`Ie` priors are order 100, not order 1.** `LensSimulator` multiplies by
   `conversion_factor = delta_pix² = 0.004225`, so a unit-`Ie` Sersic pair peaks at 0.083
   e/s against a data peak of 7.22. `verify.py` check 3 guards this.
 
 ### On units
 
-The data is a rate (electrons/s), not counts, which is what `ForwardProbModel`'s
-`sqrt(background_rms² + max(model,0)/exp_time)` expects — the Poisson variance of a rate
-image scales as `rate / exp_time`. Passing `exp_time = EXPTIME` is correct to first order
-only: `NCOMBINE = 3` means coverage varies across the frame, and the WHT map shows coverage
-falling to ~half depth (WHT 150 vs a median 308) within 2.5 px of the deflector. The noise
-is therefore understated exactly where it matters most. `ForwardProbModel` accepts only a
-scalar; the fix, if it proves to matter, is a per-pixel exposure map from the WHT extension,
-which needs a `ForwardProbModel` subclass. **State this in any writeup.**
+The data is a rate (electrons/s), not counts. `ImageData` derives its noise map once, from
+the **observed** image, as `sqrt(background_rms² + clip(image, 0, ∞)/exp_time)` — the Poisson
+variance of a rate image scales as `rate / exp_time`. (The pre-port `ForwardProbModel`
+recomputed the same expression from the *simulated* image every step, which made the variance
+parameter-dependent. That is the likelihood change the port introduced.)
+
+Passing `exp_time = EXPTIME` is correct to first order only: `NCOMBINE = 3` means coverage
+varies across the frame, and the WHT map shows coverage falling to ~half depth (WHT 150 vs a
+median 308) within 2.5 px of the deflector. The noise is therefore understated exactly where
+it matters most. **State this in any writeup.**
+
+**The scene API removes the obstacle that used to make this hard to fix.** `ImageData` accepts
+`background_rms` and `exp_time` as either scalars *or* per-pixel arrays matching the image
+shape, and also takes a fully precomputed `error_map=`. A WHT-derived per-pixel exposure map
+is now a config-and-`data.py` change, not a `ForwardProbModel` subclass. It has not been
+built; it remains the most worthwhile outstanding improvement to the noise model, and
+`RESULTS_v5.md` §9 quotes χ²ᵥ with that caveat attached.
 
 ## Running
 
-```bash
-export PYTHONPATH=gigalens/src:claude/pipeline
-export NCCL_NVLS_ENABLE=0
+gigalens is pip-installed (editable). There is no `PYTHONPATH=gigalens/src` and no
+`NCCL_NVLS_ENABLE=0` any more.
 
-# Pre-flight. ~5 minutes. Do this before spending a GPU-hour.
+```bash
+export PYTHONPATH=claude/pipeline
+
+# Pre-flight. ~5 minutes. Do this before spending a GPU-hour. 18/18 expected.
 CUDA_VISIBLE_DEVICES=0 python claude/pipeline/verify.py --lens DESI238
 
-# Production fit — the bulge+disk, two-source model that RESULTS_v3.md reports.
-CUDA_VISIBLE_DEVICES=0 python claude/pipeline/run_fit.py --lens DESI238 \
-    --label bulgedisk_long --n-source 2 --n-lens-light 2 \
-    --burnin 1000 --num-results 3000 --max-leapfrog 60
+# The surrogate, on all four GPUs, ~21 min. This stage is what buys the convergence.
+python claude/pipeline/run_fit.py --lens DESI238 --label prod_svi \
+    --n-source 2 --n-lens-light 2 --stages map,svi \
+    --n-samples 4096 --map-steps 1500 --n-vi 2048 --svi-steps 12000 --svi-peak-lr 1e-3
+
+# The headline sample, one GPU, ~8 min. Copying the checkpoints in holds the surrogate fixed.
+mkdir -p claude/DESI238/runs/mclmc_long
+cp claude/DESI238/runs/prod_svi/{map,svi}.npz claude/DESI238/runs/mclmc_long/
+CUDA_VISIBLE_DEVICES=0 python claude/pipeline/run_fit.py --lens DESI238 --label mclmc_long \
+    --n-source 2 --n-lens-light 2 --stages hmc --sampler mclmc \
+    --n-hmc 64 --burnin 4000 --num-results 12000
 
 # Diagnostics. The lens is inferred from the run's metadata.json.
-python claude/pipeline/diagnose.py claude/DESI238/runs/bulgedisk_long
+python claude/pipeline/diagnose.py claude/DESI238/runs/mclmc_long
 ```
 
 `--stages` restricts which stages run (`--stages map`, `--stages svi,hmc`, …). Later stages
-load the earlier stages' checkpoints from the output directory, so a crashed HMC can be
+load the earlier stages' checkpoints from the output directory, so a crashed sampler can be
 retried without redoing MAP and SVI.
 
-**One GPU per process.** The multi-device path is broken (see below). Use several GPUs for
-*independent* runs, not for splitting one batch — the model is too small to saturate one
-H200:
+**All four GPUs are usable for one fit.** MAP, SVI and the sampling stage shard across
+`jax.device_count()`, and each floors its batch to a device multiple. The old "one GPU per
+process, the multi-device path is broken" rule died with `compat.py`.
+
+**Use MCLMC, not HMC** (`--sampler {hmc,mams,mclmc}`, default `hmc` for backwards
+compatibility). On this problem MCLMC is ~9× faster per draw and reaches the same worst R̂
+with 1.7× the minimum ESS at two thirds the wall time. See `RESULTS_v5.md` §5.
+
+**3,000 draws is too small a budget here.** Five HMC runs differing only in seed gave worst R̂
+of 1.003 / 1.019 / 1.009 / 1.093 / 1.019 — only 2 of 5 clear R̂ < 1.01, which is what a
+marginal budget looks like. Use the `mclmc_long` budget (64 chains × 12,000 draws) or larger,
+where the margin is wide; if you want R̂ lower still, buy draws. `RESULTS_v5.md` §6.
+
+Running independent seeds concurrently on separate GPUs remains the multimodality check: a
+`theta_E` prior spanning 1.0–2.2" can support distinct solutions fitting different subsets of
+the clumps. If two runs disagree on `theta_E` beyond their quoted uncertainties, report the
+disagreement rather than picking the better-looking one.
 
 ```bash
-CUDA_VISIBLE_DEVICES=0 python claude/pipeline/run_fit.py --lens DESI238 --label seed0 --seed 0 &
-CUDA_VISIBLE_DEVICES=1 python claude/pipeline/run_fit.py --lens DESI238 --label seed1 --seed 1 &
+for s in 0 1 2 3; do
+  CUDA_VISIBLE_DEVICES=$s python claude/pipeline/run_fit.py --lens DESI238 \
+      --label seed$s --seed $s --n-source 2 --n-lens-light 2 &
+done
 wait
 ```
 
-Two seeds is the multimodality check: a `theta_E` prior spanning 1.0–2.2" can support
-distinct solutions fitting different subsets of the clumps, and one batch on one device
-cannot detect that. If two runs disagree on `theta_E` beyond their quoted uncertainties,
-report the disagreement rather than picking the better-looking one.
+Long runs must outlive the shell that launched them. Prefer whatever background-execution
+facility your tooling offers, since it will also notify you when the job exits — polling with
+`sleep` wastes the tail. Failing that, detach by hand:
+`setsid nohup env ... python -u ... > log 2>&1 < /dev/null & disown`. A job backgrounded with
+a bare `&` from a subagent's shell dies with that agent's process group. Always `python -u`; a
+killed job with buffered stdout leaves a log containing nothing diagnostic.
 
 The falsification run — fit the inner three clumps only, and ask whether the E blob is a
 counter-image or an interloper:
@@ -111,18 +165,46 @@ CUDA_VISIBLE_DEVICES=0 python claude/pipeline/run_fit.py --lens DESI238 \
 
 ## Results
 
-Four rounds have run. `RESULTS.md` covers round 1 (single Sersic source, 22 params);
+Five rounds have run. `RESULTS.md` covers round 1 (single Sersic source, 22 params);
 `RESULTS_v2.md` covers round 2 (29 params); `RESULTS_v3.md` covers round 3 (`twosource_v2`
 at 29 params and `bulgedisk` at 36). Both of the first two carry inline corrections dated
 2026-07-31 — read those before the sections they correct. `RESULTS_v4.md` covers round 4
-(`bn_rational_long`), summarised below. `MODELING_PLAN.md` records how the priors were
-derived from this image's flux scale.
+(`bn_rational_long`), summarised below. **`RESULTS_v5.md` covers round 5 (`mclmc_long`) and
+is the current result.** `MODELING_PLAN.md` records how the priors were derived from this
+image's flux scale.
 
-**`theta_E = 1.480 ± 0.003"` is the quotable value.** Round 4 is the run to cite: it is the
-only one converged at R̂ < 1.1 across all 36 parameters, and gives
-`theta_E = 1.4795 ± 0.0026"` (R̂ 1.001, ESS 66,778). Round 3's `bulgedisk_long` gives
-1.4796 ± 0.0026" — the same number, but with one parameter at R̂ 1.338. Both supersede
-round 1's 1.516 ± 0.002".
+**`theta_E = 1.478 ± 0.003"` is the quotable value**, from round 5's `mclmc_long`:
+`1.4784 ± 0.0025"`, **all 36 parameters at R̂ ≤ 1.003**, min bulk-ESS 18,692, χ²ᵥ 0.968.
+Round 4's pre-port `bn_rational_long` gave 1.4795 ± 0.0026" at R̂ < 1.1, and round 3's
+`bulgedisk_long` 1.4796 ± 0.0026" with one parameter at R̂ 1.338. All three supersede round
+1's 1.516 ± 0.002".
+
+- **The round-4 → round-5 agreement is the port's validation.** 1.480 → 1.478, a shift of
+  0.002" against a ±0.003" error bar, produced by a different likelihood normalisation, a
+  different parameter ordering, a different sampler and different code. The noise convention
+  moved from a parameter-dependent variance to one fixed from the observed image — a real
+  change to the likelihood, not a refactor — so this was the outcome at risk.
+- **R̂ values are not comparable across the port.** Convergence now comes from ArviZ
+  rank-normalized split R̂ via `diagnose_convergence`; the old pipeline used a classic PSRF
+  that over-reports on these marginals. Compare pass/fail against a stated threshold, not the
+  statistic.
+- **What produced the convergence was the preconditioner, not the chain length.** Round 4
+  stalled at worst R̂ 1.338 and more sampling was not the fix. 21 minutes of MAP+SVI on four
+  GPUs (4,096 particles, 1,500 MAP steps; n_vi 2,048, 12,000 SVI steps, peak LR 1e-3) took
+  the SVI covariance condition to 2.3e+06 and the ELBO tail sd to **0.1** — two orders of
+  magnitude better than a healthy 22-parameter run. Every sampler then cleared or nearly
+  cleared the target from that one surrogate. At 36 parameters the surrogate is the binding
+  constraint.
+- **`src1` is unresolved; quote its index as a bound.** `R_sersic = 0.069"` is below the
+  0.065" pixel and `n_sersic` pins at the 0.3 floor in every sampler independently. It carries
+  11% of source flux, sits 0.32" from `src0` inside `src0`'s own `R_sersic` — a knot on the
+  host — and is uncorrelated with `theta_E` (r = 0.018), so the headline is unaffected.
+  Report `n_sersic ≤ 0.37 (prior-limited)`; its position, flux and size are measured and
+  converged.
+- **Use `diagnose.py`'s percentiles, not `dump_params.py`'s mean/sd, for `mclmc_long`.** A
+  suspected in-place mutation in `diagnose_convergence` corrupts one column of the latter.
+  Reported but not independently verified, and it lives in read-only `nanolens` —
+  `RESULTS_v5.md` §9.
 
 - **The 0.036" gap between them is not a systematic.** Round 1 is rejected at ΔBIC ≈ −5294,
   so the gap is a bias that was removed, not an uncertainty that remains. Quote ± 0.003".
@@ -180,7 +262,14 @@ A source `n_sersic` has pinned at its lower floor in every round so far.
 lands at 7.43), and `source.n_sersic` pinned at 0.5 went unnoticed for a full round.
 `diagnose.py` now flags any Uniform-prior parameter within 2% of a bound; check it routinely.
 
-Round 4 tested whether the floor itself was responsible — see below. It was not.
+Round 4 tested whether the floor itself was responsible — see below. It was not. Round 5
+reproduces the pinning under a different likelihood, a different parameter ordering and four
+independent samplers, and adds the physical reading: the pinned component is *unresolved*
+(`R_sersic` 0.069" against a 0.065" pixel). The data want a flatter core than a Sérsic in the
+validated range can give. **Do not lower the floor a third time** — 0.3 is the lowest index
+at which `test_sersic_bn.py` validates the rational-(3,2) `b_n` approximation, so a fitted
+index below it reports a profile-accuracy artefact, not a morphology. The remaining move is a
+different source profile.
 
 ### Round 4: the b_n floor was not what pinned the source
 
@@ -206,24 +295,26 @@ the R̂ < 1.1 convention this is a publishable result.
 b_n leaves the mass model untouched says the Einstein radius is set by arc positions, not by
 source concentration.
 
-## Four JAX 0.11 breakages
+## The JAX 0.11 shim layer is gone
 
-`gigalens.jax.inference` was written against JAX 0.2.24. All four below were reproduced by
-traceback in this environment, not inferred. The fixes live in `claude/pipeline/compat.py`;
-`gigalens/src/**` is not modified.
+Four JAX 0.11 breakages in `gigalens.jax.inference` once required `claude/pipeline/compat.py`
+— a removed `jax.tree_map`, a `float(jnp.nanmin(..., keepdims=True))` `TypeError`, a `pmap`
+sharding failure, and a context-mesh `ValueError` that forced a `pmap`-free HMC. **Every one
+was already fixed upstream.** The shim was avoidable work, it is deleted, and the multi-device
+path it disabled now works. The one piece that survived was never a shim: the SVI-covariance
+conditioning guard, now `claude/pipeline/svi_health.py`. The library still inverts that
+covariance in float32 without checking it.
 
-1. `jax.tree_map` removed → `AttributeError` in `SVI`. Patched.
-2. `float(jnp.nanmin(x, keepdims=True))` → `TypeError` in `MAP`, on step 1. Patched.
-3. `jnp.array(jnp.split(...))` under `pmap` → sharding `ValueError` in `MAP`. **Not
-   patched** — the multi-device path is unused. `require_single_device()` refuses to start
-   rather than dying mid-run.
-4. `HMC`'s `run_chain` is `@pmap`-wrapped while `q_z` is built outside it, so Auto-sharded
-   arrays meet a Manual mesh → context-mesh `ValueError`. This fires **even with one
-   device**, so the guard in (3) is no defence. Worked around by `compat.hmc_single_device`,
-   which reproduces the identical kernel stack without `pmap`.
+The lesson, recorded in `LENS_MODELING_GUIDE.md` §7: check for a newer upstream release
+*before* writing a compatibility shim.
 
-Because of (4), HMC output is `(num_results, n_hmc, n_params)` — draws on axis 0, chains on
-axis 1 — not upstream's 4-D pmap shape.
+**Sampler output layouts differ, and getting one wrong is silent.** `HMC` returns
+`(n_steps, n_devices, n_chains_per_device, n_params)`; `MAMS` and `MCLMC` return
+`(n_chains, num_results, n_params)`, chains first. Determined empirically with tiny runs, not
+from the docs. `run_fit.normalize_hmc_samples` validates each layout against the shape it must
+have and raises otherwise — a silent chain/step swap yields a plausible but wrong split-R̂,
+which is the failure mode that convinces you an unconverged run converged. `hmc.npz` stores
+`(n_chains, n_steps, n_params)` regardless of sampler, because the analysis tools key on it.
 
 ## Reporting
 
@@ -234,6 +325,8 @@ two radial scales are pulling the model apart; `diagnose.py` warns on this. The 
 plot is the normalised residual: coherent arc-shaped structure above ~3σ means the model is
 wrong regardless of R̂.
 
-`report/desi238.tex` is the write-up of `runs/bulgedisk_long`; `make -C report` rebuilds it
-(needs `module load texlive/2024`). It pulls figures from that run directory via
-`\graphicspath` rather than copying them, so it always reflects the run it describes.
+`report/desi238.tex` is the write-up of `runs/bulgedisk_long` — **round 3, and therefore
+superseded**. `make -C report` rebuilds it (needs `module load texlive/2024`). It pulls figures
+from that run directory via `\graphicspath` rather than copying them, so it always reflects the
+run it describes; pointing it at round 5 means changing the run directory and re-checking every
+number, not just the path. Until that is done, quote `RESULTS_v5.md`, not the PDF.

@@ -101,8 +101,19 @@ their reports carry the same confident tone as everything else. One subagent on 
 project validated a change by comparing two code paths that were the same code path, and
 reported the agreement as confirmation.
 
+A second case is worth knowing because it looks like a factual report rather than a judgment.
+A subagent said its fit was still running. It was not — the job had died with the agent's own
+process group minutes earlier. The agent was not being careless; it simply had no more
+visibility into whether its backgrounded job survived than anyone else, and reported its
+intention as a state. **Reports about the state of the machine are claims too.** `nvidia-smi`,
+`ps`, and the timestamps on the output files settle them in seconds.
+
 So: delegate the reading, review the conclusions. Treat a subagent's report as a claim from
 a competent stranger, not as a measurement.
+
+One thing you control that helps: **state the agent's resources in the present tense every
+time you delegate.** A line reading "the GPUs are busy" that was true an hour ago will be
+acted on as though it were true now.
 
 ## 8. Say when the work is good, and be specific about why
 
