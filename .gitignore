@@ -222,3 +222,19 @@ carousel-flythrough/papers/*
 
 # mac
 .DS_Store
+
+# Sampler checkpoints. Large, and regenerable by re-running the fit -- the run's
+# metadata.json records everything needed to reproduce it.
+*.npz
+
+# Exception: verify.py's conditioning check (check 6) replays these six stored SVI
+# covariances, keyed by LensConfig.svi_guard_reference, to assert the guard still
+# fires on a known-diverged run and passes on known-good ones. They are 96 KB of
+# fixed test fixture, not run output, and the statistic does not depend on the
+# parameterisation -- so they stay readable at any commit.
+!claude/DESI238/runs/inner3/svi.npz
+!claude/DESI238/runs/nsersic10/svi.npz
+!claude/DESI238/runs/seed0/svi.npz
+!claude/DESI238/runs/seed1/svi.npz
+!claude/DESI238/runs/twosource/svi.npz
+!claude/DESI238/runs/twosource_v2/svi.npz

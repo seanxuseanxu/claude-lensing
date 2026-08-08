@@ -1,0 +1,36 @@
+{
+  "api": "scene",
+  "lens": "DESI238",
+  "seed": 0,
+  "n_samples": 128,
+  "map_steps": 120,
+  "n_vi": 64,
+  "svi_steps": 600,
+  "n_hmc": 8,
+  "burnin": 10,
+  "num_results": 20,
+  "theta_e_center": 1.5,
+  "theta_e_width": 0.35,
+  "stages": [
+    "map",
+    "svi",
+    "hmc"
+  ],
+  "label": "smoke_2src",
+  "git_commit": "e6b7f571aed350e97fdf005c9a379311ab0939c0",
+  "n_source": 2,
+  "n_lens_light": 2,
+  "lens_light_n_max": 10.0,
+  "n_free_params": 36,
+  "svi_peak_lr": 0.002,
+  "svi_warmup_frac": 0.1,
+  "max_leapfrog": 30,
+  "n_devices": 1,
+  "source_prior_version": 1,
+  "lens_light_prior_version": 2,
+  "timings": {
+    "map": 21.701680660247803,
+    "svi": 17.084083080291748,
+    "hmc": 11.552830934524536
+  }
+}
