@@ -13,17 +13,21 @@ fallback defaults for runs that predate ``metadata.json`` keys.
 
 Two traps specific to *this* figure that don't show up in clumps.py or diagnose.py:
 
-- ``LensSimulator.simulate`` returns a PSF-convolved, average-pooled, conversion-factor-
+- ``SceneSimulator.simulate`` returns a PSF-convolved, average-pooled, conversion-factor-
   scaled image -- but building a single component's contribution means calling
-  ``phys_model.source_light[i].light(...)`` directly, which skips all three of those
-  steps. The pooling and conversion factor are reproduced by hand below so the per-
-  component lensed panels are on the same flux scale as the real model image; PSF
-  convolution is *not* reproduced (see the docstring on ``render_lensed_component``) and
-  the figure says so.
+  ``component.profile.light(...)`` directly, which skips all three of those steps. The
+  pooling and conversion factor are reproduced by hand below so the per-component lensed
+  panels are on the same flux scale as the real model image; PSF convolution is *not*
+  reproduced (see the docstring on ``render_lensed_component``) and the figure says so.
 - The unlensed source-plane view needs its own coordinate grid -- ``sim.img_X/img_Y`` are
   image-plane coordinates. Evaluating ``light()`` on those would silently return a
   correctly-shaped but physically meaningless array (the profile evaluated at the wrong
   place), not an error.
+
+The deflected positions come from ``sim.trace(params)``, which delegates to
+``LensModel.trace_planes`` -- the one ray trace the simulator and the lens-equation solver
+also use. It returns a ``{plane_index: (x, y)}`` dict, so the source plane's coordinates
+are looked up by that plane's index rather than unpacked positionally.
 """
 
 import argparse
@@ -36,11 +40,7 @@ import matplotlib.colors
 import matplotlib.pyplot as plt
 import numpy as np
 
-import compat  # noqa: F401  -- applies JAX 0.11 shims on import
-
 import jax.numpy as jnp
-
-from gigalens.jax.simulator import LensSimulator
 
 import diagnose
 import lenses
@@ -53,7 +53,7 @@ def build_model(run_dir, lens=None):
         f"Model variant: n_source={rm.n_source}, n_lens_light={rm.n_lens_light}, "
         f"source_prior_v{rm.source_prior_version}, lens_light_prior_v{rm.lens_light_prior_version}"
     )
-    return rm.image, rm.sim_config, rm.prior, rm.phys_model, rm.prob_model, rm.n_source, rm.cfg
+    return rm
 
 
 def render_lensed_component(sim, beta_x, beta_y, light_profile, params):
@@ -62,7 +62,7 @@ def render_lensed_component(sim, beta_x, beta_y, light_profile, params):
     ``light_profile.light(beta_x, beta_y, **params)`` alone is at supersampled resolution,
     not PSF-convolved, and not multiplied by ``conversion_factor`` -- so it is not
     comparable to the real model image or to ``diagnose.simulate_from_unconstrained``'s
-    output on its own. This reproduces the two steps of ``LensSimulator.simulate`` that
+    output on its own. This reproduces the two steps of ``SceneSimulator.simulate`` that
     matter for a *per-component* comparison (average-pool by ``sim.supersample``, then
     multiply by ``sim.conversion_factor``) but deliberately skips PSF convolution: the
     kernel mixes flux across components once applied, so a convolved single-component
@@ -82,7 +82,7 @@ def render_lensed_component(sim, beta_x, beta_y, light_profile, params):
 def source_plane_grid(num_pix, half_extent):
     """Return (X, Y) coordinate arrays in arcsec, shape (num_pix, num_pix, 1).
 
-    Mean-centred like ``gigalens.simulator.LensSimulatorInterface.get_coords`` builds the
+    Mean-centred like the simulator's own ``wcs.pixel_grid()`` builds the
     image-plane grid, so that "arcsec from the origin" means the same thing in both
     planes. Y increases with row index here, matching that same convention (row 0 is one
     extreme of the axis, not flipped for image display -- imshow's ``origin="lower"``
@@ -101,28 +101,41 @@ def make_figure(run_dir, out_dir, lens=None):
     third independent render -- this is what the sum-check below verifies is legitimate.
     """
     run_dir = Path(run_dir)
-    image, sim_config, prior, phys_model, prob_model, n_source, cfg = build_model(run_dir, lens=lens)
+    rm = build_model(run_dir, lens=lens)
+    model, cfg, sim_config, n_source = rm.model, rm.cfg, rm.sim_config, rm.n_source
     if n_source != 2:
         raise ValueError(
             f"plot_source.py assumes a 2-row/2-col two-source layout; run has n_source={n_source}"
         )
 
     z_unc, label = diagnose.point_estimate(run_dir)
-    z = jnp.asarray(np.asarray(z_unc).reshape(1, -1))
-    x = prob_model.bij.forward(list(z.T))
-    lens_params, lens_light_params, source_params = x[0], x[1], x[2]
     print(f"Point estimate: {label}")
 
-    sim = LensSimulator(phys_model, sim_config, bs=1)
-    beta_x, beta_y = sim._beta(lens_params)
+    # Unbatched z -> scalar params. The simulator's grid carries a trailing singleton
+    # batch axis that the params broadcast onto, so one instance renders one sample; there
+    # is no bs= argument any more.
+    params = model.constrained(jnp.asarray(np.asarray(z_unc).reshape(-1)))
+    sim = rm.simulator
+
+    src_plane = len(model.planes) - 1
+    src_components = model.planes[src_plane].light
+    # TRAP: params["planes"][i]["light"] is a dict keyed by component index, not a list, so
+    # `zip(src_components, that_dict)` would pair each component with an integer key rather
+    # than its parameters -- and fail somewhere further down, as a TypeError about ints.
+    light_params = params["planes"][src_plane]["light"]
+    source_params = [light_params[j] for j in range(len(light_params))]
+
+    # trace() returns {plane_index: (x, y)}; take the source plane's entry by key rather
+    # than by position, since the dict spans every plane in the scene.
+    beta_x, beta_y = sim.trace(params)[src_plane]
 
     # Source-plane window: cover both fitted centres plus several R_sersic, so a compact
     # component near the edge of a smaller window isn't clipped.
     centers = []
     radii = []
     for p in source_params:
-        cx, cy = float(np.asarray(p["center_x"]).reshape(-1)[0]), float(np.asarray(p["center_y"]).reshape(-1)[0])
-        r = float(np.asarray(p["R_sersic"]).reshape(-1)[0])
+        cx, cy = float(np.asarray(p["center_x"])), float(np.asarray(p["center_y"]))
+        r = float(np.asarray(p["R_sersic"]))
         centers.append((cx, cy))
         radii.append(r)
     half_extent = max(abs(c[0]) + 6 * r for c, r in zip(centers, radii))
@@ -136,14 +149,14 @@ def make_figure(run_dir, out_dir, lens=None):
 
     # Unlensed source-plane light for each component, evaluated on the source-plane grid.
     unlensed = [
-        np.asarray(profile.light(src_X, src_Y, **p)).squeeze()
-        for profile, p in zip(phys_model.source_light, source_params)
+        np.asarray(comp.profile.light(src_X, src_Y, **p)).squeeze()
+        for comp, p in zip(src_components, source_params)
     ]
     # Lensed image-plane contribution for each component, on the pipeline flux scale
     # (pooled + conversion-factor-scaled, not PSF-convolved -- see render_lensed_component).
     lensed = [
-        render_lensed_component(sim, beta_x, beta_y, profile, p)
-        for profile, p in zip(phys_model.source_light, source_params)
+        render_lensed_component(sim, beta_x, beta_y, comp.profile, p)
+        for comp, p in zip(src_components, source_params)
     ]
 
     # Validation 1: per-component lensed contributions (each pooled+scaled independently)
@@ -153,8 +166,8 @@ def make_figure(run_dir, out_dir, lens=None):
     # is wrong, not just imprecise.
     lensed_sum = lensed[0] + lensed[1]
     raw_total = jnp.zeros_like(sim.img_X)
-    for profile, p in zip(phys_model.source_light, source_params):
-        raw_total = raw_total + profile.light(beta_x, beta_y, **p)
+    for comp, p in zip(src_components, source_params):
+        raw_total = raw_total + comp.profile.light(beta_x, beta_y, **p)
     lensed_total_direct = render_lensed_component(
         sim, beta_x, beta_y,
         _IdentityLight(raw_total), {}
@@ -163,15 +176,21 @@ def make_figure(run_dir, out_dir, lens=None):
     print(f"Validation (component sum vs. joint total, source light only): "
           f"max abs diff = {sum_check_max_diff:.3e}")
 
-    # Validation 2: full reconstruction (lens light + source light, PSF-convolved,
-    # pooled, conversion-factor-scaled) against diagnose.simulate_from_unconstrained --
-    # the same call every other diagnostic in this repo trusts as ground truth.
-    im_reference = diagnose.simulate_from_unconstrained(prob_model, phys_model, sim_config, z_unc)
-    sim_full = LensSimulator(phys_model, sim_config, bs=1)
-    x_full = prob_model.bij.forward(list(jnp.asarray(np.asarray(z_unc).reshape(1, -1)).T))
-    im_manual = np.asarray(sim_full.simulate(x_full)).reshape(sim_config.num_pix, sim_config.num_pix)
+    # Validation 2: full reconstruction against diagnose.simulate_from_unconstrained, the
+    # call every other diagnostic in this repo trusts as ground truth.
+    #
+    # Be honest about what this is worth now: pre-port it compared an independently
+    # constructed LensSimulator against diagnose's, and could catch a real disagreement.
+    # Under the scene API both sides go through the same rm.simulator and the same
+    # model.constrained, so it is very nearly tautological and should be expected to come
+    # out at exactly 0.0. It is kept only as a cheap guard that the params dict built here
+    # is the one simulate() accepts -- a shape or plane-indexing mistake above would
+    # surface here rather than as a subtly wrong figure. It is NOT evidence that the
+    # per-component rendering is right; validation 1 is what tests that.
+    im_reference = diagnose.simulate_from_unconstrained(rm, z_unc)
+    im_manual = np.asarray(sim.simulate(params)).reshape(sim_config.num_pix, sim_config.num_pix)
     full_max_diff = float(np.max(np.abs(im_manual - im_reference)))
-    print(f"Validation (manual LensSimulator.simulate vs. diagnose.simulate_from_unconstrained): "
+    print(f"Validation (manual SceneSimulator.simulate vs. diagnose.simulate_from_unconstrained): "
           f"max abs diff = {full_max_diff:.3e}")
 
     fig_path = _draw_figure(

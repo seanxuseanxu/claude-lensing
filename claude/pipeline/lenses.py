@@ -122,9 +122,6 @@ class LensConfig:
             is array-space** -- measured from the +row axis toward +col within the crop --
             not sky PA. Converting these through the image WCS the standard way (North
             through East) puts the markers on empty sky.
-        legacy_source_prior: an earlier ``source_prior``, kept verbatim so runs fitted with
-            it stay readable. Only meaningful alongside a legacy prior version.
-        legacy_lens_light_prior: likewise for the deflector.
         companion_max: upper bound on the brightest pixel in the crop's corner, in the
             image's units. gigalens has no pixel masking, so a companion galaxy inside the
             frame is fitted as if it were part of the lens system. ``verify.py`` asserts
@@ -155,8 +152,6 @@ class LensConfig:
     crop: Optional[Tuple[slice, slice]] = None
     centroid_pix: Optional[Tuple[float, float]] = None
     clumps: Mapping[str, Tuple[float, float]] = field(default_factory=dict)
-    legacy_source_prior: Optional[SersicPrior] = None
-    legacy_lens_light_prior: Optional[SersicPrior] = None
     companion_max: Optional[float] = None
     svi_guard_reference: Mapping[str, bool] = field(default_factory=dict)
     parent_frame: Optional[str] = None

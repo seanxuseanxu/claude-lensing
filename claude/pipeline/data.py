@@ -53,7 +53,7 @@ def load_psf(cfg):
     the science image. None of those are checkable from a bare PSF file -- most carry no
     WCS or scale keywords -- so they are assumptions about the input, stated here rather
     than silently relied on. Given the same scale, the PSF is not oversampled relative to
-    the science grid and lenstronomy's ``subgrid_kernel`` (called by ``LensSimulator``
+    the science grid and lenstronomy's ``subgrid_kernel`` (called by ``SceneSimulator``
     when ``supersample > 1``) handles the rest.
     """
     psf = np.asarray(fits.getdata(cfg.root / cfg.psf_file)).astype(np.float32)
@@ -66,7 +66,15 @@ def load_psf(cfg):
 
 
 def load(cfg):
-    """Return ``(image, psf, sim_config)`` ready for LensSimulator and ForwardProbModel."""
+    """Return ``(image, psf, sim_config)`` ready for ``SceneSimulator`` and ``ImageData``.
+
+    ``likelihood_precision`` is set explicitly rather than left to default. The default is
+    ``None``, which resolves to float64 and warns (then silently degrades to float32)
+    unless ``JAX_ENABLE_X64=1`` is set. float32 is what every run in ``runs/`` was fitted
+    at, so stating it keeps the port a change of API and not of arithmetic. Raising the
+    pipeline to float64 is a separate, measurable decision -- it roughly doubles forward
+    memory and compute, and it needs x64 enabled process-wide.
+    """
     image = load_image(cfg)
     psf = load_psf(cfg)
     sim_config = SimulatorConfig(
@@ -74,5 +82,6 @@ def load(cfg):
         num_pix=cfg.num_pix,
         supersample=cfg.supersample,
         kernel=psf,
+        likelihood_precision="float32",
     )
     return image, psf, sim_config

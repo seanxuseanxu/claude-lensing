@@ -7,15 +7,27 @@ fourth panel needs the raw lens parameters that ``residual_figure`` never surfac
 because this file is not allowed to modify ``diagnose.py``. The model reconstruction is
 now done by calling ``diagnose.rebuild_model``.
 
-Critical curves and caustics are computed on a fresh, non-supersampled coordinate grid
-built here -- NOT the simulator's internal grid, which is tied to a batch size and is
-supersampled. The Jacobian of the lens mapping is obtained by finite differences
-(``np.gradient``) rather than autodiff, which is simpler to get right by eye but has
-exactly one trap: ``np.gradient``'s ``axis`` argument and "differentiate with respect to
-x or y" are easy to cross up when the grid is built with ``np.meshgrid``'s default
-``indexing='xy'``. That mapping is verified explicitly below (see ``_jacobian_det``)
-rather than assumed, because a transposed Jacobian produces a critical curve that still
-looks plausible -- it is not obviously wrong by eye, only by the theta_E cross-check.
+The normalised residual divides by ``rm.prob.error_map``, the dataset's own per-pixel
+sigma, which ``ImageData`` derives **once from the observed image**. It does not depend on
+the model, so it is not recomputed from ``im_sim`` here. Deriving it from the model image
+instead -- the pre-port convention -- would still produce a plausible-looking residual
+panel with a slightly different chi-squared, which is exactly the kind of wrong that never
+raises.
+
+Critical curves, caustics and the ray-traced cutout border all come from
+``gigalens.jax.analysis``: ``LensSolver.critical_and_caustics`` and
+``image_border_in_source_plane``. This file used to compute det(A) itself, on its own
+grid, with a finite-difference Jacobian. That version got the tangential radius right to
+2e-4 arcsec but also reported a second, non-existent critical curve near the origin (see
+``check_theta_E``), and it carried a trap worth recording now that it is gone:
+``np.gradient`` differentiates axis 0 first, so under
+``np.meshgrid``'s default ``indexing='xy'`` it returns ``(d/dy, d/dx)``, the opposite of
+what the variable names suggest. Getting it backwards transposes the Jacobian and yields a
+critical curve that still looks entirely plausible -- wrong only by the theta_E
+cross-check, which is why that check is kept below even though the curve now comes from
+the library. ``LensSolver`` uses forward-mode AD on ``LensModel.total_deflection`` and is
+pinned bit-identical to the simulator's own trace by gigalens' test suite, so it is both
+exact and incapable of drifting from the model that was fitted.
 """
 
 import argparse
@@ -29,104 +41,40 @@ import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.colors import AsinhNorm
 
-import compat  # noqa: F401 -- applies JAX 0.11 shims before gigalens.jax.* imports
-
 import jax.numpy as jnp
 
+from gigalens.jax.analysis import LensSolver, image_border_in_source_plane
 
 import diagnose
 import lenses
 
 
-def build_model(run_dir, lens=None):
-    """Rebuild the model for ``run_dir`` using diagnose.rebuild_model."""
-    rm = diagnose.rebuild_model(run_dir, lens=lens)
-    return rm.prior, rm.phys_model, rm.prob_model, rm.sim_config, rm.image, rm.cfg
-
-
-def _deflection(phys_model, lens_params, Xg, Yg):
-    """Sum ``lens.deriv`` over ``phys_model.lenses`` on an arbitrary (Xg, Yg) grid.
-
-    Mirrors ``LensSimulator._beta``'s loop exactly, but takes plain numpy grids instead
-    of the simulator's fixed, supersampled ``img_X``/``img_Y`` -- this needs its own
-    grid, sized for the critical curve rather than the 80x80 image.
-    """
-    ax = np.zeros_like(Xg)
-    ay = np.zeros_like(Xg)
-    for lens, p in zip(phys_model.lenses, lens_params):
-        fx, fy = lens.deriv(jnp.asarray(Xg), jnp.asarray(Yg), **p)
-        ax = ax + np.asarray(fx)
-        ay = ay + np.asarray(fy)
-    return ax, ay
-
-
-def _jacobian_det(Xg, Yg, ax, ay, dx):
-    """det(A), A = I - d(alpha)/d(theta), by finite differences.
-
-    TRAP: ``Xg, Yg = np.meshgrid(x, y)`` (default ``indexing='xy'``) makes array axis 0
-    range over y and axis 1 range over x -- i.e. ``Xg[i, j] = x[j]``, ``Yg[i, j] = y[i]``.
-    ``np.gradient(f, dx)`` with no ``axis`` argument differentiates axis 0 first, axis 1
-    second, so ``np.gradient(ax, dx)`` returns ``(d(ax)/dy, d(ax)/dx)`` in that order --
-    the OPPOSITE of what the variable names suggest at a glance. Get this backwards and
-    the Jacobian is transposed: the resulting curve still looks like a plausible critical
-    curve (same rough size and shape for a mildly elliptical lens) but its radius drifts
-    from theta_E, which is exactly the cross-check this file insists on below.
-
-    Verified concretely for this file's grid convention (checked, not assumed): with
-    ``indexing='xy'``, ``d/dy`` is the axis-0 derivative and ``d/dx`` is the axis-1
-    derivative, matching ``np.gradient``'s default order one-to-one.
-    """
-    day_dy, day_dx = np.gradient(ay, dx, dx)
-    dax_dy, dax_dx = np.gradient(ax, dx, dx)
-    a11 = 1 - dax_dx
-    a22 = 1 - day_dy
-    a12 = -dax_dy
-    a21 = -day_dx
-    return a11 * a22 - a12 * a21
-
-
-def critical_curves_and_caustics(phys_model, lens_params, half_extent=3.0, n=600):
-    """Return ``(Xg, Yg, detA, curves, caustics)``.
-
-    ``curves`` and ``caustics`` are lists of ``(N, 2)`` arrays, one per disjoint contour
-    segment of ``detA = 0``, in (x, y) arcsec. Caustics are each curve vertex mapped
-    through ``beta = theta - alpha(theta)``, with ``alpha`` recomputed directly at the
-    vertices (cheap, and exact -- no interpolation error from the coarser detA grid).
-    """
-    axis = np.linspace(-half_extent, half_extent, n, dtype=np.float64)
-    dx = axis[1] - axis[0]
-    Xg, Yg = np.meshgrid(axis, axis)  # indexing='xy': Xg varies along axis 1, Yg along axis 0
-    ax, ay = _deflection(phys_model, lens_params, Xg, Yg)
-    detA = _jacobian_det(Xg, Yg, ax, ay, dx)
-
-    fig_tmp, ax_tmp = plt.subplots()
-    cs = ax_tmp.contour(Xg, Yg, detA, levels=[0.0])
-    curves = [seg for segs in cs.allsegs for seg in segs if len(seg) > 2]
-    plt.close(fig_tmp)
-
-    caustics = []
-    for curve in curves:
-        cx, cy = curve[:, 0], curve[:, 1]
-        vax, vay = _deflection(phys_model, lens_params, cx, cy)
-        caustics.append(np.stack([cx - vax, cy - vay], axis=-1))
-
-    return Xg, Yg, detA, curves, caustics
-
-
 def curve_radius(curve, center):
-    """Mean distance of a curve's vertices from ``center`` (arcsec)."""
-    r = np.hypot(curve[:, 0] - center[0], curve[:, 1] - center[1])
-    return float(np.mean(r))
+    """Mean distance of a curve's vertices from ``center`` (arcsec).
+
+    ``curve`` is a ``(xs, ys)`` pair, the form ``LensSolver.critical_and_caustics``
+    returns -- not the ``(N, 2)`` array the hand-rolled contour code used to produce.
+    """
+    xs, ys = curve
+    return float(np.mean(np.hypot(xs - center[0], ys - center[1])))
 
 
-def check_theta_E(curves, center, theta_E):
+def check_theta_E(curves, center, theta_E, gamma=None):
     """Print each critical curve's mean radius against theta_E; identify the tangential
-    one (the larger of the (usually) two curves) and flag loudly if it disagrees by more
-    than 10%.
+    one (the largest) and flag loudly if it disagrees by more than 10%.
 
-    An EPL+shear lens generically produces two critical curves, tangential (outer,
-    larger) and radial (inner, smaller); only the tangential one is expected to track
-    theta_E closely.
+    HOW MANY CURVES TO EXPECT, which is a check in itself. The radial eigenvalue of a
+    circular EPL is ``1 - (2-gamma)(theta/theta_E)^(1-gamma)``, which vanishes only where
+    ``(theta/theta_E)^(1-gamma) = 1/(2-gamma)``. For **gamma >= 2 the right-hand side is
+    non-positive, so there is no radial critical curve at all** -- a gamma > 2 fit must
+    produce exactly ONE curve, the tangential one at theta_E. Two curves are expected
+    only for gamma < 2. An extra inner curve at a radius of order the grid spacing is
+    the signature of a contour finder tripping over the ``alpha ~ theta^(2-gamma)``
+    divergence at the origin, not of real lens structure; this file's earlier
+    finite-difference implementation did exactly that, which is part of why the curves
+    now come from LensSolver.
+
+    Only the tangential curve is expected to track theta_E closely.
     """
     if not curves:
         print("VALIDATION FAILED: no critical curve found at all.")
@@ -134,62 +82,91 @@ def check_theta_E(curves, center, theta_E):
     radii = sorted((curve_radius(c, center) for c in curves), reverse=True)
     tangential = radii[0]
     print(f"Critical curve radii (arcsec, sorted): {['%.4f' % r for r in radii]}")
+    if gamma is not None and gamma >= 2.0 and len(radii) > 1:
+        print(
+            f"VALIDATION FAILED: gamma = {gamma:.3f} >= 2 admits no radial critical "
+            f"curve, so exactly one curve is expected, but {len(radii)} were found. The "
+            f"extra one(s) are a numerical artifact of the deflection's divergence at the "
+            f"origin -- see check_theta_E's docstring. Distrust the caustics."
+        )
     print(f"Tangential (largest) radius = {tangential:.4f}, theta_E = {theta_E:.4f}")
     frac = abs(tangential - theta_E) / theta_E
     if frac > 0.10:
         print(
             f"VALIDATION FAILED LOUDLY: tangential critical-curve radius disagrees with "
-            f"theta_E by {frac * 100:.1f}% (> 10%). The Jacobian orientation is probably "
-            f"wrong -- see _jacobian_det's docstring. DO NOT trust this figure's critical "
-            f"curve / caustics."
+            f"theta_E by {frac * 100:.1f}% (> 10%). DO NOT trust this figure's critical "
+            f"curve / caustics. With the curves coming from LensSolver this is more "
+            f"likely to mean the fit itself is bad (an unconverged run, or a lens "
+            f"centroid far from the light) than a geometry bug."
         )
     else:
         print(f"Validation OK: tangential radius agrees with theta_E to {frac * 100:.2f}%.")
 
 
-def render_source_plane(phys_model, source_params, extent, n=400):
+def source_component_params(params, plane):
+    """Light-component parameter dicts for ``plane``, in component-index order.
+
+    ``model.constrained`` returns ``planes``, ``light`` and ``mass`` as **dicts keyed by
+    integer index**, not lists. Iterating one yields the keys (ints), and ``params["planes"]``
+    does not even iterate in index order -- so a ``for p in ...["light"]`` loop that looks
+    exactly like a list iteration silently hands you integers. Index by ``range`` instead.
+    """
+    light = params["planes"][plane]["light"]
+    return [light[j] for j in range(len(light))]
+
+
+def render_source_plane(model, params, extent, n=400):
     """Render summed source-light surface brightness on a fresh (x, y) grid in the source
     plane -- i.e. calling ``light()`` directly on plain coordinates, not through the
     lens. ``extent = (xmin, xmax, ymin, ymax)`` in arcsec.
+
+    The source plane is the last plane of the scene, and its light components are
+    ``model.planes[-1].light`` with parameters at the matching path in the structured
+    ``params`` dict. Indexing the plane list from the end rather than hardcoding ``1``
+    keeps this correct if a deflector plane is ever inserted.
     """
     xmin, xmax, ymin, ymax = extent
     xs = np.linspace(xmin, xmax, n)
     ys = np.linspace(ymin, ymax, n)
     Xg, Yg = np.meshgrid(xs, ys)  # indexing='xy', consistent with imshow(extent=...) below
     img = np.zeros_like(Xg)
-    for lightModel, p in zip(phys_model.source_light, source_params):
-        img = img + np.asarray(lightModel.light(jnp.asarray(Xg), jnp.asarray(Yg), **p))
+    src = len(model.planes) - 1
+    for j, comp in enumerate(model.planes[src].light):
+        p = params["planes"][src]["light"][j]
+        img = img + np.asarray(comp.profile.light(jnp.asarray(Xg), jnp.asarray(Yg), **p))
     return Xg, Yg, img
 
 
 def make_figure(run_dir, out_dir, lens=None):
-    prior, phys_model, prob_model, sim_config, image, cfg = build_model(run_dir, lens=lens)
+    rm = diagnose.rebuild_model(run_dir, lens=lens)
+    model, cfg, image = rm.model, rm.cfg, rm.image
 
     z_unc, label = diagnose.point_estimate(run_dir)
-    im_sim = diagnose.simulate_from_unconstrained(prob_model, phys_model, sim_config, z_unc)
+    im_sim = diagnose.simulate_from_unconstrained(rm, z_unc)
 
-    x = prob_model.bij.forward(list(jnp.asarray(np.asarray(z_unc).reshape(1, -1)).T))
-    lens_params, lens_light_params, source_params = x[0], x[1], x[2]
-    epl_params = {k: float(np.asarray(v).squeeze()) for k, v in lens_params[0].items()}
+    # Unbatched z -> a structured params dict of plain scalars, which is what both the
+    # finite-difference deflection grid and the source render below want. Passing a
+    # batched (1, n) vector instead would give every parameter a length-1 leading axis and
+    # broadcast the critical-curve grid into a spurious extra dimension.
+    params = model.constrained(jnp.asarray(np.asarray(z_unc).reshape(-1)))
+    epl_params = {k: float(np.asarray(v)) for k, v in params["planes"][0]["mass"][0].items()}
     theta_E = epl_params["theta_E"]
     lens_center = (epl_params["center_x"], epl_params["center_y"])
-
-    # Scalar-ised params for the finite-difference deflection grid (batch size 1 -> plain
-    # floats), and for source rendering (kept as length-1 arrays; light() broadcasts).
-    lens_params_scalar = [
-        {k: float(np.asarray(v).squeeze()) for k, v in p.items()} for p in lens_params
-    ]
 
     npix, delta = cfg.num_pix, cfg.delta_pix
     half_extent_image = npix / 2 * delta
 
-    Xg, Yg, detA, curves, caustics = critical_curves_and_caustics(
-        phys_model, lens_params_scalar, half_extent=half_extent_image, n=600
-    )
-    check_theta_E(curves, lens_center, theta_E)
+    # LensSolver defaults its tracing window to the cutout's own angular extent and its
+    # scale to delta_pix/supersample, so it needs neither here. It reads deflection from
+    # rm.prob's model -- the same object the fit used.
+    solver = LensSolver(rm.prob)
+    curves, caustics = solver.critical_and_caustics(params)
+    check_theta_E(curves, lens_center, theta_E, gamma=epl_params.get("gamma"))
 
-    # --- Panel 3 data: normalised residual, same convention as diagnose.residual_figure ---
-    err_map = np.sqrt(cfg.background_rms ** 2 + np.clip(im_sim, 0, np.inf) / cfg.exp_time)
+    # --- Panel 3 data: normalised residual, same convention as diagnose.residual_figure.
+    # error_map is the dataset's, fixed from the observed image -- not recomputed from
+    # im_sim. See the module docstring. ---
+    err_map = np.asarray(rm.prob.error_map)
     norm_res = (image - im_sim) / err_map
     chi2 = float(np.mean(norm_res ** 2))
     print(f"Reduced chi-squared (mean of normalised-residual^2): {chi2:.4f}")
@@ -197,31 +174,47 @@ def make_figure(run_dir, out_dir, lens=None):
     # --- Panel 4 data: source plane, sized from the fitted source centres/radii and the
     # caustic extent, deliberately NOT sharing axes with the image-plane panels (arcsec
     # scale is similar but the physically relevant window is much smaller). ---
+    src_plane = len(model.planes) - 1
     src_centers = []
     src_radii = []
-    for p in source_params:
-        src_centers.append((float(np.asarray(p["center_x"]).squeeze()),
-                             float(np.asarray(p["center_y"]).squeeze())))
-        src_radii.append(float(np.asarray(p["R_sersic"]).squeeze()))
+    # TRAP: params["planes"][i]["light"] is a dict keyed by component index, not a list --
+    # and params["planes"] itself does not even iterate in index order. Iterating it
+    # directly yields the integer keys, so index explicitly.
+    for p in source_component_params(params, src_plane):
+        src_centers.append((float(np.asarray(p["center_x"])),
+                             float(np.asarray(p["center_y"]))))
+        src_radii.append(float(np.asarray(p["R_sersic"])))
     cxs = [c[0] for c in src_centers]
     cys = [c[1] for c in src_centers]
     pad = max(src_radii) * 4 if src_radii else 0.3
     xmin, xmax = min(cxs) - pad, max(cxs) + pad
     ymin, ymax = min(cys) - pad, max(cys) + pad
-    if caustics:
-        all_caustic = np.concatenate(caustics, axis=0)
-        xmin = min(xmin, np.percentile(all_caustic[:, 0], 1))
-        xmax = max(xmax, np.percentile(all_caustic[:, 0], 99))
-        ymin = min(ymin, np.percentile(all_caustic[:, 1], 1))
-        ymax = max(ymax, np.percentile(all_caustic[:, 1], 99))
+    # The window is widened to the ray-traced image of the cutout border, which answers
+    # the question this panel is actually asking: a source is observable only if one of
+    # its images lands in the cutout, so beta(dR) is the edge of the observable region.
+    # The caustic is a property of the mass model, the border a property of the
+    # observation -- two different questions, and the border is the one that bounds where
+    # a source could be.
+    #
+    # It is also robust in a way a caustic-derived window is not. The border is traced at
+    # the cutout boundary, where the deflection is small and smooth; a caustic is the
+    # image of a critical curve, so any spurious critical curve near the origin (where
+    # alpha ~ theta^(2-gamma) diverges for gamma > 2) maps to an enormous caustic and
+    # would blow the window out. See check_theta_E for why gamma > 2 admits exactly one
+    # real critical curve.
+    border_x, border_y = image_border_in_source_plane(solver, params)
+    xmin = min(xmin, float(border_x.min()))
+    xmax = max(xmax, float(border_x.max()))
+    ymin = min(ymin, float(border_y.min()))
+    ymax = max(ymax, float(border_y.max()))
 
     Xs, Ys, src_img = render_source_plane(
-        phys_model, source_params, (xmin, xmax, ymin, ymax), n=400
+        model, params, (xmin, xmax, ymin, ymax), n=400
     )
 
     _draw(
         out_dir, image, im_sim, norm_res, chi2, label, cfg,
-        Xg, Yg, curves, caustics, lens_center, theta_E,
+        curves, caustics, (border_x, border_y), lens_center, theta_E,
         Xs, Ys, src_img, src_centers, (xmin, xmax, ymin, ymax),
         npix, delta,
     )
@@ -229,7 +222,7 @@ def make_figure(run_dir, out_dir, lens=None):
 
 
 def _draw(out_dir, image, im_sim, norm_res, chi2, label, cfg,
-          Xg, Yg, curves, caustics, lens_center, theta_E,
+          curves, caustics, border, lens_center, theta_E,
           Xs, Ys, src_img, src_centers, src_extent, npix, delta):
     """Build and save the 2x2 figure. Image-plane axes are in arcsec, centred on the
     simulator's coordinate convention (mean coordinate 0,0), matching the grid used for
@@ -275,8 +268,8 @@ def _draw(out_dir, image, im_sim, norm_res, chi2, label, cfg,
     # which is the whole point of putting them side by side.
     ax = axes[0, 1]
     im1 = ax.imshow(im_sim, origin="lower", extent=extent_img, norm=bright_norm)
-    for curve in curves:
-        ax.plot(curve[:, 0], curve[:, 1], color="lime", lw=1.2)
+    for cxs, cys in curves:
+        ax.plot(cxs, cys, color="lime", lw=1.2)
     ax.plot(*lens_center, "+", color="white", ms=12, mew=1.5)
     ax.set_title(f"Model ({label}, asinh) + critical curve")
     plt.colorbar(im1, ax=ax, fraction=0.046, label="e/s")
@@ -303,13 +296,19 @@ def _draw(out_dir, image, im_sim, norm_res, chi2, label, cfg,
                      cmap="viridis", aspect="equal",
                      norm=AsinhNorm(linear_width=max(src_vmax * 1e-3, 1e-8),
                                     vmin=0.0, vmax=src_vmax))
-    for cau in caustics:
-        ax.plot(cau[:, 0], cau[:, 1], color="orange", lw=1.2)
+    for cxs, cys in caustics:
+        ax.plot(cxs, cys, color="orange", lw=1.2)
+    ax.plot(border[0], border[1], color="white", lw=1.2, ls="--")
     for i, (cx, cy) in enumerate(src_centers):
         ax.plot(cx, cy, "x", color="red", ms=10, mew=2)
         ax.annotate(f"src{i}", (cx, cy), color="red", fontsize=9,
                     xytext=(4, 4), textcoords="offset points")
-    ax.set_title("Source plane (asinh) + caustics")
+    ax.set_title("Source plane (asinh) + caustics, dashed = cutout border")
+    # Pin the axes to the computed window: `ax.plot` of a caustic otherwise autoscales the
+    # panel out to its most distant vertex, so choosing a window would have no effect at
+    # all. Any off-window caustic segment runs off the edge, which is the intent.
+    ax.set_xlim(src_extent[0], src_extent[1])
+    ax.set_ylim(src_extent[2], src_extent[3])
     plt.colorbar(im3, ax=ax, fraction=0.046, label="surface brightness (e/s/pix)")
 
     for ax in axes.flat:

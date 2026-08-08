@@ -24,6 +24,11 @@ Two things that silently go wrong if you are not careful:
   ``diagnose.rebuild_model``, which this file calls rather than reimplementing. See
   diagnose.py's module docstring and priors.py's SOURCE_PRIOR_VERSION docs.
 
+The photometry below is a *flux* comparison and never divides by the noise, so nothing
+here depends on the noise convention. If that changes, take the error map from
+``rm.prob.error_map`` -- fixed from the observed image -- rather than recomputing one
+from the model image.
+
 Why azimuthal-median subtraction at all: the deflector's own smooth light dominates the
 image by roughly an order of magnitude over the arc/clump flux, and gigalens fits no mask
 (``grep -rn "mask" gigalens/src`` returns nothing), so raw pixel differences at clump
@@ -41,10 +46,6 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
-
-import compat  # noqa: F401  -- applies JAX 0.11 shims on import
-
-
 
 import diagnose
 import lenses
@@ -132,16 +133,13 @@ def compare(run_dir, out_dir, radius=3.0, lens=None):
     """
     rm = diagnose.rebuild_model(run_dir, lens=lens)
     cfg = rm.cfg
-    image, sim_config, prior, phys_model, prob_model = (
-        rm.image, rm.sim_config, rm.prior, rm.phys_model, rm.prob_model
-    )
 
     z_unc, label = diagnose.point_estimate(run_dir)
     print(f"Point estimate: {label}")
-    im_sim = diagnose.simulate_from_unconstrained(prob_model, phys_model, sim_config, z_unc)
+    im_sim = diagnose.simulate_from_unconstrained(rm, z_unc)
 
     center = cfg.centroid_pix
-    data_sub = azimuthal_median_subtract(image, center)
+    data_sub = azimuthal_median_subtract(rm.image, center)
     model_sub = azimuthal_median_subtract(im_sim, center)
 
     positions = clump_positions(cfg, center)

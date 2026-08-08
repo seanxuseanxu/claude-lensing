@@ -1,8 +1,8 @@
 """Validate gigalens' Sersic constant b_n against its defining relation.
 
-Run directly (pytest is not installed in gigajax6.0):
+Run directly (pytest is not installed in this env):
 
-    PYTHONPATH=gigalens/src JAX_PLATFORMS=cpu python claude/pipeline/test_sersic_bn.py
+    JAX_PLATFORMS=cpu python claude/pipeline/test_sersic_bn.py
 
 **Lenstronomy is not the ground truth here, unlike everywhere else in this repo.**
 ``lenstronomy/LensModel/Profiles/sersic_utils.py:37`` defines b_n as the same asymptotic
@@ -43,11 +43,39 @@ def check(name, ok):
     return ok
 
 
+def bn(n, ratio=2.0):
+    """The b_n the profile ACTUALLY uses, recovered by inverting its own shape function.
+
+    gigalens inlines the rational polynomial at each of its three ``light`` methods rather
+    than exposing a helper, so there is nothing importable to test directly. Measuring it
+    through ``Sersic.light`` is the better test anyway: it exercises the real code path, so
+    it would catch a polynomial that was edited in one of those three places and not the
+    others, which reading a private helper would not.
+
+    With ``e1 = e2 = 0`` and the centre at the origin, ``light(r, 0) / Ie`` is exactly
+    ``exp(-b_n * (r**(1/n) - 1))``, so
+
+        b_n = -ln(light / Ie) / (r**(1/n) - 1).
+
+    ``ratio = 2`` keeps that exponent near 1.5 across the whole n range, well away from
+    both the flat region near r = 1 (where the inversion is ill-conditioned) and float32
+    underflow.
+    """
+    prof = sersic.Sersic(use_lstsq=False)
+    n = np.atleast_1d(np.asarray(n, dtype=np.float64))
+    vals = np.array([
+        float(prof.light(jnp.array(ratio), jnp.array(0.0), R_sersic=1.0,
+                         n_sersic=float(ni), center_x=0.0, center_y=0.0, Ie=1.0))
+        for ni in n
+    ])
+    return -np.log(vals) / (ratio ** (1.0 / n) - 1.0)
+
+
 def test_bn_against_defining_relation():
     """b_n must solve gamma(2n, b_n) = Gamma(2n)/2 across the supported range."""
     print("b_n vs gammaincinv(2n, 1/2):")
     n = np.concatenate([np.linspace(N_LO, 1.0, 40), np.linspace(1.0, N_HI, 60)])
-    got = np.asarray(sersic._bn(jnp.array(n)))
+    got = bn(n)
     err = np.abs(got / gammaincinv(2 * n, 0.5) - 1)
     print(f"    max rel err = {err.max():.2e} at n = {n[err.argmax()]:.2f}")
     return check(f"within {BN_RTOL:.0e} over n in [{N_LO}, {N_HI}]", err.max() < BN_RTOL)
@@ -69,7 +97,7 @@ def test_bn_beats_the_linear_form():
     print("b_n vs the superseded linear form:")
     n = np.linspace(N_LO, N_HI, 100)
     exact = gammaincinv(2 * n, 0.5)
-    new = np.abs(np.asarray(sersic._bn(jnp.array(n))) / exact - 1)
+    new = np.abs(bn(n) / exact - 1)
     old = np.abs((1.9992 * n - 0.3271) / exact - 1)
     print(f"    old max rel err = {old.max():.2e}  (at n = {n[old.argmax()]:.2f})")
     print(f"    new max rel err = {new.max():.2e}  (at n = {n[new.argmax()]:.2f})")
@@ -91,7 +119,7 @@ def test_bn_depends_only_on_n():
     most of the frame, so nothing raised. This is the regression test for that.
     """
     print("b_n is scalar in n:")
-    scalar = np.shape(sersic._bn(jnp.array(1.0))) == ()
+    scalar = np.shape(bn(1.0)) == (1,)
     # Same n, wildly different coordinates -> identical rendered profile up to R.
     prof = sersic.SersicEllipse(use_lstsq=False)
     kw = dict(R_sersic=1.0, n_sersic=1.7, e1=0.0, e2=0.0, Ie=1.0)
