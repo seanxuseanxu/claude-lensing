@@ -1,5 +1,14 @@
 # DESI238 round 4 — an accurate b_n, a lower source floor, and a converged fit
 
+> **Round 4 of 5. Superseded — current result is [`RESULTS_v5.md`](RESULTS_v5.md):
+> `theta_E = 1.478 ± 0.003"`, all 36 parameters at R̂ ≤ 1.003, run `mclmc_long`.**
+> This round: `theta_E = 1.4795 ± 0.0026"` (R̂ 1.001, ESS 66,778, run `bn_rational_long`),
+> the last pre-port result. Round 5 is an independent re-fit under the scene API, not a
+> re-analysis, and it agrees with this number to 0.002" — which is what validates the port.
+> The b_n and source-floor findings below still hold; the checkpoints in
+> `runs/bn_rational_long/` do not, as the column order and noise convention changed
+> (`diagnose.rebuild_model` refuses them).
+
 2026-08-01. One run on one H100, `--seed 0`, ~35 minutes.
 
 | run | params | model | chi²ᵥ | worst Rhat | Rhat > 1.1 | Rhat > 1.01 |

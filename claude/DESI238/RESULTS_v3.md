@@ -1,5 +1,14 @@
 # DESI238 round 3 — the SVI fix, a bulge+disk deflector, and a converged error bar
 
+> **Round 3 of 5. Superseded — current result is [`RESULTS_v5.md`](RESULTS_v5.md):
+> `theta_E = 1.478 ± 0.003"`, all 36 parameters at R̂ ≤ 1.003, run `mclmc_long`.
+> Do not quote this round's number.**
+> This round: `theta_E = 1.480 ± 0.003"` (R̂ 1.001, ESS 94,186, run `bulgedisk_long`) — the
+> first error bar to survive its own diagnostic, though only 26/36 parameters reached
+> R̂ ≤ 1.01. Establishes the 36-parameter bulge+disk model (ΔBIC ≈ −1762) that rounds 4 and
+> 5 both keep, and fixes the round-2 SVI divergence. Superseded on the b_n correction
+> (`RESULTS_v4.md`) and then the scene-API port (`RESULTS_v5.md`).
+
 2026-07-31. Three runs on one H100, `--seed 0`, ~8 minutes each except the last (~28).
 
 | run | params | model | chi²ᵥ | worst Rhat | Rhat > 1.01 |

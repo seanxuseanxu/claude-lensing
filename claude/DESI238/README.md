@@ -173,6 +173,10 @@ at 29 params and `bulgedisk` at 36). Both of the first two carry inline correcti
 is the current result.** `MODELING_PLAN.md` records how the priors were derived from this
 image's flux scale.
 
+[`runs/INDEX.md`](runs/INDEX.md) lists all 21 run directories — which round each belongs
+to, what it was for, and whether its numbers or its checkpoints are still usable. Start there
+rather than opening `metadata.json` files.
+
 **`theta_E = 1.478 ± 0.003"` is the quotable value**, from round 5's `mclmc_long`:
 `1.4784 ± 0.0025"`, **all 36 parameters at R̂ ≤ 1.003**, min bulk-ESS 18,692, χ²ᵥ 0.968.
 Round 4's pre-port `bn_rational_long` gave 1.4795 ± 0.0026" at R̂ < 1.1, and round 3's

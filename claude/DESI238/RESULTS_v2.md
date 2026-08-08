@@ -1,5 +1,13 @@
 # DESI238 fit results, round 2: freed light profile and two-component source
 
+> **Round 2 of 5. Superseded — current result is [`RESULTS_v5.md`](RESULTS_v5.md):
+> `theta_E = 1.478 ± 0.003"`, all 36 parameters at R̂ ≤ 1.003, run `mclmc_long`.
+> No number in this file is quotable: every run here failed its convergence diagnostic.**
+> This round: an ablation establishing that both changes improve the fit (χ²ᵥ 1.837 → 1.302)
+> while the second wrecks convergence (worst R̂ 7.169, 29/29 parameters above 1.01). The
+> cause was an SVI divergence, diagnosed and fixed in `RESULTS_v3.md` — see the
+> "CORRECTED 2026-07-31" section below.
+
 Follows `RESULTS.md`. Two changes, run as an ablation so each is attributable:
 
 | Run | Change | Params | GPU |

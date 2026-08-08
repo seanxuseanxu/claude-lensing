@@ -1,10 +1,12 @@
 # DESI238 fit results
 
-> **Round 1. Fully superseded by `RESULTS_v3.md` (2026-07-31). Do not quote any number
-> from this file.** The N-arc underfit reported here is fixed by a two-component source
-> (`RESULTS_v2.md`), and the core residual by a bulge+disk deflector (`RESULTS_v3.md`).
-> **`theta_E = 1.480 ± 0.003"` (Rhat 1.001, ESS 94,186) is the quotable value**, from
-> `bulgedisk_long`.
+> **Round 1 of 5. Superseded — current result is [`RESULTS_v5.md`](RESULTS_v5.md):
+> `theta_E = 1.478 ± 0.003"`, all 36 parameters at R̂ ≤ 1.003, run `mclmc_long`.
+> Do not quote any number from this file.**
+> This round: `theta_E = 1.516 ± 0.002"` from a 22-parameter model (1 source, 1 lens-light
+> component), rejected by the data at ΔBIC ≈ −5294. The N-arc underfit reported here is
+> fixed by a two-component source (`RESULTS_v2.md`), and the core residual by a bulge+disk
+> deflector (`RESULTS_v3.md`).
 >
 > ~~The theta_E value below (1.516 ± 0.002") is still the quotable one.~~ The round-1
 > model is rejected by the data at Δlog L ≈ +2708 for 14 added parameters,
