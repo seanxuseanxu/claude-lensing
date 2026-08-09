@@ -58,8 +58,8 @@ just wasted effort, it is unvalidated.
 
 Each has its own README with the dataset, the conditioning decisions, and the results.
 
-- `claude/DESI238/` — HST WFC3/IR F140W. Five rounds. **Current result: `theta_E = 1.478 ± 0.003"`, all 36 parameters at R̂ ≤ 1.003** (`RESULTS_v5.md`, run `mclmc_long`), the first fit under the scene API. It reproduces the four pre-port rounds' `1.480 ± 0.003"` to within 0.002" across the changed likelihood normalisation, parameter ordering, sampler and codebase — so the port is validated, but pre-port checkpoints are still unreadable and `diagnose.rebuild_model` refuses them. What produced the convergence was the SVI surrogate, not chain length; use `--sampler mclmc`. See `claude/DESI238/README.md`.
-- `claude/DESI257/`, `claude/DESI234/` — no data yet.
+- `claude/DESI238/` — HST WFC3/IR F140W. Five rounds, converged at R̂ ≤ 1.003 (`RESULTS_v5.md`), the first fit under the scene API. It reproduces the four pre-port rounds' `1.480 ± 0.003"` to within 0.002" across the changed likelihood normalisation, parameter ordering, sampler and codebase — so the port is validated, but pre-port checkpoints are still unreadable and `diagnose.rebuild_model` refuses them. See `claude/DESI238/README.md`.
+- `claude/DESI257/`, `claude/DESI234/` — in progress, see their respective `claude/<LENS>/README.md`.
 
 ## Working notes
 
