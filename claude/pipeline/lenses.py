@@ -122,11 +122,20 @@ class LensConfig:
             is array-space** -- measured from the +row axis toward +col within the crop --
             not sky PA. Converting these through the image WCS the standard way (North
             through East) puts the markers on empty sky.
-        companion_max: upper bound on the brightest pixel in the crop's corner, in the
-            image's units. gigalens has no pixel masking, so a companion galaxy inside the
-            frame is fitted as if it were part of the lens system. ``verify.py`` asserts
-            the corner is below this. ``None`` skips the check, which is the honest
+        companion_max: upper bound on the brightest pixel in each of the crop's four
+            corners, in the image's units. gigalens has no pixel masking by default (though
+            see ``mask_circles`` below), so a companion galaxy inside the frame is fitted as
+            if it were part of the lens system unless masked out. ``verify.py`` asserts the
+            worst corner is below this. ``None`` skips the check, which is the honest
             default for a system whose field has not been inspected.
+        mask_circles: discs to EXCLUDE from the likelihood, as ``(row, col, radius)`` in
+            **crop** pixel coordinates -- i.e. indices into the array ``data.load_image``
+            returns, after ``crop`` has already been applied, not into the parent frame. A
+            pixel is excluded when its centre falls within ``radius`` of ``(row, col)``.
+            ``None`` (the default) fits every pixel in the crop, which is unchanged pipeline
+            behaviour. Use this for a foreground interloper that no square crop can exclude
+            without also clipping the arcs; a crop that alone suffices should still be
+            preferred over a mask.
         svi_guard_reference: ``{run_label: should_pass}`` naming stored runs under
             ``runs/`` whose SVI covariance conditioning is *known* to be healthy or
             diverged. ``verify.py`` asserts the guard classifies each correctly. This is
@@ -153,6 +162,7 @@ class LensConfig:
     centroid_pix: Optional[Tuple[float, float]] = None
     clumps: Mapping[str, Tuple[float, float]] = field(default_factory=dict)
     companion_max: Optional[float] = None
+    mask_circles: Optional[Tuple[Tuple[float, float, float], ...]] = None
     svi_guard_reference: Mapping[str, bool] = field(default_factory=dict)
     parent_frame: Optional[str] = None
     notes: str = ""

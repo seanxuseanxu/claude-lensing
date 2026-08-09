@@ -65,6 +65,39 @@ def load_psf(cfg):
     return np.ascontiguousarray(psf / psf.sum())
 
 
+def build_mask(cfg, shape):
+    """Return a boolean keep-mask (True = keep) from ``cfg.mask_circles``, or ``None``.
+
+    ``None`` when ``cfg.mask_circles`` is ``None`` -- the unchanged-default-behaviour case,
+    so ``ImageData(mask=build_mask(cfg, image.shape))`` is a no-op for every existing
+    config. Each ``(row, col, radius)`` in ``cfg.mask_circles`` is in **crop** pixel
+    coordinates, i.e. indices into the array this shape describes; a pixel is excluded when
+    its centre falls within ``radius`` of ``(row, col)``.
+
+    Raises if a disc lies entirely outside ``shape`` (a config typo, not a no-op -- a mask
+    that silently excludes nothing would hide the mistake) or if the resulting mask keeps
+    no pixels at all.
+    """
+    if cfg.mask_circles is None:
+        return None
+    rows, cols = np.mgrid[0 : shape[0], 0 : shape[1]]
+    mask = np.ones(shape, dtype=bool)
+    for row, col, radius in cfg.mask_circles:
+        disc = (rows - row) ** 2 + (cols - col) ** 2 <= radius**2
+        if not disc.any():
+            raise ValueError(
+                f"{cfg.name}: mask circle (row={row}, col={col}, radius={radius}) lies "
+                f"entirely outside the {shape} crop -- this is a config typo, not a no-op."
+            )
+        mask &= ~disc
+    if not mask.any():
+        raise ValueError(
+            f"{cfg.name}: mask_circles {cfg.mask_circles} exclude every pixel in the "
+            f"{shape} crop; nothing would be left to fit."
+        )
+    return mask
+
+
 def load(cfg):
     """Return ``(image, psf, sim_config)`` ready for ``SceneSimulator`` and ``ImageData``.
 

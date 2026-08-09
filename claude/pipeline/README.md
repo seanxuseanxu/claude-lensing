@@ -3,6 +3,12 @@
 Lens-independent code. Nothing in this directory may name a specific system: everything
 that distinguishes one lens from another lives in `claude/<LENS>/config.py`.
 
+**`KNOWN_ISSUES.md`** in this directory tracks pipeline-level bugs, failure modes and
+cross-lens findings — a metadata provenance bug in `run_fit.py`, an unattributed MCLMC
+frozen-chain failure mode, and a PSF-mismatch checkerboard appearing independently in two
+lenses' residuals. Per-lens results stay in `claude/<LENS>/README.md` / `RESULTS_*.md`; read
+`KNOWN_ISSUES.md` for anything that follows the tooling or the dataset rather than one fit.
+
 It fits through the GIGA-Lens **scene API** -- `LensModel` / `ImageData` / `ProbModel` and
 the free functions `MAP` / `SVI` / `HMC`. gigalens is a pip-installed (editable) package,
 so there is no `PYTHONPATH=gigalens/src` any more.
@@ -62,7 +68,7 @@ attribute the difference.
 |---|---|
 | `lenses.py` | `LensConfig` / `SersicPrior` / `MassPrior`, and `load(name)`. The seam. |
 | `config.py` (per lens) | Every number specific to one system. Not in this directory. |
-| `data.py` | `load(cfg)` -> `(image, psf, sim_config)`. Endian cast, PSF normalisation, precision. |
+| `data.py` | `load(cfg)` -> `(image, psf, sim_config)`. Endian cast, PSF normalisation, precision. `build_mask(cfg, shape)` -> keep-mask from `cfg.mask_circles`, or `None`. |
 | `priors.py` | `build_model(cfg, ...)` -> `LensModel`. Owns all supports. |
 | `run_fit.py` | MAP -> SVI -> sampling stage (`--sampler {hmc,mams,mclmc}`). The only writer. |
 | `verify.py` | Six pre-flight checks, each pinned to a way the fit fails silently. |
@@ -155,9 +161,11 @@ port, or re-fit them.
    - `Ie_median` from a render, not from another lens. The simulator multiplies by
      `delta_pix**2`, so `Ie` is of order 10-100, not 1, and a value copied from a system
      with a different flux scale can be 50x wrong.
-   - `crop` chosen to centre the deflector and exclude companions. `ImageData` does accept
-     a `mask=`, but the pipeline does not set one: masking is a per-lens judgement, so
-     anything left in frame is fitted as part of the system.
+   - `crop` chosen to centre the deflector and exclude companions. If no crop can exclude a
+     companion without also clipping the arcs, `mask_circles` names discs (in crop pixel
+     coordinates) to exclude from the likelihood via `ImageData`'s `mask=`. Masking is a
+     per-lens judgement -- `mask_circles=None` (the default) leaves everything in frame
+     fitted as part of the system, unchanged from before.
 3. Run `verify.py --lens <LENS>`. Check 1 and check 6 will report themselves *skipped*
    until the config supplies `companion_max` and `svi_guard_reference`. A skipped check is
    honest; do not weaken a check to make it pass.

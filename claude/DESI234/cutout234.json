@@ -1,0 +1,52 @@
+{
+  "created_utc": "2026-08-08T21:21:42+00:00",
+  "parent_frame": "final_92_drz.fits",
+  "parent_sha256": "89ed955d6b89991a1fff1ce072c981482fe6129d4bdc27276f87222db3142b1a",
+  "parent_ext": 1,
+  "parent_shape": [
+    1999,
+    2258
+  ],
+  "targname": "DESI-234.4783+14.7232",
+  "filter": "F140W",
+  "exptime": 1197.699462,
+  "ncombine": 3,
+  "delta_pix": 0.0649999999999987,
+  "requested_radec": [
+    234.4783,
+    14.7232
+  ],
+  "wcs_pixel_xy": [
+    1227.5520136279663,
+    1074.5224729828528
+  ],
+  "centroid_box_halfwidth": 12,
+  "centroid_pixel_rowcol": [
+    1071.1270925768692,
+    1227.4692024100752
+  ],
+  "wcs_to_centroid_offset_pix": [
+    -3.3953804059835875,
+    -0.08281121789104873
+  ],
+  "slice": [
+    [
+      1012,
+      1132
+    ],
+    [
+      1168,
+      1288
+    ]
+  ],
+  "size": 120,
+  "centroid_in_cutout_rowcol": [
+    59.127092576869245,
+    59.46920241007524
+  ],
+  "subpixel_offset_rowcol": [
+    -0.372907423130755,
+    -0.03079758992475945
+  ],
+  "peak": 6.629024028778076
+}

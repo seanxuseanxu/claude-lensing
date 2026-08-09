@@ -17,6 +17,7 @@ not.
 
 import argparse
 import sys
+import tempfile
 import traceback
 
 import numpy as np
@@ -29,6 +30,7 @@ from gigalens.jax.inference import HMC, MAP, SVI
 from gigalens.jax.scene_prob_model import ImageData, ProbModel
 
 import data
+import diagnose
 import lenses
 import priors
 import run_fit
@@ -71,14 +73,81 @@ def build(cfg, n_source, n_lens_light):
     model = priors.build_model(
         cfg, n_source=n_source, n_lens_light=n_lens_light
     )
+    mask = data.build_mask(cfg, image.shape)
     ds = ImageData(
         image,
         sim_config,
         background_rms=cfg.background_rms,
         exp_time=cfg.exp_time,
+        mask=mask,
         sees="all",
     )
     return image, sim_config, model, ProbModel(model, ds, mode="forward")
+
+
+def corner_report(image, num_pix, companion_max, mask):
+    """Check all four corners of ``image`` for a companion galaxy's flux.
+
+    gigalens has no pixel masking by default, so a companion galaxy inside the frame is
+    fitted as though it were part of the lens system unless excluded via ``mask_circles``
+    (``ImageData``'s ``mask=``). Whether one is in frame is a fact about this field, so the
+    threshold comes from the config; ``companion_max=None`` means it hasn't been supplied,
+    and the check reports itself skipped rather than passing a check it never ran.
+
+    All four corners are checked, not just lower-left: one system's interloper sits in the
+    upper-left, where a single-corner check is blind. Fails on the worst.
+
+    Returns ``(worst_name, corner_max, note)``; raises ``AssertionError`` if
+    ``companion_max`` is set and exceeded.
+    """
+    q = num_pix // 4
+    corners = {
+        "lower-left": image[:q, :q],
+        "lower-right": image[:q, -q:],
+        "upper-left": image[-q:, :q],
+        "upper-right": image[-q:, -q:],
+    }
+    raw_maxima = {name: float(patch.max()) for name, patch in corners.items()}
+
+    if mask is not None:
+        mask_corners = {
+            "lower-left": mask[:q, :q],
+            "lower-right": mask[:q, -q:],
+            "upper-left": mask[-q:, :q],
+            "upper-right": mask[-q:, -q:],
+        }
+        # A corner with no unmasked pixels at all has nothing to check; treat it as
+        # contributing nothing to the likelihood there.
+        maxima = {
+            name: float(patch[mask_corners[name]].max()) if mask_corners[name].any() else 0.0
+            for name, patch in corners.items()
+        }
+    else:
+        maxima = raw_maxima
+
+    worst_name = max(maxima, key=maxima.get)
+    corner_max = maxima[worst_name]
+    raw_str = ", ".join(f"{n}={v:.3f}" for n, v in raw_maxima.items())
+    checked_str = ", ".join(f"{n}={v:.3f}" for n, v in maxima.items())
+
+    if companion_max is None:
+        note = (
+            f"corner maxima (unmasked): {checked_str} (raw: {raw_str}); "
+            f"no companion_max set -- not checked"
+        )
+    else:
+        assert corner_max < companion_max, (
+            f"{worst_name} corner max {corner_max:.3f} exceeds companion_max "
+            f"{companion_max} -- a companion may be in frame there, and (unless masked) "
+            f"it would be fitted as part of the system. All corners (unmasked): "
+            f"{checked_str}; raw: {raw_str}"
+        )
+        note = (
+            f"worst corner {worst_name} max {corner_max:.3f} < {companion_max} "
+            f"(unmasked: {checked_str}; raw: {raw_str})"
+        )
+
+    return worst_name, corner_max, note
 
 
 @check("1. Data conditioning")
@@ -96,21 +165,8 @@ def check_data(cfg):
     assert abs(psf.sum() - 1.0) < 1e-6, f"psf sums to {psf.sum()}, expected 1"
     assert psf.shape[0] % 2 == 1, "psf must be odd-sized for a centred convolution"
 
-    # gigalens has no pixel masking by default, so a companion galaxy inside the frame is
-    # fitted as though it were part of the lens system. (ImageData does take a `mask=`, so
-    # this is now fixable rather than merely reportable -- but a mask is a per-lens
-    # judgement, not something to introduce silently here.) Whether one is in frame is a
-    # fact about this field, so the threshold comes from the config; a lens that has not
-    # supplied one says so rather than passing a check it never ran.
-    corner_max = float(image[: cfg.num_pix // 4, : cfg.num_pix // 4].max())
-    if cfg.companion_max is None:
-        corner_note = f"corner max {corner_max:.3f} (no companion_max set -- not checked)"
-    else:
-        assert corner_max < cfg.companion_max, (
-            f"corner max {corner_max:.3f} exceeds companion_max {cfg.companion_max} -- "
-            f"a companion may be in frame, and it would be fitted as part of the system"
-        )
-        corner_note = f"corner max {corner_max:.3f} < {cfg.companion_max}"
+    mask = data.build_mask(cfg, image.shape)
+    _, _, corner_note = corner_report(image, cfg.num_pix, cfg.companion_max, mask)
 
     return (f"crop {image.shape} max {image.max():.2f}, psf {psf.shape} sum 1.0, "
             f"{corner_note}")
@@ -375,6 +431,102 @@ def check_svi_guard(cfg):
             f"limit {svi_health.COND_MAX:.0e}, mildest diverged {worst_bad:.1e}")
 
 
+@check("7. Residual chi-squared respects the mask")
+def check_masked_chisq(cfg):
+    """``diagnose.residual_figure`` and ``plot_overview.py`` used to average squared
+    normalised residuals over EVERY pixel, ignoring the fit's boolean mask. Since masked
+    pixels are typically the field's worst residuals (that is why they were masked), this
+    inflated the reported reduced chi-squared badly: DESI234 read 4.225 for a true 1.560,
+    DESI257 read 7.112 for a true 1.533 (2026-08-08). Both call sites are now fixed to sum
+    ``(r/sigma)^2`` over unmasked pixels only, divided by the unmasked count -- the same
+    definition ``ProbModel.log_prob``'s second return value uses.
+
+    This check exercises the actual fixed function, ``diagnose.residual_figure``, rather
+    than reimplementing the formula: it builds a synthetic observation that is the model's
+    own render plus catastrophic outliers at a few pixels, masks exactly those pixels out,
+    and asserts ``residual_figure``'s returned chi2 agrees with ``ProbModel``'s own
+    ``red_chi2`` (the ground truth, per CLAUDE.md's gigalens-is-truth rule) to tight
+    tolerance. It also computes the old, unmasked-mean value directly here -- not through
+    the fixed code -- purely to confirm the synthetic case actually discriminates: if that
+    value did not disagree with the masked one well outside tolerance, this check would
+    still pass under the reverted bug, and would be worthless.
+
+    ``residual_figure`` and ``plot_overview.py``'s panel now share one formula,
+    ``diagnose.masked_chisq``, rather than each hand-writing ``mean(norm_res[keep]**2)``.
+    This check calls that helper directly too (on the same synthetic residual array), so
+    both call sites are covered by construction: nothing here would pass if either had its
+    own, possibly-diverged copy of the formula.
+    """
+    image, sim_config, model, prob = build(cfg, n_source=1, n_lens_light=1)
+    z = model.bijector.inverse(model.prior.sample(1, seed=jax.random.PRNGKey(2)))
+
+    sim = prob.simulators[0]
+    # A batch of 1 squeezes to (H, W) rather than (1, H, W) -- see check 3's note that the
+    # batch axis rides on the params and broadcasts onto a singleton grid axis.
+    im_sim = np.asarray(sim.simulate(model.constrained(z)))
+    if im_sim.ndim == 3:
+        im_sim = im_sim[0]
+
+    # Synthetic "observed" image: the model's own render plus ordinary per-pixel noise,
+    # then a few catastrophic outliers -- the DESI234/257 situation, where an unmodelled
+    # interloper under mask_circles carries the field's largest residuals.
+    rng = np.random.default_rng(0)
+    sigma = max(0.02 * float(np.abs(im_sim).max()), 1e-6)
+    err_map = np.full(image.shape, sigma, dtype=np.float32)
+    obs = (im_sim + rng.normal(scale=sigma, size=im_sim.shape)).astype(np.float32)
+
+    mask = np.ones(image.shape, dtype=bool)
+    for r, c in ((3, 3), (3, 4), (4, 3)):
+        obs[r, c] += 500.0 * sigma  # a 500-sigma outlier: masked, not fit
+        mask[r, c] = False
+    obs = obs.astype(np.float32)
+
+    ds = ImageData(obs, sim_config, error_map=err_map, mask=mask, sees="all")
+    prob2 = ProbModel(model, ds, mode="forward")
+    _, red_chi2_true = prob2.log_prob(z)
+    red_chi2_true = float(np.asarray(red_chi2_true)[0])
+
+    with tempfile.TemporaryDirectory() as tmp:
+        chi2_masked, _ = diagnose.residual_figure(
+            tmp, cfg, model, prob2, obs, err_map, im_sim, "verify-synthetic", z,
+            mask=mask,
+        )
+
+    # The shared helper itself, called directly on the same normalised residual --
+    # exactly what plot_overview.py's panel now does instead of its own copy of the
+    # formula. This is the assertion that makes both call sites covered by construction.
+    norm_res = (obs - im_sim) / err_map
+    chi2_helper, n_kept_helper = diagnose.masked_chisq(norm_res, mask)
+    assert n_kept_helper == int(mask.sum()), (
+        f"masked_chisq counted {n_kept_helper} kept pixels, expected {int(mask.sum())}"
+    )
+    assert abs(chi2_helper - red_chi2_true) < 1e-4, (
+        f"diagnose.masked_chisq gave {chi2_helper:.6f}, ProbModel's red_chi2 gave "
+        f"{red_chi2_true:.6f}"
+    )
+
+    # NOT the fixed code path -- computed here only to show the check would have caught
+    # the bug, by confirming the two definitions genuinely disagree on this synthetic case.
+    chi2_all_pixels = float(np.mean(((obs - im_sim) / err_map) ** 2))
+
+    assert abs(chi2_masked - red_chi2_true) < 1e-4, (
+        f"diagnose.residual_figure gave {chi2_masked:.6f}, ProbModel's red_chi2 gave "
+        f"{red_chi2_true:.6f} -- the masked chi-squared definitions disagree"
+    )
+    discrepancy = abs(chi2_all_pixels - red_chi2_true)
+    assert discrepancy > 0.5, (
+        f"all-pixel chi2 ({chi2_all_pixels:.3f}) is too close to the masked value "
+        f"({red_chi2_true:.3f}, discrepancy {discrepancy:.3f}) for this synthetic case "
+        f"to discriminate the masking bug"
+    )
+
+    return (
+        f"masked chi2 {chi2_masked:.4f} == ProbModel red_chi2 {red_chi2_true:.4f}; "
+        f"unmasked-mean (pre-fix) value {chi2_all_pixels:.4f} differs by "
+        f"{discrepancy:.2f} -- confirms the check discriminates"
+    )
+
+
 def main():
     ap = argparse.ArgumentParser(description="Pre-flight checks for one lens's fit")
     lenses.add_argument(ap, required=True)
@@ -393,6 +545,7 @@ def main():
         check_map(cfg, n_source=n_source, n_lens_light=n_lens_light)
         check_end_to_end(cfg, n_source=n_source, n_lens_light=n_lens_light)
     check_svi_guard(cfg)
+    check_masked_chisq(cfg)
 
     print("\n" + "=" * 72)
     width = max(len(n) for n, _, _ in RESULTS)

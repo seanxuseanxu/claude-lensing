@@ -336,11 +336,13 @@ def main():
     # *simulated* image every step, making the variance parameter-dependent. This is the
     # old BackwardProbModel convention and the only one the scene API offers; it is a real
     # change to the likelihood, not a refactor.
+    mask = data.build_mask(cfg, image.shape)
     ds = ImageData(
         image,
         sim_config,
         background_rms=cfg.background_rms,
         exp_time=cfg.exp_time,
+        mask=mask,
         sees="all",
     )
     prob = ProbModel(model, ds, mode="forward")
@@ -374,6 +376,11 @@ def main():
         "svi_warmup_frac": args.svi_warmup_frac,
         "max_leapfrog": args.max_leapfrog,
         "n_devices": int(jax.device_count()),
+        # Record what the run was actually fitted on. mask_circles is the config's tuple
+        # verbatim (None if unset); n_masked_pixels is the kept-pixel count so a finished
+        # run states how much data went into the likelihood without needing the mask array.
+        "mask_circles": cfg.mask_circles,
+        "n_masked_pixels": int(mask.sum()) if mask is not None else int(image.size),
         # Pin the prior versions explicitly. Checkpoints store unconstrained samples, so
         # reading them back through a different prior support silently yields different
         # physical values -- diagnose.py needs to know which one produced this run.

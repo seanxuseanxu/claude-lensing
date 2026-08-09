@@ -37,10 +37,15 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
+from matplotlib.colors import AsinhNorm
 
 import jax.numpy as jnp
 
-from gigalens.jax.analysis import diagnose_convergence
+from gigalens.jax.analysis import (
+    LensSolver,
+    diagnose_convergence,
+    image_border_in_source_plane,
+)
 from gigalens.jax.scene_prob_model import ImageData, ProbModel
 
 import data
@@ -79,8 +84,9 @@ class RunModel:
     Attributes:
         cfg, image, psf, sim_config, model (``LensModel``), prob (``ProbModel``),
         pnames (``model.z_param_names``), labels (``model.z_labels``), spans, run_cfg (the
-        raw metadata dict), and the resolved variant fields ``n_source``, ``n_lens_light``,
-        ``lens_light_n_max``, ``theta_e_center``, ``theta_e_width``.
+        raw metadata dict), ``mask`` (the keep-mask the fit used, or None), and the
+        resolved variant fields ``n_source``, ``n_lens_light``, ``lens_light_n_max``,
+        ``theta_e_center``, ``theta_e_width``.
     """
 
     def __init__(self, **kw):
@@ -173,11 +179,16 @@ def rebuild_model(run_dir, lens=None, theta_e_center=1.5, theta_e_width=0.35, qu
         source_prior_version=source_prior_version,
         lens_light_prior_version=lens_light_prior_version,
     )
+    # mask_circles comes from the lens config, not the run's metadata.json -- it is a fact
+    # about the field, like the crop, not a per-run choice. A run fitted with a mask and
+    # diagnosed without one would compare different likelihoods.
+    mask = data.build_mask(cfg, image.shape)
     ds = ImageData(
         image,
         sim_config,
         background_rms=cfg.background_rms,
         exp_time=cfg.exp_time,
+        mask=mask,
         sees="all",
     )
     prob = ProbModel(model, ds, mode="forward")
@@ -198,6 +209,7 @@ def rebuild_model(run_dir, lens=None, theta_e_center=1.5, theta_e_width=0.35, qu
         sim_config=sim_config,
         model=model,
         prob=prob,
+        mask=mask,
         pnames=list(model.z_param_names),
         labels=list(model.z_labels or model.z_param_names),
         spans=priors.source_component_spans(model),
@@ -282,46 +294,292 @@ def point_estimate(run_dir):
     raise FileNotFoundError(f"No checkpoints in {run_dir}; expected at least map.npz.")
 
 
-def residual_figure(out_dir, image, err_map, im_sim, label):
-    """Four-panel figure: observed, model, residual, normalised residual.
+def masked_chisq(norm_res, keep):
+    """Reduced chi-squared: mean of ``norm_res**2`` over the ``keep`` (unmasked) pixels.
+
+    This is the one formula both ``residual_figure`` and ``plot_overview.py`` use -- it used
+    to be duplicated by hand in each, and the copy in ``plot_overview.py`` silently kept
+    averaging over every pixel after the mask was fixed here. Matches ``ProbModel``'s second
+    return value, ``Σ(r/σ)² / event_size``, when ``keep`` is the same mask its ``ImageData``
+    was given. Returns ``(chi2, n_kept)``.
+    """
+    keep = np.asarray(keep, dtype=bool)
+    return float(np.mean(norm_res[keep] ** 2)), int(keep.sum())
+
+
+def curve_radius(curve, center):
+    """Mean distance of a curve's vertices from ``center`` (arcsec).
+
+    ``curve`` is an ``(xs, ys)`` pair, the form ``LensSolver.critical_and_caustics``
+    returns -- not an ``(N, 2)`` array.
+    """
+    xs, ys = curve
+    return float(np.mean(np.hypot(xs - center[0], ys - center[1])))
+
+
+def check_theta_E(curves, center, theta_E, gamma=None):
+    """Print each critical curve's mean radius against theta_E; identify the tangential
+    one (the largest) and flag loudly if it disagrees by more than 10%.
+
+    HOW MANY CURVES TO EXPECT is a check in itself. The radial eigenvalue of a circular
+    EPL is ``1 - (2-gamma)(theta/theta_E)^(1-gamma)``, which vanishes only where
+    ``(theta/theta_E)^(1-gamma) = 1/(2-gamma)``. For **gamma >= 2 the right-hand side is
+    non-positive, so there is no radial critical curve at all** -- a gamma > 2 fit must
+    produce exactly ONE curve, the tangential one at theta_E. Two curves are expected
+    only for gamma < 2. An extra inner curve at a radius of order the grid spacing is
+    the signature of a contour finder tripping over the ``alpha ~ theta^(2-gamma)``
+    divergence at the origin, not of real lens structure -- which is why the curves come
+    from ``LensSolver`` rather than a hand-rolled finite-difference Jacobian.
+
+    Only the tangential curve is expected to track theta_E closely.
+    """
+    if not curves:
+        print("VALIDATION FAILED: no critical curve found at all.")
+        return
+    radii = sorted((curve_radius(c, center) for c in curves), reverse=True)
+    tangential = radii[0]
+    print(f"Critical curve radii (arcsec, sorted): {['%.4f' % r for r in radii]}")
+    if gamma is not None and gamma >= 2.0 and len(radii) > 1:
+        print(
+            f"VALIDATION FAILED: gamma = {gamma:.3f} >= 2 admits no radial critical "
+            f"curve, so exactly one curve is expected, but {len(radii)} were found. The "
+            f"extra one(s) are a numerical artifact of the deflection's divergence at the "
+            f"origin -- see check_theta_E's docstring. Distrust the caustics."
+        )
+    print(f"Tangential (largest) radius = {tangential:.4f}, theta_E = {theta_E:.4f}")
+    frac = abs(tangential - theta_E) / theta_E
+    if frac > 0.10:
+        print(
+            f"VALIDATION FAILED LOUDLY: tangential critical-curve radius disagrees with "
+            f"theta_E by {frac * 100:.1f}% (> 10%). DO NOT trust this figure's critical "
+            f"curve / caustics. With the curves coming from LensSolver this is more "
+            f"likely to mean the fit itself is bad (an unconverged run, or a lens "
+            f"centroid far from the light) than a geometry bug."
+        )
+    else:
+        print(f"Validation OK: tangential radius agrees with theta_E to {frac * 100:.2f}%.")
+
+
+def source_component_params(params, plane):
+    """Light-component parameter dicts for ``plane``, in component-index order.
+
+    ``model.constrained`` returns ``planes``, ``light`` and ``mass`` as **dicts keyed by
+    integer index**, not lists. Iterating one yields the keys (ints), and ``params["planes"]``
+    does not even iterate in index order -- so a ``for p in ...["light"]`` loop that looks
+    exactly like a list iteration silently hands you integers. Index by ``range`` instead.
+    """
+    light = params["planes"][plane]["light"]
+    return [light[j] for j in range(len(light))]
+
+
+def render_source_plane(model, params, extent, n=400):
+    """Render summed source-light surface brightness on a fresh (x, y) grid in the source
+    plane -- i.e. calling ``light()`` directly on plain coordinates, not through the
+    lens. ``extent = (xmin, xmax, ymin, ymax)`` in arcsec.
+
+    The source plane is the last plane of the scene, and its light components are
+    ``model.planes[-1].light`` with parameters at the matching path in the structured
+    ``params`` dict. Indexing the plane list from the end rather than hardcoding ``1``
+    keeps this correct if a deflector plane is ever inserted.
+    """
+    xmin, xmax, ymin, ymax = extent
+    xs = np.linspace(xmin, xmax, n)
+    ys = np.linspace(ymin, ymax, n)
+    Xg, Yg = np.meshgrid(xs, ys)  # indexing='xy', consistent with imshow(extent=...) below
+    img = np.zeros_like(Xg)
+    src = len(model.planes) - 1
+    for j, comp in enumerate(model.planes[src].light):
+        p = params["planes"][src]["light"][j]
+        img = img + np.asarray(comp.profile.light(jnp.asarray(Xg), jnp.asarray(Yg), **p))
+    return Xg, Yg, img
+
+
+def residual_figure(out_dir, cfg, model, prob, image, err_map, im_sim, label, z_unc,
+                     mask=None, filename="residuals.png"):
+    """Four-panel figure: observed + critical curve, model + critical curve, unlensed
+    source + caustics, normalised residual.
 
     The normalised-residual panel is the decisive one. Coherent arc-shaped structure above
-    ~3 sigma means the model is wrong regardless of what R-hat says.
+    ~3 sigma means the model is wrong regardless of what R-hat says. The critical curve and
+    caustic overlays are a second, geometric check: the curve should sit right on the arcs
+    it is supposed to be forming, and the source panel should show one compact blob, not a
+    smear -- ``check_theta_E`` below also checks the curve's radius against theta_E
+    numerically, not just by eye.
 
     ``err_map`` is the dataset's own ``ImageData.error_map`` --
     ``sqrt(background_rms^2 + clip(observed, 0, inf) / exp_time)``, fixed from the
     *observed* image. Pre-port runs used a map recomputed from the *simulated* image each
     step, so a chi-squared quoted here is not comparable with one from those runs.
+
+    ``mask`` is the run's keep-mask (True = kept), i.e. ``data.build_mask``'s output and
+    the same array the fit's ``ImageData`` was given. It must be passed whenever the lens
+    config sets ``mask_circles``: masked pixels are excluded from the likelihood, so a
+    chi-squared averaged over them is not the quantity the fit optimised. Masked pixels
+    are typically the *largest* residuals in the frame -- an unmodelled interloper is
+    exactly what gets masked -- so including them inflates the number badly rather than
+    negligibly. Measured on the round-1 fits (2026-08-08), masking ~6.5% of the pixels:
+    DESI234 4.225 -> 1.560, DESI257 7.112 -> 1.533. Both models were being judged mostly
+    on pixels their likelihood never saw.
+
+    With the mask applied this matches ``ProbModel``'s second return value, which is
+    ``Σ(r/σ)²`` over unmasked pixels divided by ``event_size`` (the unmasked count).
+    Masked pixels are rendered in grey (NaN + ``cmap.set_bad``) and excluded from the
+    normalised-residual colour scale, so the figure cannot imply the fit was judged on
+    pixels it never saw.
+
+    Critical curves, caustics and the ray-traced cutout border all come from
+    ``gigalens.jax.analysis``: ``LensSolver.critical_and_caustics`` and
+    ``image_border_in_source_plane``. Nothing here computes det(A) by hand -- a
+    finite-difference Jacobian got the tangential radius right but also reported a second,
+    non-existent critical curve near the origin where ``alpha ~ theta^(2-gamma)`` diverges
+    (see ``check_theta_E``). ``LensSolver`` uses forward-mode AD on
+    ``LensModel.total_deflection`` and is pinned bit-identical to the simulator's own trace
+    by gigalens' test suite, so it is both exact and incapable of drifting from the model
+    that was fitted. ``prob`` must be the ``ProbModel`` built on the *same* ``model``
+    passed here -- ``LensSolver`` reads deflection off it.
+
+    ``z_unc`` is the flat unconstrained parameter vector (or a length-1 batch of one) the
+    point estimate/synthetic draw was taken at; it is turned into the constrained
+    ``params`` dict used for the ray tracing and the source render.
     """
+    image = np.asarray(image)
     err_map = np.asarray(err_map)
     residual = image - im_sim
     norm_res = residual / err_map
 
-    # Reduced chi-squared over the image, matching the ProbModel's second return value.
-    chi2 = float(np.mean(norm_res**2))
+    keep = (np.ones(image.shape, dtype=bool) if mask is None
+            else np.asarray(mask, dtype=bool))
+    n_cut = int(keep.size - keep.sum())
 
-    fig, axes = plt.subplots(2, 2, figsize=(11, 10))
-    vmax = float(np.percentile(image, 99.5))
+    # Reduced chi-squared over the KEPT pixels, matching the ProbModel's second return
+    # value (Σ(r/σ)² / event_size). Averaging over masked pixels would report a
+    # chi-squared for a likelihood that was never evaluated.
+    chi2, _ = masked_chisq(norm_res, keep)
 
-    p0 = axes[0, 0].imshow(image, origin="lower", vmin=0, vmax=vmax)
-    axes[0, 0].set_title("Observed (e/s)")
-    plt.colorbar(p0, ax=axes[0, 0], fraction=0.046)
+    # Grey out the excluded discs rather than drawing them: NaN + set_bad. The colour
+    # scale is fixed (-5, 5 sigma) rather than data-derived, so this greying is what keeps
+    # a masked interloper's huge residual from being implied by the panel at all.
+    cmap = plt.get_cmap("RdBu_r").copy()
+    cmap.set_bad("0.75")
+    norm_res_m = np.where(keep, norm_res, np.nan)
 
-    p1 = axes[0, 1].imshow(im_sim, origin="lower", vmin=0, vmax=vmax)
-    axes[0, 1].set_title(f"Model -- {label}")
-    plt.colorbar(p1, ax=axes[0, 1], fraction=0.046)
+    # Raw lens parameters -- needed for the critical curve / caustic / source panels,
+    # which is the reason this file and plot_overview.py used to be two implementations.
+    params = model.constrained(jnp.asarray(np.asarray(z_unc).reshape(-1)))
+    epl_params = {k: float(np.asarray(v)) for k, v in params["planes"][0]["mass"][0].items()}
+    theta_E = epl_params["theta_E"]
+    lens_center = (epl_params["center_x"], epl_params["center_y"])
 
-    rlim = float(np.percentile(np.abs(residual), 99.5))
-    p2 = axes[1, 0].imshow(residual, origin="lower", cmap="RdBu_r", vmin=-rlim, vmax=rlim)
-    axes[1, 0].set_title("Residual (obs - model, e/s)")
-    plt.colorbar(p2, ax=axes[1, 0], fraction=0.046)
+    # LensSolver defaults its tracing window to the cutout's own angular extent and its
+    # scale to delta_pix/supersample, so it needs neither here.
+    solver = LensSolver(prob)
+    curves, caustics = solver.critical_and_caustics(params)
+    check_theta_E(curves, lens_center, theta_E, gamma=epl_params.get("gamma"))
 
-    p3 = axes[1, 1].imshow(norm_res, origin="lower", cmap="RdBu_r", vmin=-5, vmax=5)
-    axes[1, 1].set_title(rf"Normalised residual  ($\chi^2_\nu$ = {chi2:.2f})")
-    plt.colorbar(p3, ax=axes[1, 1], fraction=0.046, label=r"$\sigma$")
+    npix, delta = cfg.num_pix, cfg.delta_pix
+    half = npix / 2 * delta
+    extent_img = [-half, half, -half, half]
+
+    # Source-plane window: sized from the fitted source centres/radii, then widened to the
+    # ray-traced image of the cutout border. A source is observable only if one of its
+    # images lands in the cutout, so beta(dR) is the edge of the observable region -- the
+    # caustic is a property of the mass model, the border a property of the observation,
+    # and the border is the one that actually bounds where a source could be. It is also
+    # more robust: it is traced at the cutout boundary, where the deflection is small and
+    # smooth, whereas a spurious critical curve near the origin (gamma > 2, see
+    # check_theta_E) maps to an enormous caustic that would blow a caustic-derived window
+    # out.
+    src_plane = len(model.planes) - 1
+    src_centers, src_radii = [], []
+    for p in source_component_params(params, src_plane):
+        src_centers.append((float(np.asarray(p["center_x"])),
+                             float(np.asarray(p["center_y"]))))
+        src_radii.append(float(np.asarray(p["R_sersic"])))
+    cxs = [c[0] for c in src_centers]
+    cys = [c[1] for c in src_centers]
+    pad = max(src_radii) * 4 if src_radii else 0.3
+    xmin, xmax = min(cxs) - pad, max(cxs) + pad
+    ymin, ymax = min(cys) - pad, max(cys) + pad
+    border_x, border_y = image_border_in_source_plane(solver, params)
+    xmin = min(xmin, float(border_x.min()))
+    xmax = max(xmax, float(border_x.max()))
+    ymin = min(ymin, float(border_y.min()))
+    ymax = max(ymax, float(border_y.max()))
+
+    Xs, Ys, src_img = render_source_plane(model, params, (xmin, xmax, ymin, ymax), n=400)
+
+    fig, axes = plt.subplots(2, 2, figsize=(12, 11))
+
+    # asinh stretch for the two image-plane brightness panels. The deflector core can be
+    # decades brighter than the arcs, which are the only part of the image that constrains
+    # the lens; asinh is linear below `linear_width` and logarithmic above, so both stay
+    # visible at once. `linear_width` is tied to the noise (BACKGROUND_RMS), not a
+    # percentile, so the linear region always means "consistent with background" rather
+    # than drifting with how much bright galaxy happens to be in the crop. `vmin` is
+    # slightly negative because real sky has negative pixels; clipping at 0 hides the
+    # noise symmetry that makes an over-subtracted background obvious.
+    vmax = float(np.percentile(image, 99.9))
+    vmin = -5.0 * cfg.background_rms
+    linear_width = 5.0 * cfg.background_rms
+    bright_norm = AsinhNorm(linear_width=linear_width, vmin=vmin, vmax=vmax)
+
+    # Panel 1: observed + critical curve.
+    ax = axes[0, 0]
+    im0 = ax.imshow(image, origin="lower", extent=extent_img, norm=bright_norm)
+    for cx, cy in curves:
+        ax.plot(cx, cy, color="lime", lw=1.2)
+    ax.plot(*lens_center, "+", color="white", ms=12, mew=1.5)
+    ax.set_title("Observed (asinh) + critical curve")
+    plt.colorbar(im0, ax=ax, fraction=0.046, label="e/s")
+
+    # Panel 2: model + critical curve. Shares `bright_norm` with panel 1 on purpose -- a
+    # different stretch between data and model would make them incomparable by eye, which
+    # is the whole point of putting them side by side.
+    ax = axes[0, 1]
+    im1 = ax.imshow(im_sim, origin="lower", extent=extent_img, norm=bright_norm)
+    for cx, cy in curves:
+        ax.plot(cx, cy, color="lime", lw=1.2)
+    ax.plot(*lens_center, "+", color="white", ms=12, mew=1.5)
+    ax.set_title(f"Model -- {label} (asinh) + critical curve")
+    plt.colorbar(im1, ax=ax, fraction=0.046, label="e/s")
+
+    # Panel 3: unlensed source + caustics. Also AsinhNorm, but with its own linear_width --
+    # this is intrinsic surface brightness with no noise in it, so BACKGROUND_RMS is
+    # meaningless here; a small fraction of the peak is the natural choice instead.
+    ax = axes[1, 0]
+    src_vmax = float(np.percentile(src_img, 99.9))
+    im2 = ax.imshow(src_img, origin="lower", extent=[xmin, xmax, ymin, ymax],
+                     cmap="viridis", aspect="equal",
+                     norm=AsinhNorm(linear_width=max(src_vmax * 1e-3, 1e-8),
+                                    vmin=0.0, vmax=src_vmax))
+    for cx, cy in caustics:
+        ax.plot(cx, cy, color="orange", lw=1.2)
+    ax.plot(border_x, border_y, color="white", lw=1.2, ls="--")
+    for i, (cx, cy) in enumerate(src_centers):
+        ax.plot(cx, cy, "x", color="red", ms=10, mew=2)
+        ax.annotate(f"src{i}", (cx, cy), color="red", fontsize=9,
+                    xytext=(4, 4), textcoords="offset points")
+    ax.set_title("Unlensed source (asinh) + caustics, dashed = cutout border")
+    # Pin the axes to the computed window: `ax.plot` of a caustic otherwise autoscales the
+    # panel out to its most distant vertex, so choosing a window would have no effect.
+    ax.set_xlim(xmin, xmax)
+    ax.set_ylim(ymin, ymax)
+    plt.colorbar(im2, ax=ax, fraction=0.046, label="surface brightness (e/s/pix)")
+
+    # Panel 4: normalised residual, mask-aware.
+    ax = axes[1, 1]
+    cut_note = "" if n_cut == 0 else f", {n_cut} px masked"
+    im3 = ax.imshow(norm_res_m, origin="lower", extent=extent_img, cmap=cmap,
+                     vmin=-5, vmax=5)
+    ax.set_title(rf"Normalised residual  ($\chi^2_\nu$ = {chi2:.2f}{cut_note})")
+    plt.colorbar(im3, ax=ax, fraction=0.046, label=r"$\sigma$")
+
+    for ax in axes.flat:
+        ax.set_xlabel("arcsec")
+        ax.set_ylabel("arcsec")
 
     fig.tight_layout()
-    path = Path(out_dir) / "residuals.png"
+    path = Path(out_dir) / filename
     fig.savefig(path, dpi=150, bbox_inches="tight")
     plt.close(fig)
     return chi2, path
@@ -725,9 +983,12 @@ def main():
 
     im_sim = simulate_from_unconstrained(rm, z_unc)
     chi2, res_path = residual_figure(
-        out_dir, rm.image, rm.prob.error_map, im_sim, label
+        out_dir, rm.cfg, rm.model, rm.prob, rm.image, rm.prob.error_map, im_sim, label,
+        z_unc, mask=rm.mask,
     )
-    print(f"Reduced chi-squared at point estimate: {chi2:.3f}")
+    n_kept = rm.image.size if rm.mask is None else int(np.asarray(rm.mask).sum())
+    print(f"Reduced chi-squared at point estimate: {chi2:.3f} "
+          f"(over {n_kept}/{rm.image.size} unmasked pixels)")
     print(f"Residual figure: {res_path}")
 
     # Before Rhat: an ill-conditioned SVI covariance invalidates the HMC output outright,

@@ -30,9 +30,12 @@ here depends on the noise convention. If that changes, take the error map from
 from the model image.
 
 Why azimuthal-median subtraction at all: the deflector's own smooth light dominates the
-image by roughly an order of magnitude over the arc/clump flux, and gigalens fits no mask
-(``grep -rn "mask" gigalens/src`` returns nothing), so raw pixel differences at clump
-locations are swamped by the residual of the *deflector* light, not the clumps. Azimuthal
+image by roughly an order of magnitude over the arc/clump flux, so raw pixel differences at
+clump locations are swamped by the residual of the *deflector* light, not the clumps.
+(A mask does not help here and is not the point: ``ImageData`` does take a ``mask=``, which
+``data.build_mask`` supplies from ``cfg.mask_circles``, but masking excludes interlopers
+from the likelihood -- it does nothing about the deflector's light *under* the arc, which
+is what this subtraction is for.) Azimuthal
 median subtraction removes the axisymmetric part of the deflector without touching
 non-axisymmetric structure (arcs, clumps) -- as long as it's applied identically to data
 and model, which is what makes the resulting ratio meaningful.

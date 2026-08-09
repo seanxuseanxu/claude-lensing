@@ -226,6 +226,10 @@ carousel-flythrough/papers/*
 # Sampler checkpoints. Large, and regenerable by re-running the fit -- the run's
 # metadata.json records everything needed to reproduce it.
 *.npz
+# Same rule, for checkpoints kept aside before a stage is re-run in place (the
+# sampling stage overwrites hmc.npz). A ".npz.bak" suffix does not match "*.npz".
+*.npz.bak
+*.json.bak
 
 # Exception: verify.py's conditioning check (check 6) replays these six stored SVI
 # covariances, keyed by LensConfig.svi_guard_reference, to assert the guard still
