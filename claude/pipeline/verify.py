@@ -6,18 +6,29 @@ that look plausible and are wrong. They are cheap.
 Run from the repo root:
 
     CUDA_VISIBLE_DEVICES=1 PYTHONPATH=claude/pipeline \\
-        python claude/pipeline/verify.py --lens DESI238
+        python claude/pipeline/verify.py --lens DESI238 --n-source 2 --n-lens-light 2
 
-Checks 1 and 6 lean on facts about the specific system -- whether a companion galaxy is in
+Checks 2-4 are parametrised over the model variant (``--n-source``/``--n-lens-light``,
+default 1/1, mirroring ``run_fit.py``'s flags). By default they run once, against the
+variant about to be fitted -- pass ``--all-variants`` to sweep the four variants
+``run_fit.py`` supports instead, which is worth doing after a change to this pipeline
+itself rather than to one lens's config (measured at 210s for the sweep vs. ~75s for one
+variant on DESI238, A100).
+
+Checks 1 and 5 lean on facts about the specific system -- whether a companion galaxy is in
 frame, and which stored runs are known to have diverged. Those come from the lens config
 (``companion_max``, ``svi_guard_reference``) and report themselves skipped when a new lens
 has not yet supplied them. A skipped check is honest; a check silently weakened to pass is
 not.
+
+``claude/pipeline/tests/test_masked_chisq.py`` used to be check 7 here. It asserts a fact
+about pipeline code (that ``diagnose.masked_chisq``/``diagnose.residual_figure`` agree with
+``ProbModel``'s own reduced chi-squared), true independent of which lens is loaded, so it
+moved to the regression-test suite rather than costing 10s of every preflight run.
 """
 
 import argparse
 import sys
-import tempfile
 import traceback
 
 import numpy as np
@@ -30,7 +41,6 @@ from gigalens.jax.inference import HMC, MAP, SVI
 from gigalens.jax.scene_prob_model import ImageData, ProbModel
 
 import data
-import diagnose
 import lenses
 import priors
 import run_fit
@@ -203,14 +213,16 @@ def check_params(cfg, n_source=1, n_lens_light=1):
         f"{float(jnp.max(jnp.abs(z - z_round))):.3e}"
     )
 
-    # Probe the ordering: set one unconstrained coordinate at a time and see which
-    # constrained parameter moves. Exactly one must, and it must be the one named.
+    # Probe the ordering: perturb each unconstrained coordinate and see which constrained
+    # parameter moves. Exactly one must, and it must be the one named. Batched as a single
+    # `forward` call on `eye(n)` rather than n separate calls -- same n perturbations, one
+    # dispatch, since check 2 was the second-most expensive part of the per-variant loop.
     base = model.bijector.forward(jnp.zeros((n,)))
+    moved_batch = model.bijector.forward(jnp.eye(n))
     for i, expected in enumerate(names):
-        moved = model.bijector.forward(jnp.zeros((n,)).at[i].set(1.0))
         found = [
-            k for k in moved
-            if not np.allclose(np.asarray(moved[k]), np.asarray(base[k]))
+            k for k in moved_batch
+            if not np.allclose(np.asarray(moved_batch[k][i]), np.asarray(base[k]))
         ]
         # If two coordinates moved, the last one silently overwriting `found` would let
         # this check pass on a genuinely broken ordering -- so assert exactly one moved.
@@ -260,52 +272,36 @@ def check_simulator(cfg, n_source=1, n_lens_light=1):
             f"(ratio {ratio:.2f}), log_prob finite")
 
 
-@check("4. MAP runs and descends [{n_source}src {n_lens_light}ll]")
-def check_map(cfg, n_source=1, n_lens_light=1):
+@check("4. Short end-to-end MAP -> SVI -> HMC [{n_source}src {n_lens_light}ll]")
+def check_end_to_end(cfg, n_source=1, n_lens_light=1):
+    """MAP -> SVI -> HMC plumbing, plus the MAP-descends assertion this check absorbed.
+
+    A former, separate check (numbered 4 pre-2026-08) ran its own 20-step, 64-particle MAP
+    solely to assert chi-squared descended, then this check ran a second, independent
+    10-step MAP right after it. Since this check already runs a MAP as its first stage,
+    the descent assertion below is checked on *that* MAP instead of a second one -- same
+    claim, once, on a MAP that was going to run anyway.
+    """
     image, sim_config, model, prob = build(cfg, n_source, n_lens_light)
     n = model.num_free_params
 
-    n_steps = 20
+    n_map = 10
     opt = optax.chain(
         optax.scale_by_adam(),
         optax.scale_by_schedule(
-            optax.polynomial_schedule(
-                init_value=-1e-2, end_value=-1e-2 / 3, power=0.5,
-                transition_steps=n_steps,
-            )
+            optax.polynomial_schedule(-1e-2, -1e-2 / 3, power=0.5, transition_steps=n_map)
         ),
     )
-    best_z, best_lp, chisq_hist = MAP(
-        prob, opt, n_samples=64, num_steps=n_steps, output_type="best"
-    )
-    best_z = np.asarray(jax.device_get(best_z))
-    assert best_z.shape == (n,), f"got {best_z.shape}"
-    assert np.isfinite(best_z).all(), "MAP returned a non-finite best particle"
+    best_z, _, chisq_hist = MAP(prob, opt, n_samples=32, num_steps=n_map, output_type="best")
 
     lp0, chi0 = prob.log_prob(
-        model.bijector.inverse(model.prior.sample(64, seed=jax.random.PRNGKey(0)))
+        model.bijector.inverse(model.prior.sample(32, seed=jax.random.PRNGKey(0)))
     )
     best_before = float(jnp.min(chi0))
     best_after = float(np.nanmin(np.asarray(chisq_hist)))
     assert best_after < best_before, (
         f"chi-squared did not improve: {best_before:.1f} -> {best_after:.1f}"
     )
-
-    return f"MAP best_z {best_z.shape}, best chi2 {best_before:.1f} -> {best_after:.1f}"
-
-
-@check("5. Short end-to-end MAP -> SVI -> HMC [{n_source}src {n_lens_light}ll]")
-def check_end_to_end(cfg, n_source=1, n_lens_light=1):
-    image, sim_config, model, prob = build(cfg, n_source, n_lens_light)
-    n = model.num_free_params
-
-    opt = optax.chain(
-        optax.scale_by_adam(),
-        optax.scale_by_schedule(
-            optax.polynomial_schedule(-1e-2, -1e-2 / 3, power=0.5, transition_steps=10)
-        ),
-    )
-    best_z, _, _ = MAP(prob, opt, n_samples=32, num_steps=10, output_type="best")
 
     # SVI(prob_model, start, optimizer, ...) -- start SECOND. The schedule mirrors
     # run_fit.py's warmup-then-decay shape rather than the old ramp-up.
@@ -333,7 +329,7 @@ def check_end_to_end(cfg, n_source=1, n_lens_light=1):
     # The SVI guard is NOT applied here, and only here. Ten SVI steps cannot converge, so
     # this covariance is ill-conditioned by construction (~1e26-1e33 at these sizes) and
     # the production guard rejects it correctly. What this check is for is the plumbing --
-    # shapes, dtypes, the axis normalisation -- not the quality of a 10-step fit. Check 6
+    # shapes, dtypes, the axis normalisation -- not the quality of a 10-step fit. Check 5
     # is what verifies the guard itself.
     num_results, n_hmc = 10, 4
     raw = HMC(
@@ -348,7 +344,7 @@ def check_end_to_end(cfg, n_source=1, n_lens_light=1):
             f"HMC {tuple(samples.shape)} (chains first)")
 
 
-@check("6. SVI covariance guard fires on the known-diverged run")
+@check("5. SVI covariance guard fires on the known-diverged run")
 def check_svi_guard(cfg):
     """The guard must be observed to trigger, not merely to exist.
 
@@ -431,105 +427,23 @@ def check_svi_guard(cfg):
             f"limit {svi_health.COND_MAX:.0e}, mildest diverged {worst_bad:.1e}")
 
 
-@check("7. Residual chi-squared respects the mask")
-def check_masked_chisq(cfg):
-    """``diagnose.residual_figure`` and ``plot_overview.py`` used to average squared
-    normalised residuals over EVERY pixel, ignoring the fit's boolean mask. Since masked
-    pixels are typically the field's worst residuals (that is why they were masked), this
-    inflated the reported reduced chi-squared badly: DESI234 read 4.225 for a true 1.560,
-    DESI257 read 7.112 for a true 1.533 (2026-08-08). Both call sites are now fixed to sum
-    ``(r/sigma)^2`` over unmasked pixels only, divided by the unmasked count -- the same
-    definition ``ProbModel.log_prob``'s second return value uses.
-
-    This check exercises the actual fixed function, ``diagnose.residual_figure``, rather
-    than reimplementing the formula: it builds a synthetic observation that is the model's
-    own render plus catastrophic outliers at a few pixels, masks exactly those pixels out,
-    and asserts ``residual_figure``'s returned chi2 agrees with ``ProbModel``'s own
-    ``red_chi2`` (the ground truth, per CLAUDE.md's gigalens-is-truth rule) to tight
-    tolerance. It also computes the old, unmasked-mean value directly here -- not through
-    the fixed code -- purely to confirm the synthetic case actually discriminates: if that
-    value did not disagree with the masked one well outside tolerance, this check would
-    still pass under the reverted bug, and would be worthless.
-
-    ``residual_figure`` and ``plot_overview.py``'s panel now share one formula,
-    ``diagnose.masked_chisq``, rather than each hand-writing ``mean(norm_res[keep]**2)``.
-    This check calls that helper directly too (on the same synthetic residual array), so
-    both call sites are covered by construction: nothing here would pass if either had its
-    own, possibly-diverged copy of the formula.
-    """
-    image, sim_config, model, prob = build(cfg, n_source=1, n_lens_light=1)
-    z = model.bijector.inverse(model.prior.sample(1, seed=jax.random.PRNGKey(2)))
-
-    sim = prob.simulators[0]
-    # A batch of 1 squeezes to (H, W) rather than (1, H, W) -- see check 3's note that the
-    # batch axis rides on the params and broadcasts onto a singleton grid axis.
-    im_sim = np.asarray(sim.simulate(model.constrained(z)))
-    if im_sim.ndim == 3:
-        im_sim = im_sim[0]
-
-    # Synthetic "observed" image: the model's own render plus ordinary per-pixel noise,
-    # then a few catastrophic outliers -- the DESI234/257 situation, where an unmodelled
-    # interloper under mask_circles carries the field's largest residuals.
-    rng = np.random.default_rng(0)
-    sigma = max(0.02 * float(np.abs(im_sim).max()), 1e-6)
-    err_map = np.full(image.shape, sigma, dtype=np.float32)
-    obs = (im_sim + rng.normal(scale=sigma, size=im_sim.shape)).astype(np.float32)
-
-    mask = np.ones(image.shape, dtype=bool)
-    for r, c in ((3, 3), (3, 4), (4, 3)):
-        obs[r, c] += 500.0 * sigma  # a 500-sigma outlier: masked, not fit
-        mask[r, c] = False
-    obs = obs.astype(np.float32)
-
-    ds = ImageData(obs, sim_config, error_map=err_map, mask=mask, sees="all")
-    prob2 = ProbModel(model, ds, mode="forward")
-    _, red_chi2_true = prob2.log_prob(z)
-    red_chi2_true = float(np.asarray(red_chi2_true)[0])
-
-    with tempfile.TemporaryDirectory() as tmp:
-        chi2_masked, _ = diagnose.residual_figure(
-            tmp, cfg, model, prob2, obs, err_map, im_sim, "verify-synthetic", z,
-            mask=mask,
-        )
-
-    # The shared helper itself, called directly on the same normalised residual --
-    # exactly what plot_overview.py's panel now does instead of its own copy of the
-    # formula. This is the assertion that makes both call sites covered by construction.
-    norm_res = (obs - im_sim) / err_map
-    chi2_helper, n_kept_helper = diagnose.masked_chisq(norm_res, mask)
-    assert n_kept_helper == int(mask.sum()), (
-        f"masked_chisq counted {n_kept_helper} kept pixels, expected {int(mask.sum())}"
-    )
-    assert abs(chi2_helper - red_chi2_true) < 1e-4, (
-        f"diagnose.masked_chisq gave {chi2_helper:.6f}, ProbModel's red_chi2 gave "
-        f"{red_chi2_true:.6f}"
-    )
-
-    # NOT the fixed code path -- computed here only to show the check would have caught
-    # the bug, by confirming the two definitions genuinely disagree on this synthetic case.
-    chi2_all_pixels = float(np.mean(((obs - im_sim) / err_map) ** 2))
-
-    assert abs(chi2_masked - red_chi2_true) < 1e-4, (
-        f"diagnose.residual_figure gave {chi2_masked:.6f}, ProbModel's red_chi2 gave "
-        f"{red_chi2_true:.6f} -- the masked chi-squared definitions disagree"
-    )
-    discrepancy = abs(chi2_all_pixels - red_chi2_true)
-    assert discrepancy > 0.5, (
-        f"all-pixel chi2 ({chi2_all_pixels:.3f}) is too close to the masked value "
-        f"({red_chi2_true:.3f}, discrepancy {discrepancy:.3f}) for this synthetic case "
-        f"to discriminate the masking bug"
-    )
-
-    return (
-        f"masked chi2 {chi2_masked:.4f} == ProbModel red_chi2 {red_chi2_true:.4f}; "
-        f"unmasked-mean (pre-fix) value {chi2_all_pixels:.4f} differs by "
-        f"{discrepancy:.2f} -- confirms the check discriminates"
-    )
-
-
 def main():
     ap = argparse.ArgumentParser(description="Pre-flight checks for one lens's fit")
     lenses.add_argument(ap, required=True)
+    ap.add_argument(
+        "--n-source", type=int, default=1,
+        help="Source-plane light components for the checked variant (default: 1)",
+    )
+    ap.add_argument(
+        "--n-lens-light", type=int, default=1,
+        help="Lens-plane light components for the checked variant (default: 1)",
+    )
+    ap.add_argument(
+        "--all-variants", action="store_true",
+        help="Sweep all four variants run_fit.py supports ((1,1),(2,1),(1,2),(2,2)) "
+             "instead of just --n-source/--n-lens-light. Slower (~210s vs ~75s on "
+             "DESI238); use after a change to the pipeline itself, not to one lens.",
+    )
     args = ap.parse_args()
     cfg = lenses.load(args.lens)
 
@@ -539,13 +453,15 @@ def main():
     # parametrised over it so a bug specific to a multi-component block can't hide behind a
     # single-component run. The (2, 2) case is the 36-parameter bulge+disk model.
     check_data(cfg)
-    for n_source, n_lens_light in ((1, 1), (2, 1), (1, 2), (2, 2)):
+    variants = (
+        ((1, 1), (2, 1), (1, 2), (2, 2)) if args.all_variants
+        else ((args.n_source, args.n_lens_light),)
+    )
+    for n_source, n_lens_light in variants:
         check_params(cfg, n_source=n_source, n_lens_light=n_lens_light)
         check_simulator(cfg, n_source=n_source, n_lens_light=n_lens_light)
-        check_map(cfg, n_source=n_source, n_lens_light=n_lens_light)
         check_end_to_end(cfg, n_source=n_source, n_lens_light=n_lens_light)
     check_svi_guard(cfg)
-    check_masked_chisq(cfg)
 
     print("\n" + "=" * 72)
     width = max(len(n) for n, _, _ in RESULTS)

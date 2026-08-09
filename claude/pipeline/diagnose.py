@@ -26,10 +26,21 @@ rather than reimplementing the fallbacks.
 Runs predating the scene-API port are refused, not guessed at: the port changed both the
 z-column order and the noise convention, so their stored samples mean something else here.
 Read them at the pre-port commit, or re-fit.
+
+``main()`` prints a ``[timing]`` line per stage. Measured on the largest run to date
+(``claude/DESI234/runs/r2_s2l2``, 50 chains x 40000 steps x 36 params = 2M draws, A100):
+32s importing JAX/gigalens, 63s in ``convergence_table`` (of which ArviZ's rank-R-hat is
+~30s and bulk+tail-ESS ~25s -- exact, and living in the read-only ``nanolens`` package, so
+not reduced here), and ~17s in the corner plot before it was thinned. Everything else --
+simulate, critical curves/caustics, the source render, label switching -- is under 2s
+combined. If a run's total grows well past what its draw count would predict from these
+numbers, suspect the redundant work this file used to do (loading ``hmc.npz`` or computing
+``to_constrained`` more than once), not ArviZ.
 """
 
 import argparse
 import json
+import time
 from pathlib import Path
 
 import matplotlib
@@ -270,17 +281,25 @@ def simulate_from_unconstrained(rm, z_unc):
     return im.reshape(rm.sim_config.num_pix, rm.sim_config.num_pix)
 
 
-def point_estimate(run_dir):
+def point_estimate(run_dir, hmc_samples=None):
     """Return ``(z_unconstrained, label)`` for the best available point estimate.
 
     Preference: HMC posterior median > SVI mean > MAP best. The median is taken in
     unconstrained space, which is the right place for it -- the transform is monotonic
     per-coordinate, so the median commutes with it, and taking it here avoids the
     boundary pile-up that a constrained-space mean would suffer.
+
+    ``hmc_samples``, if given, is the already-loaded ``(n_chains, n_steps, n_params)``
+    array -- pass it when the caller has already paid for ``hmc.npz``'s decompression
+    (288 MB / ~1.5s on the largest run), so a second read is not needed here. ``None``
+    (the default, and every external caller's usage) loads it fresh, unchanged from
+    before.
     """
-    hmc = load_checkpoint(run_dir, "hmc")
-    if hmc is not None:
-        samples = hmc["samples"]  # (n_chains, n_steps, n_params)
+    if hmc_samples is None:
+        hmc = load_checkpoint(run_dir, "hmc")
+        hmc_samples = None if hmc is None else hmc["samples"]
+    if hmc_samples is not None:
+        samples = hmc_samples  # (n_chains, n_steps, n_params)
         return np.median(samples.reshape(-1, samples.shape[-1]), axis=0), "HMC median"
 
     svi = load_checkpoint(run_dir, "svi")
@@ -731,7 +750,7 @@ def boundary_pinning_check(model, con_flat, pnames):
               "bound rather than a measurement.")
 
 
-def convergence_table(run_dir, rm):
+def convergence_table(run_dir, rm, hmc_samples=None, con=None):
     """Print the posterior summary with R-hat and ESS. Returns the max R-hat, or None.
 
     R-hat and ESS come from ``gigalens.jax.analysis.diagnose_convergence``: ArviZ's
@@ -745,19 +764,31 @@ def convergence_table(run_dir, rm):
     - Both bulk- and tail-ESS are reported. Tail-ESS is the one that catches heavy-tail
       mixing failures, and it is usually the smaller.
 
+    This is the single most expensive stage in this file -- on a 2M-draw run (50 chains x
+    40000 steps), ArviZ's rank-R-hat is ~30s and bulk+tail ESS another ~25s, scaling with
+    total draws. That cost is exact and lives in ``nanolens`` (a read-only dependency), so
+    it is not reduced here; ``main()`` prints it as its own timed stage instead, so it is
+    attributable rather than mysterious.
+
     Percentiles are still quoted in constrained space -- that is the space the numbers get
     published in.
 
     With more than one source component this also runs the label-switching detector and
     the boundary-pinning check. The R-hat reported is the raw one unless switching was
     actually detected, in which case both raw and relabelled are shown.
-    """
-    hmc = load_checkpoint(run_dir, "hmc")
-    if hmc is None:
-        print("\nNo HMC samples; convergence diagnostics unavailable.")
-        return None
 
-    samples = np.asarray(hmc["samples"])  # (n_chains, n_steps, n_params)
+    ``hmc_samples`` / ``con`` let a caller that already loaded ``hmc.npz`` and computed
+    ``to_constrained`` (``main()`` does both once, for four call sites that used to do it
+    each) pass them in rather than pay for either again; ``None`` reproduces the original
+    behaviour exactly.
+    """
+    if hmc_samples is None:
+        hmc = load_checkpoint(run_dir, "hmc")
+        if hmc is None:
+            print("\nNo HMC samples; convergence diagnostics unavailable.")
+            return None
+        hmc_samples = np.asarray(hmc["samples"])
+    samples = np.asarray(hmc_samples)  # (n_chains, n_steps, n_params)
     if samples.ndim != 3 or samples.shape[-1] != rm.model.num_free_params:
         raise ValueError(
             f"hmc.npz holds {samples.shape}; expected (n_chains, n_steps, "
@@ -765,8 +796,9 @@ def convergence_table(run_dir, rm):
         )
     n_chains, n_draws, n_params = samples.shape
 
-    con = to_constrained(rm.model, samples.reshape(-1, n_params))
-    con = con.reshape(n_chains, n_draws, n_params)
+    if con is None:
+        con = to_constrained(rm.model, samples.reshape(-1, n_params))
+    con = np.asarray(con).reshape(n_chains, n_draws, n_params)
 
     switched, con_re = label_switching_check(con, rm.spans, rm.pnames)
 
@@ -819,18 +851,24 @@ def convergence_table(run_dir, rm):
     return worst
 
 
-def theta_E_check(run_dir, rm):
+def theta_E_check(run_dir, rm, hmc_samples=None, con=None):
     """Compare the theta_E posterior against the config's measured clump radii.
 
     If every clump is a counter-image of one source, the Einstein radius should land inside
     their radial span. A posterior pinned against either prior edge means the radial scales
     are pulling the model apart, and that is the thing to report -- not the number.
+
+    ``hmc_samples`` / ``con``: see ``convergence_table``'s docstring -- same reuse, same
+    fallback to loading/transforming fresh when not given.
     """
-    hmc = load_checkpoint(run_dir, "hmc")
-    if hmc is None:
-        return
-    samples = np.asarray(hmc["samples"])
-    con = to_constrained(rm.model, samples.reshape(-1, samples.shape[-1]))
+    if hmc_samples is None:
+        hmc = load_checkpoint(run_dir, "hmc")
+        if hmc is None:
+            return
+        hmc_samples = np.asarray(hmc["samples"])
+    if con is None:
+        con = to_constrained(rm.model, np.asarray(hmc_samples).reshape(-1, hmc_samples.shape[-1]))
+    con = np.asarray(con).reshape(-1, con.shape[-1]) if np.asarray(con).ndim == 3 else np.asarray(con)
     idx = column(rm.model, "theta_E", kind="mass")
     lo, med, hi = np.percentile(con[:, idx], [16, 50, 84])
 
@@ -916,12 +954,22 @@ def svi_loss_plot(run_dir, out_dir):
     return path
 
 
-def corner_plot(run_dir, out_dir, rm, subset=None):
+def corner_plot(run_dir, out_dir, rm, subset=None, hmc_samples=None, con=None):
     """Corner plot of the constrained posterior.
 
     Defaults to the mass parameters, which exist under every model variant. All 22 (or 36)
     in one figure is unreadable at print size. Columns are located structurally by
     ``column``, so nothing here depends on a parameter's index.
+
+    Thinned to ``plot_corner.MAX_SAMPLES_FULL`` draws via ``plot_corner.thin_to_cap`` --
+    the same helper ``plot_corner.py`` uses for its own full corner, imported here (locally,
+    to avoid a diagnose<->plot_corner import cycle) rather than reimplemented. On the
+    largest run (2M draws) this figure used to cost ~2.4s in ``corner.corner`` and ~14.4s in
+    ``savefig``; thinning is for the *figure* only -- it never touches the R-hat/ESS table
+    or the percentiles, which are computed on every draw. The thinning factor is printed so
+    the figure never silently implies more draws than it shows.
+
+    ``hmc_samples`` / ``con``: see ``convergence_table``'s docstring -- same reuse.
     """
     try:
         import corner
@@ -929,12 +977,23 @@ def corner_plot(run_dir, out_dir, rm, subset=None):
         print("corner not installed; skipping corner plot.")
         return None
 
-    hmc = load_checkpoint(run_dir, "hmc")
-    if hmc is None:
-        return None
+    if hmc_samples is None:
+        hmc = load_checkpoint(run_dir, "hmc")
+        if hmc is None:
+            return None
+        hmc_samples = np.asarray(hmc["samples"])
+    n_chains, n_draws, n_params = hmc_samples.shape
 
-    samples = np.asarray(hmc["samples"])
-    con = to_constrained(rm.model, samples.reshape(-1, samples.shape[-1]))
+    if con is None:
+        con = to_constrained(rm.model, hmc_samples.reshape(-1, n_params))
+    con_3d = np.asarray(con).reshape(n_chains, n_draws, n_params)
+
+    from plot_corner import thin_to_cap, MAX_SAMPLES_FULL
+    thinned, factor = thin_to_cap(con_3d, MAX_SAMPLES_FULL)
+    if factor > 1:
+        print(f"Corner plot: thinning {n_chains * n_draws} -> "
+              f"{thinned.shape[0] * thinned.shape[1]} draws (factor {factor})")
+    con_flat = thinned.reshape(-1, n_params)
 
     if subset is None:
         subset = [
@@ -944,7 +1003,7 @@ def corner_plot(run_dir, out_dir, rm, subset=None):
     idx = list(subset)
 
     fig = corner.corner(
-        con[:, idx],
+        con_flat[:, idx],
         labels=[rm.labels[i] for i in idx],
         quantiles=[0.16, 0.5, 0.84],
         show_titles=True,
@@ -969,23 +1028,39 @@ def main():
     out_dir = Path(args.out) if args.out else run_dir
     out_dir.mkdir(parents=True, exist_ok=True)
 
+    t_start = time.perf_counter()
+
     # Reconstruct the *same* model the run was fitted with. A run that predates the
     # scene-API port is refused here rather than silently mis-decoded.
+    t0 = time.perf_counter()
     rm = rebuild_model(
         run_dir,
         lens=args.lens,
         theta_e_center=args.theta_e_center,
         theta_e_width=args.theta_e_width,
     )
+    print(f"[timing] rebuild_model: {time.perf_counter() - t0:.1f}s")
 
-    z_unc, label = point_estimate(run_dir)
+    # Load hmc.npz once here and thread the array through point_estimate,
+    # convergence_table, theta_E_check and corner_plot below, all of which used to load it
+    # separately -- four decompressions of what can be a >250MB file (~1.5s each on the
+    # largest run to date).
+    t0 = time.perf_counter()
+    hmc_ckpt = load_checkpoint(run_dir, "hmc")
+    hmc_samples = None if hmc_ckpt is None else np.asarray(hmc_ckpt["samples"])
+    shape_note = "" if hmc_samples is None else f" {hmc_samples.shape}"
+    print(f"[timing] load hmc.npz: {time.perf_counter() - t0:.1f}s{shape_note}")
+
+    z_unc, label = point_estimate(run_dir, hmc_samples=hmc_samples)
     print(f"Point estimate: {label}")
 
+    t0 = time.perf_counter()
     im_sim = simulate_from_unconstrained(rm, z_unc)
     chi2, res_path = residual_figure(
         out_dir, rm.cfg, rm.model, rm.prob, rm.image, rm.prob.error_map, im_sim, label,
         z_unc, mask=rm.mask,
     )
+    print(f"[timing] residual figure: {time.perf_counter() - t0:.1f}s")
     n_kept = rm.image.size if rm.mask is None else int(np.asarray(rm.mask).sum())
     print(f"Reduced chi-squared at point estimate: {chi2:.3f} "
           f"(over {n_kept}/{rm.image.size} unmasked pixels)")
@@ -995,19 +1070,40 @@ def main():
     # so this line has to be read first.
     svi_report(run_dir)
 
-    worst_rhat = convergence_table(run_dir, rm)
-    theta_E_check(run_dir, rm)
+    # Compute the unconstrained -> constrained transform once and share it with
+    # convergence_table, theta_E_check and corner_plot below, rather than recomputing the
+    # same (n_draws, n_params) transform three times (~1.4s each on the largest run).
+    con = None
+    if hmc_samples is not None:
+        t0 = time.perf_counter()
+        con = to_constrained(rm.model, hmc_samples.reshape(-1, hmc_samples.shape[-1]))
+        print(f"[timing] to_constrained: {time.perf_counter() - t0:.1f}s")
+
+    # This is the expensive stage. ArviZ's rank-normalized R-hat and bulk/tail ESS are
+    # exact and live in the read-only nanolens package, so their cost is not reduced here
+    # -- only reported, so it is attributable rather than mysterious. It scales with total
+    # draws: ~30s rank-Rhat + ~25s bulk/tail-ESS on a 2M-draw run (50 chains x 40000 steps),
+    # A100. See convergence_table's docstring.
+    t0 = time.perf_counter()
+    worst_rhat = convergence_table(run_dir, rm, hmc_samples=hmc_samples, con=con)
+    print(f"[timing] convergence table (ArviZ rank-Rhat/ESS): {time.perf_counter() - t0:.1f}s")
+
+    theta_E_check(run_dir, rm, hmc_samples=hmc_samples, con=con)
 
     p = svi_loss_plot(run_dir, out_dir)
     if p:
         print(f"SVI loss: {p}")
-    p = corner_plot(run_dir, out_dir, rm)
+    t0 = time.perf_counter()
+    p = corner_plot(run_dir, out_dir, rm, hmc_samples=hmc_samples, con=con)
+    print(f"[timing] corner plot: {time.perf_counter() - t0:.1f}s")
     if p:
         print(f"Corner plot: {p}")
 
     if worst_rhat is not None and worst_rhat > RHAT_THRESHOLD:
         print("\nReminder: quote R-hat alongside any parameter value. A theta_E without a "
               "convergence diagnostic is not a measurement.")
+
+    print(f"[timing] total: {time.perf_counter() - t_start:.1f}s")
 
 
 if __name__ == "__main__":

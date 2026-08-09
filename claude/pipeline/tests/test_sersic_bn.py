@@ -2,7 +2,7 @@
 
 Run directly (pytest is not installed in this env):
 
-    JAX_PLATFORMS=cpu python claude/pipeline/test_sersic_bn.py
+    JAX_PLATFORMS=cpu PYTHONPATH=claude/pipeline python claude/pipeline/tests/test_sersic_bn.py
 
 **Lenstronomy is not the ground truth here, unlike everywhere else in this repo.**
 ``lenstronomy/LensModel/Profiles/sersic_utils.py:37`` defines b_n as the same asymptotic

@@ -2,7 +2,7 @@
 
 Run directly (pytest is not installed in this env):
 
-    python claude/pipeline/test_corner_check.py
+    PYTHONPATH=claude/pipeline python claude/pipeline/tests/test_corner_check.py
 
 Covers the upper-left corner specifically, since a single-corner (lower-left-only) check
 would be blind to a companion sitting there:

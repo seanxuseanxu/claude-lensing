@@ -2,7 +2,7 @@
 
 Run directly (pytest is not installed in this env, as ``test_sersic_bn.py`` also notes)::
 
-    PYTHONPATH=claude/pipeline python claude/pipeline/test_make_data.py
+    PYTHONPATH=claude/pipeline python claude/pipeline/tests/test_make_data.py
 
 These test *my* code, not the libraries'. photutils' ePSF construction and astropy's WCS
 are taken as trustworthy and are not re-verified; what is verified is the cutout's

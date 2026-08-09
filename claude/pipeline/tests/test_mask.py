@@ -2,7 +2,7 @@
 
 Run directly (pytest is not installed in this env):
 
-    python claude/pipeline/test_mask.py
+    PYTHONPATH=claude/pipeline python claude/pipeline/tests/test_mask.py
 
 Covers: mask shape matches the image shape; a disc excludes exactly the pixels within its
 radius and no others; ``mask_circles=None`` yields ``None`` (the unchanged-default-behaviour

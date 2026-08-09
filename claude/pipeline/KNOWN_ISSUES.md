@@ -72,8 +72,10 @@ field's largest residuals, this inflated reported chi2_nu badly: DESI234's round
 Both call sites now share one helper, `diagnose.masked_chisq`, which sums `(residual/sigma)^2`
 over unmasked pixels only, divided by the unmasked count — matching `ProbModel.log_prob`'s own
 second return value exactly, per `CLAUDE.md`'s rule that gigalens is the ground truth.
-`verify.py` check 7 exercises the fixed function directly (not a reimplementation of the
-formula) and would fail if either call site regressed.
+`claude/pipeline/tests/test_masked_chisq.py` (moved out of `verify.py`, was check 7, on
+2026-08-09 — it asserts pipeline correctness, not something per-lens) exercises the fixed
+function directly (not a reimplementation of the formula) and would fail if either call
+site regressed.
 
 Per-lens files may keep a one-line note that their own chi-squared values use the corrected
 definition — that is a fact about their numbers — but this is the general lesson: **a

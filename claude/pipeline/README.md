@@ -18,8 +18,10 @@ so there is no `PYTHONPATH=gigalens/src` any more.
 ```bash
 export PYTHONPATH=claude/pipeline
 
-# Pre-flight, ~5 minutes. Do this before spending a GPU-hour.
-CUDA_VISIBLE_DEVICES=0 python claude/pipeline/verify.py --lens DESI238
+# Pre-flight, ~75s for the variant you're about to fit (measured on DESI238, A100).
+# Add --all-variants (~210s) after a change to the pipeline itself, not to one lens.
+CUDA_VISIBLE_DEVICES=0 python claude/pipeline/verify.py --lens DESI238 \
+    --n-source 2 --n-lens-light 2
 
 # Fit. Results land in claude/DESI238/runs/<label>/.
 CUDA_VISIBLE_DEVICES=0 python claude/pipeline/run_fit.py \
@@ -71,10 +73,11 @@ attribute the difference.
 | `data.py` | `load(cfg)` -> `(image, psf, sim_config)`. Endian cast, PSF normalisation, precision. `build_mask(cfg, shape)` -> keep-mask from `cfg.mask_circles`, or `None`. |
 | `priors.py` | `build_model(cfg, ...)` -> `LensModel`. Owns all supports. |
 | `run_fit.py` | MAP -> SVI -> sampling stage (`--sampler {hmc,mams,mclmc}`). The only writer. |
-| `verify.py` | Six pre-flight checks, each pinned to a way the fit fails silently. |
-| `diagnose.py` | Convergence, residuals, pinning, label switching. Owns `rebuild_model`. |
+| `verify.py` | Five pre-flight checks, each pinned to a way the fit fails silently. Runs against one model variant (`--n-source`/`--n-lens-light`) by default; `--all-variants` sweeps all four. |
+| `diagnose.py` | Convergence, residuals, pinning, label switching. Owns `rebuild_model`. Prints a per-stage timing line; on a 2M-draw run, ArviZ's rank-R̂/ESS is ~60% of the wall time -- see its module docstring. |
 | `svi_health.py` | The SVI-covariance conditioning guard. The one thing the library lacks. |
 | `dump_params.py`, `plot_*.py`, `clumps.py` | Read-only analysis of a finished run. |
+| `tests/` | Standalone regression tests (no pytest in this env) -- Sersic `b_n`, `data.build_mask`, `verify.corner_report`, the masked-chi-squared formula, `make_cutout.py`/`make_psf.py`. See `tests/README.md`. |
 
 ## The config seam
 
@@ -166,7 +169,7 @@ port, or re-fit them.
      coordinates) to exclude from the likelihood via `ImageData`'s `mask=`. Masking is a
      per-lens judgement -- `mask_circles=None` (the default) leaves everything in frame
      fitted as part of the system, unchanged from before.
-3. Run `verify.py --lens <LENS>`. Check 1 and check 6 will report themselves *skipped*
+3. Run `verify.py --lens <LENS>`. Check 1 and check 5 will report themselves *skipped*
    until the config supplies `companion_max` and `svi_guard_reference`. A skipped check is
    honest; do not weaken a check to make it pass.
 4. Fit.
