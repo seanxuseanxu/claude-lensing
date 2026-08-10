@@ -408,9 +408,21 @@ def curve_radius(curve, center):
     return float(np.mean(np.hypot(xs - center[0], ys - center[1])))
 
 
-def check_theta_E(curves, center, theta_E, gamma=None):
+def check_theta_E(curves, center, theta_E, gamma=None, extra_mass=None):
     """Print each critical curve's mean radius against theta_E; identify the tangential
     one (the largest) and flag loudly if it disagrees by more than 10%.
+
+    ``extra_mass`` is the list of ADDITIONAL lens-plane mass components beyond the main
+    EPL -- i.e. ``params["planes"][0]["mass"][1:]`` -- and it is not optional bookkeeping.
+    The critical curve is a property of the TOTAL convergence on the lens plane, while
+    ``theta_E`` here is the main deflector's alone. With a second mass present the two are
+    different quantities and the 10% bound does not apply: a foreground SIS adds
+    convergence, which pushes the tangential curve OUTWARD while the main EPL's own
+    theta_E goes DOWN to compensate. Comparing them anyway reports a large disagreement
+    and blames the fit for it. DESI234's ``r3_fg`` tripped exactly this: tangential 1.7610
+    against a main theta_E of 1.4726, 19.6%, on a run whose chi2_nu was the best of the
+    round. When ``extra_mass`` is non-empty this function reports the excess and says what
+    it means, rather than asserting the fit is bad.
 
     HOW MANY CURVES TO EXPECT is a check in itself. The radial eigenvalue of a circular
     EPL is ``1 - (2-gamma)(theta/theta_E)^(1-gamma)``, which vanishes only where
@@ -439,7 +451,29 @@ def check_theta_E(curves, center, theta_E, gamma=None):
         )
     print(f"Tangential (largest) radius = {tangential:.4f}, theta_E = {theta_E:.4f}")
     frac = abs(tangential - theta_E) / theta_E
-    if frac > 0.10:
+
+    if extra_mass:
+        # The tangential curve traces the TOTAL convergence; theta_E is the main EPL's
+        # alone. These are not the same quantity here, so the 10% bound is not applicable
+        # and its failure message would be false. Report the excess as the physical
+        # quantity it is.
+        descr = ", ".join(
+            f"{m.get('_profile', 'mass[%d]' % (i + 1))}"
+            f"(theta_E={float(m['theta_E']):.4f})" if "theta_E" in m
+            else f"mass[{i + 1}]"
+            for i, m in enumerate(extra_mass)
+        )
+        print(
+            f"Validation N/A (multi-mass lens plane): {len(extra_mass)} additional mass "
+            f"component(s) beyond the main EPL -- {descr}. The tangential curve traces the "
+            f"TOTAL lens-plane convergence, so it is not expected to equal the main "
+            f"deflector's theta_E and the 10% bound does not apply. Excess over the main "
+            f"theta_E is {tangential - theta_E:+.4f}\" ({frac * 100:.1f}%), which is the "
+            f"additional mass doing lensing work -- if it is large, the main theta_E is "
+            f"model-dependent at that level and belongs in the systematic budget, not the "
+            f"statistical error. The critical curve and caustics themselves remain valid."
+        )
+    elif frac > 0.10:
         print(
             f"VALIDATION FAILED LOUDLY: tangential critical-curve radius disagrees with "
             f"theta_E by {frac * 100:.1f}% (> 10%). DO NOT trust this figure's critical "
@@ -565,7 +599,24 @@ def residual_figure(out_dir, cfg, model, prob, image, err_map, im_sim, label, z_
     # scale to delta_pix/supersample, so it needs neither here.
     solver = LensSolver(prob)
     curves, caustics = solver.critical_and_caustics(params)
-    check_theta_E(curves, lens_center, theta_E, gamma=epl_params.get("gamma"))
+    # Everything on the lens plane beyond the main EPL -- the foreground SIS, when the run
+    # carries one. check_theta_E needs it to know that the tangential curve and theta_E are
+    # different quantities for this model; see its docstring.
+    # Filtered on `theta_E`, not on component index: SHEAR is also a lens-plane mass
+    # component but carries no convergence (gamma1/gamma2 only), so it does not push the
+    # tangential radius off theta_E the way a second deflector does. Only components with
+    # an Einstein radius of their own qualify.
+    lens_plane_mass = params["planes"][0]["mass"]
+    extra_mass = [
+        d for d in (
+            {k: float(np.asarray(v)) for k, v in lens_plane_mass[i].items()}
+            for i in sorted(lens_plane_mass)[1:]
+        )
+        if "theta_E" in d
+    ]
+    check_theta_E(
+        curves, lens_center, theta_E, gamma=epl_params.get("gamma"), extra_mass=extra_mass
+    )
 
     npix, delta = cfg.num_pix, cfg.delta_pix
     half = npix / 2 * delta

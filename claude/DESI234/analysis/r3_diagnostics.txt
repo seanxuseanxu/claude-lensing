@@ -1,0 +1,314 @@
+
+================================================================================
+RUN: r3_unmasked  (/global/u1/s/seanjx/claude-lensing/claude/DESI234/runs/r3_unmasked)
+================================================================================
+Lens: DESI234
+Model variant: n_source=2, n_lens_light=2, lens_light_n_max=10.0, source_prior_v1, lens_light_prior_v2, foreground=False, theta_E prior LogNormal(log 1.43, 0.25)
+hmc.npz shape: (50, 750, 36)
+n_free_params (metadata): 36, model.num_free_params: 36
+
+================================================================================
+[r3_unmasked] 1. MAP convergence check (full output)
+================================================================================
+
+=== MAP vs. HMC log posterior ===
+map.npz best_lp: stored 18125.699, recomputed 18125.699
+Scoring 2900 HMC draws (thinned by 13 from 37500)
+HMC log posterior over 2900 draws: max 18277.615, median 18269.287
+FAILED: MAP's log posterior (18125.699) is 151.916 nats BELOW the maximum scored HMC draw (18277.615). MAP did not find the posterior mode -- SVI (seeded from this MAP) and HMC (seeded from SVI) both inherit a bad starting point.
+MAP chisq_hist tail slope (last 500/5000 steps): +0.00008/step (flat or rising when MAP stopped)
+MAP chisq_hist tail slope (last 500/5000): +0.000077/step (flat or rising)
+MAP chisq_hist tail slope (last 1000/5000): -0.000251/step (still descending)
+
+================================================================================
+[r3_unmasked] 2. R-hat / bulk+tail ESS, all 50 chains, all 36 params
+================================================================================
+parameter                      Rhat   ESSbulk   ESStail
+lens/light/bulge/Ie         10.6234      50.9      52.4  <-- Rhat>1.01
+lens/light/bulge/R_sersic   10.1817      50.9      53.2  <-- Rhat>1.01
+lens/light/bulge/center_x   11.2052      50.8      55.4  <-- Rhat>1.01
+lens/light/bulge/center_y   10.5027      50.9      56.2  <-- Rhat>1.01
+lens/light/bulge/e1         10.3740      50.9      54.2  <-- Rhat>1.01
+lens/light/bulge/e2         11.3245      50.8      53.6  <-- Rhat>1.01
+lens/light/bulge/n_sersic   10.6801      50.9      54.5  <-- Rhat>1.01
+lens/light/disk/Ie          12.3225      50.7      54.8  <-- Rhat>1.01
+lens/light/disk/R_sersic    10.9287      50.8      52.3  <-- Rhat>1.01
+lens/light/disk/center_x    11.2574      50.8      53.4  <-- Rhat>1.01
+lens/light/disk/center_y    10.4452      50.9      53.4  <-- Rhat>1.01
+lens/light/disk/e1          10.3062      50.9      56.9  <-- Rhat>1.01
+lens/light/disk/e2          13.6293      50.7      52.6  <-- Rhat>1.01
+lens/light/disk/n_sersic    10.8879      50.9      53.2  <-- Rhat>1.01
+lens/mass/host/center_x     12.6349      50.7      51.5  <-- Rhat>1.01
+lens/mass/host/center_y     11.1856      50.8      56.4  <-- Rhat>1.01
+lens/mass/host/e1           10.9779      50.8      52.6  <-- Rhat>1.01
+lens/mass/host/e2           12.3348      50.7      51.9  <-- Rhat>1.01
+lens/mass/host/gamma        11.2047      50.8      52.7  <-- Rhat>1.01
+lens/mass/host/theta_E      11.5887      50.8      51.4  <-- Rhat>1.01
+lens/mass/shear/gamma1       9.8813      50.9      50.7  <-- Rhat>1.01
+lens/mass/shear/gamma2      10.9364      50.8      53.5  <-- Rhat>1.01
+source/light/src0/Ie        13.1864      50.7      53.7  <-- Rhat>1.01
+source/light/src0/R_sersic  13.2047      50.7      54.3  <-- Rhat>1.01
+source/light/src0/center_x  11.8114      50.8      54.0  <-- Rhat>1.01
+source/light/src0/center_y  13.2351      50.7      53.7  <-- Rhat>1.01
+source/light/src0/e1        11.1772      50.8      54.0  <-- Rhat>1.01
+source/light/src0/e2        10.8657      50.9      50.9  <-- Rhat>1.01
+source/light/src0/n_sersic   9.9537      50.9      54.3  <-- Rhat>1.01
+source/light/src1/Ie        12.8258      50.7      53.1  <-- Rhat>1.01
+source/light/src1/R_sersic  13.9366      50.7      53.4  <-- Rhat>1.01
+source/light/src1/center_x  11.3255      50.8      52.2  <-- Rhat>1.01
+source/light/src1/center_y  11.8355      50.8      53.0  <-- Rhat>1.01
+source/light/src1/e1        12.5653      50.7      53.0  <-- Rhat>1.01
+source/light/src1/e2        10.6162      50.9      53.5  <-- Rhat>1.01
+source/light/src1/n_sersic   9.9256      50.9      54.1  <-- Rhat>1.01
+
+max R-hat: 13.9366   #params with Rhat>1.01: 36/36
+min bulk ESS: 50.7   min tail ESS: 50.7
+5 worst-Rhat parameters:
+  source/light/src1/R_sersic Rhat=13.9366  median=0.06251  ESSbulk=50.7  ESStail=53.4
+  lens/light/disk/e2         Rhat=13.6293  median=-0.28675  ESSbulk=50.7  ESStail=52.6
+  source/light/src0/center_y Rhat=13.2351  median=-0.41354  ESSbulk=50.7  ESStail=53.7
+  source/light/src0/R_sersic Rhat=13.2047  median=0.04949  ESSbulk=50.7  ESStail=54.3
+  source/light/src0/Ie       Rhat=13.1864  median=129.16324  ESSbulk=50.7  ESStail=53.7
+
+================================================================================
+[r3_unmasked] 3. Boundary pinning check (full output)
+================================================================================
+
+=== Boundary pinning (Uniform bounds, TruncatedNormal truncation) ===
+lens/mass/host/gamma          2.1300  in [1, 3]  ( 56.5% of range)  TruncatedNormal
+lens/light/bulge/n_sersic     6.7418  in [1, 8]  ( 82.0% of range)  Uniform
+lens/light/bulge/e1          -0.0906  in [-0.3, 0.3]  ( 34.9% of range)  TruncatedNormal
+lens/light/bulge/e2           0.0436  in [-0.3, 0.3]  ( 57.3% of range)  TruncatedNormal
+lens/light/disk/n_sersic      2.4523  in [0.5, 2.5]  ( 97.6% of range)  Uniform
+lens/light/disk/e1            0.0460  in [-0.3, 0.3]  ( 57.7% of range)  TruncatedNormal
+lens/light/disk/e2           -0.2867  in [-0.3, 0.3]  (  2.2% of range)  TruncatedNormal
+source/light/src0/n_sersic    1.2474  in [0.3, 6]  ( 16.6% of range)  Uniform
+source/light/src0/e1         -0.0869  in [-0.5, 0.5]  ( 41.3% of range)  TruncatedNormal
+source/light/src0/e2         -0.1920  in [-0.5, 0.5]  ( 30.8% of range)  TruncatedNormal
+source/light/src1/n_sersic    3.4863  in [0.3, 6]  ( 55.9% of range)  Uniform
+source/light/src1/e1         -0.1191  in [-0.5, 0.5]  ( 38.1% of range)  TruncatedNormal
+source/light/src1/e2         -0.4924  in [-0.5, 0.5]  (  0.8% of range)  TruncatedNormal  <-- PINNED at lower bound
+
+A pinned parameter is set by its prior, not by the data, and HMC cannot mix along the boundary -- expect poor R-hat there and treat the value as a bound rather than a measurement.
+
+================================================================================
+[r3_unmasked] 4. masked_chisq at posterior median
+================================================================================
+chi2_nu at posterior median: 1.6621
+n_kept pixels (rebuilt mask): 6400, recorded n_masked_pixels: 6400
+
+================================================================================
+[r3_unmasked] 5. theta_E (host EPL) posterior
+================================================================================
+theta_E: median 1.5386, 16pct 1.5370, 84pct 1.5402  (1.539 +0.002/-0.002)
+
+================================================================================
+RUN: r3_fg  (/global/u1/s/seanjx/claude-lensing/claude/DESI234/runs/r3_fg)
+================================================================================
+Lens: DESI234
+Model variant: n_source=2, n_lens_light=2, lens_light_n_max=10.0, source_prior_v1, lens_light_prior_v2, foreground=True (prior_v1), theta_E prior LogNormal(log 1.43, 0.25)
+hmc.npz shape: (50, 750, 46)
+n_free_params (metadata): 46, model.num_free_params: 46
+
+================================================================================
+[r3_fg] 1. MAP convergence check (full output)
+================================================================================
+
+=== MAP vs. HMC log posterior ===
+map.npz best_lp: stored 19422.154, recomputed 19422.154
+Scoring 2900 HMC draws (thinned by 13 from 37500)
+HMC log posterior over 2900 draws: max 19450.074, median 19435.000
+FAILED: MAP's log posterior (19422.154) is 27.920 nats BELOW the maximum scored HMC draw (19450.074). MAP did not find the posterior mode -- SVI (seeded from this MAP) and HMC (seeded from SVI) both inherit a bad starting point.
+MAP chisq_hist tail slope (last 500/5000 steps): -0.00000/step (still descending when MAP stopped)
+MAP chisq_hist tail slope (last 500/5000): -0.000004/step (still descending)
+MAP chisq_hist tail slope (last 1000/5000): -0.000037/step (still descending)
+
+================================================================================
+[r3_fg] 2. R-hat / bulk+tail ESS, all 50 chains, all 46 params
+================================================================================
+parameter                          Rhat   ESSbulk   ESStail
+lens/light/bulge/Ie              1.2942     138.7     104.8  <-- Rhat>1.01
+lens/light/bulge/R_sersic        1.3125     130.9     102.9  <-- Rhat>1.01
+lens/light/bulge/center_x        1.1609     340.3     266.5  <-- Rhat>1.01
+lens/light/bulge/center_y        1.1393     352.9     361.6  <-- Rhat>1.01
+lens/light/bulge/e1              1.2315     187.0     154.9  <-- Rhat>1.01
+lens/light/bulge/e2              1.2884     149.0     181.6  <-- Rhat>1.01
+lens/light/bulge/n_sersic        1.2481     166.7     139.7  <-- Rhat>1.01
+lens/light/disk/Ie               1.2644     153.2     142.4  <-- Rhat>1.01
+lens/light/disk/R_sersic         1.1385     359.4     338.9  <-- Rhat>1.01
+lens/light/disk/center_x         1.3798     114.3     124.3  <-- Rhat>1.01
+lens/light/disk/center_y         1.2072     206.8     185.1  <-- Rhat>1.01
+lens/light/disk/e1               1.2612     153.6     132.3  <-- Rhat>1.01
+lens/light/disk/e2               1.2876     143.1     116.3  <-- Rhat>1.01
+lens/light/disk/n_sersic         1.3743     114.7     146.3  <-- Rhat>1.01
+lens/light/foreground/Ie         1.1800     233.8     210.1  <-- Rhat>1.01
+lens/light/foreground/R_sersic   1.1776     246.8     218.7  <-- Rhat>1.01
+lens/light/foreground/center_x   1.1121     356.7     441.2  <-- Rhat>1.01
+lens/light/foreground/center_y   1.1874     223.5     182.4  <-- Rhat>1.01
+lens/light/foreground/e1         1.1053     339.2     414.5  <-- Rhat>1.01
+lens/light/foreground/e2         1.1268     349.4     361.2  <-- Rhat>1.01
+lens/light/foreground/n_sersic   1.1606     272.0     232.0  <-- Rhat>1.01
+lens/mass/host/center_x          1.3155     144.3     173.4  <-- Rhat>1.01
+lens/mass/host/center_y          1.2388     189.4     251.0  <-- Rhat>1.01
+lens/mass/host/e1                1.1698     283.4     356.0  <-- Rhat>1.01
+lens/mass/host/e2                1.1134     380.6     357.5  <-- Rhat>1.01
+lens/mass/host/gamma             1.2256     182.6     241.2  <-- Rhat>1.01
+lens/mass/host/theta_E           1.9161      71.3      90.0  <-- Rhat>1.01
+lens/mass/shear/gamma1           1.3143     138.1     186.5  <-- Rhat>1.01
+lens/mass/shear/gamma2           1.2307     188.3     273.2  <-- Rhat>1.01
+lens/mass/foreground/center_x    1.2615     160.0     223.3  <-- Rhat>1.01
+lens/mass/foreground/center_y    1.1612     301.9     352.1  <-- Rhat>1.01
+lens/mass/foreground/theta_E     1.6246      83.7      97.7  <-- Rhat>1.01
+source/light/src0/Ie             1.3056     142.4     109.0  <-- Rhat>1.01
+source/light/src0/R_sersic       1.1931     243.6     204.5  <-- Rhat>1.01
+source/light/src0/center_x       1.2982     144.4      91.2  <-- Rhat>1.01
+source/light/src0/center_y       1.2843     149.2      80.9  <-- Rhat>1.01
+source/light/src0/e1             1.3359     131.8     124.4  <-- Rhat>1.01
+source/light/src0/e2             1.3307     128.7     152.0  <-- Rhat>1.01
+source/light/src0/n_sersic       1.3765     111.7      86.5  <-- Rhat>1.01
+source/light/src1/Ie             1.1427     342.0     261.4  <-- Rhat>1.01
+source/light/src1/R_sersic       1.1491     343.0     231.1  <-- Rhat>1.01
+source/light/src1/center_x       1.3976     111.6     132.2  <-- Rhat>1.01
+source/light/src1/center_y       1.5156      94.2     117.3  <-- Rhat>1.01
+source/light/src1/e1             1.1627     353.5     320.0  <-- Rhat>1.01
+source/light/src1/e2             1.1173     378.6     559.7  <-- Rhat>1.01
+source/light/src1/n_sersic       1.1739     245.7     246.3  <-- Rhat>1.01
+
+max R-hat: 1.9161   #params with Rhat>1.01: 46/46
+min bulk ESS: 71.3   min tail ESS: 80.9
+5 worst-Rhat parameters:
+  lens/mass/host/theta_E         Rhat=1.9161  median=1.47259  ESSbulk=71.3  ESStail=90.0
+  lens/mass/foreground/theta_E   Rhat=1.6246  median=0.37015  ESSbulk=83.7  ESStail=97.7
+  source/light/src1/center_y     Rhat=1.5156  median=-0.35663  ESSbulk=94.2  ESStail=117.3
+  source/light/src1/center_x     Rhat=1.3976  median=-0.11209  ESSbulk=111.6  ESStail=132.2
+  lens/light/disk/center_x       Rhat=1.3798  median=0.05455  ESSbulk=114.3  ESStail=124.3
+
+================================================================================
+[r3_fg] 3. Boundary pinning check (full output)
+================================================================================
+
+=== Boundary pinning (Uniform bounds, TruncatedNormal truncation) ===
+lens/mass/host/gamma              2.9514  in [1, 3]  ( 97.6% of range)  TruncatedNormal
+lens/light/bulge/n_sersic         4.3827  in [1, 8]  ( 48.3% of range)  Uniform
+lens/light/bulge/e1              -0.1191  in [-0.3, 0.3]  ( 30.2% of range)  TruncatedNormal
+lens/light/bulge/e2               0.0412  in [-0.3, 0.3]  ( 56.9% of range)  TruncatedNormal
+lens/light/disk/n_sersic          1.9777  in [0.5, 2.5]  ( 73.9% of range)  Uniform
+lens/light/disk/e1               -0.0221  in [-0.3, 0.3]  ( 46.3% of range)  TruncatedNormal
+lens/light/disk/e2               -0.1255  in [-0.3, 0.3]  ( 29.1% of range)  TruncatedNormal
+lens/light/foreground/n_sersic    5.6345  in [0.3, 6]  ( 93.6% of range)  Uniform
+lens/light/foreground/e1          0.1083  in [-0.5, 0.5]  ( 60.8% of range)  TruncatedNormal
+lens/light/foreground/e2         -0.1389  in [-0.5, 0.5]  ( 36.1% of range)  TruncatedNormal
+source/light/src0/n_sersic        0.3869  in [0.3, 6]  (  1.5% of range)  Uniform  <-- PINNED at lower bound
+source/light/src0/e1             -0.3308  in [-0.5, 0.5]  ( 16.9% of range)  TruncatedNormal
+source/light/src0/e2             -0.4689  in [-0.5, 0.5]  (  3.1% of range)  TruncatedNormal
+source/light/src1/n_sersic        3.3173  in [0.3, 6]  ( 52.9% of range)  Uniform
+source/light/src1/e1              0.0836  in [-0.5, 0.5]  ( 58.4% of range)  TruncatedNormal
+source/light/src1/e2             -0.2465  in [-0.5, 0.5]  ( 25.3% of range)  TruncatedNormal
+
+A pinned parameter is set by its prior, not by the data, and HMC cannot mix along the boundary -- expect poor R-hat there and treat the value as a bound rather than a measurement.
+
+================================================================================
+[r3_fg] 4. masked_chisq at posterior median
+================================================================================
+chi2_nu at posterior median: 1.0823
+n_kept pixels (rebuilt mask): 6400, recorded n_masked_pixels: 6400
+
+================================================================================
+[r3_fg] 5. theta_E (host EPL) posterior
+================================================================================
+theta_E: median 1.4726, 16pct 1.4670, 84pct 1.4787  (1.473 +0.006/-0.006)
+
+================================================================================
+6. r3_fg foreground component posterior (nested-model check)
+================================================================================
+Full z_param_names list (for the record, exact names used below):
+  planes/0/light/0/Ie
+  planes/0/light/0/R_sersic
+  planes/0/light/0/center_x
+  planes/0/light/0/center_y
+  planes/0/light/0/e1
+  planes/0/light/0/e2
+  planes/0/light/0/n_sersic
+  planes/0/light/1/Ie
+  planes/0/light/1/R_sersic
+  planes/0/light/1/center_x
+  planes/0/light/1/center_y
+  planes/0/light/1/e1
+  planes/0/light/1/e2
+  planes/0/light/1/n_sersic
+  planes/0/light/2/Ie
+  planes/0/light/2/R_sersic
+  planes/0/light/2/center_x
+  planes/0/light/2/center_y
+  planes/0/light/2/e1
+  planes/0/light/2/e2
+  planes/0/light/2/n_sersic
+  planes/0/mass/0/center_x
+  planes/0/mass/0/center_y
+  planes/0/mass/0/e1
+  planes/0/mass/0/e2
+  planes/0/mass/0/gamma
+  planes/0/mass/0/theta_E
+  planes/0/mass/1/gamma1
+  planes/0/mass/1/gamma2
+  planes/0/mass/2/center_x
+  planes/0/mass/2/center_y
+  planes/0/mass/2/theta_E
+  planes/1/light/0/Ie
+  planes/1/light/0/R_sersic
+  planes/1/light/0/center_x
+  planes/1/light/0/center_y
+  planes/1/light/0/e1
+  planes/1/light/0/e2
+  planes/1/light/0/n_sersic
+  planes/1/light/1/Ie
+  planes/1/light/1/R_sersic
+  planes/1/light/1/center_x
+  planes/1/light/1/center_y
+  planes/1/light/1/e1
+  planes/1/light/1/e2
+  planes/1/light/1/n_sersic
+
+Foreground SIS theta_E column: planes/0/mass/2/theta_E
+Candidate foreground light Ie columns (same plane 0): ['planes/0/light/0/Ie', 'planes/0/light/1/Ie', 'planes/0/light/2/Ie', 'planes/1/light/0/Ie']
+Foreground Sersic Ie column selected: planes/0/light/2/Ie
+
+planes/0/mass/2/theta_E: median 0.37015, 16pct 0.34215, 84pct 0.40034, sd 0.03036, median/sd 12.190
+fraction of posterior mass with theta_E < 0.05 arcsec: 0.0000
+planes/0/light/2/Ie: median 8.941264e+01, 16pct 7.408850e+01, 84pct 1.006160e+02, sd 1.435312e+01, median/sd 6.229
+
+================================================================================
+7. Model comparison: r3_unmasked (36 params) vs r3_fg (46 params)
+================================================================================
+r3_unmasked: n_params=36  median HMC log-post=18269.287  max HMC log-post=18277.615  MAP recomputed lp=18125.699
+r3_fg      : n_params=46  median HMC log-post=19435.000  max HMC log-post=19450.074  MAP recomputed lp=19422.154
+
+Difference (r3_fg - r3_unmasked): median +1165.713 nats, max +1172.459 nats, MAP +1296.455 nats
+r3_fg has 10 more parameters than r3_unmasked.
+diagnose.py does not implement an information criterion (AIC/BIC/WAIC); none is computed here per instructions.
+
+================================================================================
+8. SVI NaN in r3_fg -- step index, count, pre-NaN convergence, surrogate finiteness
+================================================================================
+r3_fg svi.npz loss_hist: 12000 steps, 4206 non-finite
+first non-finite step index: 7794
+loss over 300 steps before the first non-finite value: final 6975.29, sd 2387.73
+first 10 pre-NaN losses: [-19065.109375   -19066.65234375 -19069.6953125  -19065.44921875
+ -19070.5703125  -19066.92382812 -19071.71679688 -19072.84179688
+ -19072.30078125 -19069.53125   ]
+last 10 pre-NaN losses: [-12594.1171875  -10929.91992188  -9604.96289062  -8413.28710938
+  -6984.73046875  -3452.05444336   2026.61547852   5999.82128906
+   9355.51367188   6975.28808594]
+
+saved surrogate mean finite: True (shape (46,))
+saved surrogate scale_tril finite: True (shape (46, 46))
+
+================================================================================
+SUMMARY (for reply table construction)
+================================================================================
+r3_unmasked: max_rhat=13.9366 n_bad=36 min_bulk_ess=50.7 chi2_nu=1.6621 theta_E=(np.float64(1.538634717464447), np.float64(1.5369650745391845), np.float64(1.540167212486267)) map_deficit_nats=151.916
+r3_fg: max_rhat=1.9161 n_bad=46 min_bulk_ess=71.3 chi2_nu=1.0823 theta_E=(np.float64(1.472590148448944), np.float64(1.4670182704925536), np.float64(1.47873055934906)) map_deficit_nats=27.920
+
+fg foreground: {'theta_E_name': 'planes/0/mass/2/theta_E', 'theta_E': (np.float64(0.37015222012996674), np.float64(0.3421528780460358), np.float64(0.40034175753593443)), 'theta_E_sd': 0.03036482259631157, 'theta_E_dist_sd': np.float64(12.19016574050162), 'frac_near_zero': 0.0, 'ie_name': 'planes/0/light/2/Ie', 'ie': (np.float64(89.41263580322266), np.float64(74.08850036621094), np.float64(100.61600402832032)), 'ie_sd': 14.353116035461426, 'ie_dist_sd': np.float64(6.229492995271268)}
+
+SVI NaN: {'n_total': 12000, 'n_nonfinite': 4206, 'first_bad': 7794, 'mean_finite': True, 'tril_finite': True}

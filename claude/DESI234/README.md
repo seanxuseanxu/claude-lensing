@@ -149,7 +149,7 @@ values is coincidence, not a validation of guessing.
 - [x] Cutout and PSF built, both with reproducible sidecars
 - [x] `config.py` written, every number measured on this system
 - [x] `LENS_IE = 72` / `SOURCE_IE = 21` calibrated by prior-draw render (see below)
-- [ ] `verify.py --lens DESI234` passing
+- [x] `verify.py --lens DESI234` passing — 5/5, check 5 honestly skipped (`RESULTS_v3.md` §3)
 - [x] Round 1 fit (`r1_s1l1`, 22 params) — **did not converge**, worst R-hat 1.652;
       lens-light `n_sersic` pinned at 89.5% of its range. Not a measurement; see `RESULTS_v2.md` section 3.
 - [x] Round 2 fit (`r2_s2l2`, 36 params, bulge+disk light + 2 source components) —
@@ -157,6 +157,14 @@ values is coincidence, not a validation of guessing.
       See `RESULTS_v2.md` for the full result, the residual-structure caveats (PSF mismatch
       at the core, unmodelled arc knots), and section 6's finding that the second source
       component sits outside the caustic and is not multiply imaged.
+      **Its `theta_E` is superseded as a measurement by round 3** — see the banner on
+      `RESULTS_v2.md`.
+- [x] Round 3 fits (`r3_unmasked` 36 params, `r3_fg` 46 params; both unmasked, `supersample = 4`)
+      — **neither converged**, max R-hat 13.94 and 1.92. No `theta_E` from this round.
+      What it did settle: the interloper carries **0.370" of SIS mass, 12.2 sd from zero**,
+      and modelling it moves the main `theta_E` by **0.066"**. `RESULTS_v3.md`.
+- [ ] Round 4: a converged `r3_fg`-class run. `RESULTS_v3.md` §5.4 shows the fix is sampling,
+      not modelling — `r3_fg` is under-mixed along a `theta_E` ridge, `r3_unmasked` is frozen.
 
 `verify.py`'s check 6 (the SVI guard) will report itself **skipped** until round 1 gives this
 lens its own known-good and known-diverged runs. A skipped check is honest; it must not be
@@ -167,4 +175,10 @@ weakened to pass.
 | round | run | params | converged | theta_E | notes |
 |---|---|---|---|---|---|
 | 1 | `r1_s1l1` | 22 | no (worst R-hat 1.652) | 1.532" (unreliable) | lens-light `n_sersic` pinned at bound |
-| 2 | `r2_s2l2` | 36 | **yes** (worst R-hat 1.008) | **1.539 +0.003/-0.002"** | `RESULTS_v2.md` — residual shows PSF-mismatch checkerboard + arc knots; `src1` sits outside the caustic, not multiply imaged |
+| 2 | `r2_s2l2` | 36 | yes (worst R-hat 1.008) | 1.539 +0.003/-0.002" — **superseded, see below** | `RESULTS_v2.md` — converged, but with the interloper's mass unmodelled; round 3 shows that mass shifts `theta_E` by 0.066" |
+| 3 | `r3_unmasked` | 36 | no (worst R-hat 13.94) | — | `RESULTS_v3.md` — chains **frozen** (§5.4); chi2_nu 1.662, the worse model by Δchi² ≈ 3700 |
+| 3 | `r3_fg` | 46 | no (worst R-hat 1.92) | — | `RESULTS_v3.md` — chains **under-mixed along a `theta_E` ridge**, not multimodal; chi2_nu **1.082**, the best of the round. Foreground SIS `theta_E = 0.370"` at 12.2 sd from zero |
+
+**No `theta_E` is currently quotable for this system.** Round 2's interval is statistically
+sound but on a misspecified model (interloper mass absent); round 3 fixes the model and fails
+to converge. `RESULTS_v3.md` §7 gives the systematic budget and states what round 4 needs.

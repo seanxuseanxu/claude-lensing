@@ -1,0 +1,55 @@
+==============================================================================
+DESI234 r2_s2l2 -- undersampling diagnostic (supersample=2 configured)
+==============================================================================
+
+Undersampling diagnostic — dataset 0 (forward (sampled amplitudes)), tolerance 0.2 sigma/pixel
+  reference: uniform supersample=16 (self-check vs 8: native: 10.608 sigma, subgrid: 8.943 sigma — NOT CONVERGED — raise reference_supersample; numbers below are not certified)
+  supersample=1 [native-kernel PSF (bin-first)]: max |d|/sigma = 12.212 at (y=39, x=39), 10.35% of pixels above tol, delta_chi2 = +382.8, spread +26.6..+855.6 -> FAIL
+  supersample=2 [subgrid-kernel PSF]: max |d|/sigma = 2.989 at (y=39, x=41), 7.56% of pixels above tol, delta_chi2 = -320.8, spread -380.4..-201.1 -> FAIL
+  supersample=4 [subgrid-kernel PSF]: max |d|/sigma = 0.988 at (y=56, x=39), 1.49% of pixels above tol, delta_chi2 = -89.9, spread -130.5..-50.3 -> FAIL
+  supersample=8 [subgrid-kernel PSF]: max |d|/sigma = 8.943 at (y=39, x=40), 1.40% of pixels above tol, delta_chi2 = +434.7, spread -9.5..+1665.1 -> FAIL
+  PSF-convention gap (native vs subgrid kernel, both at the reference): max 4.83 sigma — changing supersample across the 1 -> >=2 boundary changes the PSF model by this much; NOT reducible by supersampling.
+  recommendation: none of the tested supersamples reach 0.2 sigma/pixel — test higher rungs, or use the experimental adaptive supersampler on the refined pixels this report localizes.
+
+*** REFERENCE NOT CONVERGED -- the numbers below are NOT certified. ***
+    reference_self_error: {'native': 10.607851708440844, 'subgrid': 8.942929232247987}
+
+Per-rung delta_chi2 (chi2(rung) - chi2(matched reference)), mean and spread over the 9-sample batch:
+  supersample=1                mean    +382.80   min     +26.56   max    +855.63   max|d|/sigma 12.212
+  supersample=2                mean    -320.84   min    -380.45   max    -201.08   max|d|/sigma 2.989
+  supersample=4                mean     -89.92   min    -130.50   max     -50.31   max|d|/sigma 0.988
+  supersample=8                mean    +434.68   min      -9.53   max   +1665.06   max|d|/sigma 8.943
+
+reference_self_error (per PSF convention, sigma, self-check ss=8 vs ss=16): {'native': 10.607851708440844, 'subgrid': 8.942929232247987}
+reference_converged: False
+convention_gap_max (native vs subgrid PSF convention, at the reference): 4.829922164468476
+recommended_supersample: None
+
+ss=2 rung: convention=subgrid, saved delta_over_sigma (9, 80, 80) -> undersampling_ss2_delta_over_sigma.npy
+saved plot (ss=2, HMC-median sample) -> undersampling_ss2.png
+
+------------------------------------------------------------------------------
+DECISIVE TEST: deflector core box, 10x10 px centred at pixel (39, 39) = cfg.centroid_pix, HMC-median sample
+------------------------------------------------------------------------------
+  observed normalised-residual peak |value| in box : 6.582 sigma
+  ss=2 predicted delta/sigma peak |value| in box   : 2.446 sigma
+  Pearson r (observed vs ss=2-predicted, pixel-by-pixel over the box): -0.1094
+
+  verdict: HYPOTHESIS FAILS: the ss=2 quadrature-error map does NOT reproduce the observed checkerboard; the residual is likely a genuine PSF/model error, not a supersampling artifact.
+
+--------------------------------------------------------------------------------
+SUPPLEMENTARY (not part of the certified 9-sample batch above): reference
+convergence rate check, MAP + HMC-median only, subgrid convention.
+--------------------------------------------------------------------------------
+  self-check(8 vs 16)  = 8.943 sigma  (the run above, reference_supersample=16)
+  self-check(16 vs 32) = 0.451 sigma  (reference_supersample=32; ran without error,
+                                        some transient CUDA OOM retries during XLA's
+                                        memory-size search, succeeded on retry)
+Both are far above the tolerance/4 = 0.05 sigma convergence bar. The subgrid-kernel
+reference is converging (8.9 -> 0.45, ~20x per doubling here) but reference_supersample=16
+-- the value specified for this task -- is NOT enough to certify it for DESI234's core
+(n_sersic=5.27, R_sersic=0.43", cuspier than the demo lens the module docstring's own
+convergence numbers were measured on). The headline delta_chi2/max-|delta|/sigma numbers
+above must be read as uncertified, not as a validated measurement of the ss=2 rung's exact
+damage. They are still informative for the SHAPE/LOCATION comparison below, since that
+question does not depend on the reference having fully converged to sub-tolerance precision.

@@ -1,0 +1,24 @@
+Run: /global/u1/s/seanjx/claude-lensing/claude/DESI234/runs/r2_s2l2
+Point estimate: HMC median
+Deflector centre (row, col): (39.13, 39.47), delta_pix=0.065"/px
+
+Arc selection: r in [1.66, 1.82]", PA in [125.0, 235.0] deg (array-space), model > 3.0 sigma, mask-kept
+  118 pixels selected
+
+Arc chi2_nu before any correction: 9.6402 (over 118 px)
+
+--- Global (row, col) translation fit ---
+  fit coefficients: a_row=+0.0624, a_col=+0.0711 (sigma per px-shift)
+  implied shift: s_row=-0.0624 px, s_col=-0.0711 px
+  |shift| = 0.0945 px = 0.0061 arcsec
+  arc chi2_nu after removing this shift: 9.5903
+  fraction of arc chi2 explained: 0.0052
+
+--- Tangential/radial fit about the deflector centre ---
+  fit coefficients: a_tan=+0.0234, a_rad=-0.0756 (sigma per px-shift)
+  implied shift: s_tan=-0.0234 px, s_rad=+0.0756 px
+  |shift| = 0.0791 px = 0.0051 arcsec
+  arc chi2_nu after removing this component: 9.5740
+  fraction of arc chi2 explained: 0.0069
+
+VERDICT: SUBSTRUCTURE: the gradient-projection (shift) model removes only 1% of the arc's chi-squared. The residual is largely uncorrelated with the model's own local shape, consistent with genuine source-plane structure the smooth Sersic components cannot reproduce.

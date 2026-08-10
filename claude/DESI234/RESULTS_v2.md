@@ -1,5 +1,16 @@
 # DESI234, round 2: bulge+disk light, two source components
 
+> **SUPERSEDED IN PART — do not quote `theta_E = 1.539 +0.003/-0.002"` as a measurement.**
+> Round 3 (`RESULTS_v3.md`) modelled the interloper this round masks, and found it carries
+> **0.370" of its own SIS mass at 12.2 sd from zero**. Adding that mass moves the main
+> deflector's `theta_E` by **0.066"** — about 20x the statistical error quoted below. Masking
+> removes an object's *light* from the likelihood but leaves its *deflection* unmodelled, so
+> the interval below is a statistical error on a model now known to be misspecified.
+> Round 3 does **not** replace it with a better number: both round-3 fits failed R-hat
+> (`RESULTS_v3.md` §5.1, §5.4). This round's convergence (max R-hat 1.008) is still real and
+> its method still stands; it is the *model*, not the sampling, that round 3 invalidated.
+> `RESULTS_v3.md` §7 has the systematic budget.
+
 **Date:** 2026-08-08. First converged fit of this system. Round 1 (`r1_s1l1`) is documented
 below for comparison only — it did not converge and none of its parameter values should be
 quoted as measurements.

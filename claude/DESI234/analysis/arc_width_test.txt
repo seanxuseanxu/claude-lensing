@@ -1,0 +1,26 @@
+Run: /global/u1/s/seanjx/claude-lensing/claude/DESI234/runs/r2_s2l2
+Point estimate: HMC median
+Arc pixels: 118 (identical selection to arc_residual_anatomy.py)
+
+--- First-order fit: r ~ a*dm/dt + b*dm/dr ---
+  coefficients: a=+0.0034, b=-0.0741
+  R^2 = -0.0644
+  fraction of arc chi2 explained = 0.0059
+
+--- Full second-order fit: r ~ a*dm/dt + b*dm/dr + c*d2m/dr2 + d*d2m/dt2 + e*d2m/dtdr ---
+  coefficients: a=-0.1356, b=-0.0598, c=-0.2273, d=+0.6745, e=+1.2771
+  R^2 = 0.0067
+  fraction of arc chi2 explained = 0.0723
+
+Incremental R^2 from the 3 second-order terms: 0.0711
+
+--- Implied radial width error (item 3) ---
+  Linearisation: m(r/(1+eps)) ~= m(r) - eps*r*dm/dr to first order in eps (a width rescale is degenerate with a RADIAL first derivative, not the second). c (the d2m/dr2 coefficient) is reported directly; converting it to a width error in pixels uses width_err_px = |c| * (half arc annulus width in px = 1.231) / RMS(dm/dr in sigma units over arc pixels).
+  c = -0.2273, RMS(g_rad over arc) = 3.2728
+  width_err_px ~= 0.0855 px
+
+--- Null: 200 random smooth triples (Gaussian-smoothed white noise, matched correlation length L=2.460 px [smoothing sigma_k=1.739 px], orthogonalised against the first-order fit) ---
+  null incremental-R^2: mean = 0.2104, 95th pct = 0.4755
+  measured incremental R^2 (0.0711) DOES NOT exceed the null 95th percentile
+
+VERDICT: NOT MIS-SHAPED (by this test): the second-order terms' incremental R^2 does not clear the null built from equally complex arbitrary smooth regressors. Combined with arc_residual_anatomy.py's first-order result, neither a displacement nor a radial-width error accounts for the arc residual pattern; genuine source-plane substructure remains the more honest reading.

@@ -19,7 +19,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "pipeline"))
 
-from lenses import LensConfig, MassPrior, SersicPrior  # noqa: E402
+from lenses import ForegroundPrior, LensConfig, MassPrior, SersicPrior  # noqa: E402
 
 # ---------------------------------------------------------------------------------------
 # Data conditioning
@@ -90,7 +90,25 @@ CROP = (slice(20, 100), slice(20, 100))
 # Why not simply leave it unmasked: the source components' priors put no constraint on
 # where a component may sit, so a free Sersic can and will go and sit on a 110-sigma blob.
 # That is not a hypothetical; it is the cheapest way for the model to buy chi-squared.
-MASK_CIRCLES = ((64.0, 14.0, 12.0),)
+#
+# **Round 3 unmasks it** (2026-08-09). Both round-3 fits use the whole crop:
+# `r3_unmasked` leaves the object to be reproduced (or not) by the same mass model and the
+# same source components that make the arc, and `r3_fg` adds the nested SIS+Sersic pair
+# below (FOREGROUND) at its measured position. The paragraph above is the reason the two
+# must be run as a PAIR rather than unmasking alone: an unconstrained free Sersic sitting
+# on the blob is a real failure mode, and `r3_fg`'s dedicated, position-tied component is
+# what distinguishes "the model reproduces this object" from "some component went and sat
+# on it". DESI257 is the precedent for the unmasking itself -- it masked its SW object on
+# an argument that turned out to be a physics error, and unmasking in its round 3 closed a
+# bimodality and moved gamma 2.54 -> 1.99.
+#
+# Rounds 1-2 remain diagnosable: `run_fit.py` records `mask_circles` per run and
+# `diagnose.rebuild_model` reads back the RECORDED value, not this one
+# (KNOWN_ISSUES.md item 8). It prints a NOTE when the two differ, and raises if the
+# rebuilt mask's kept-pixel count disagrees with the run's recorded `n_masked_pixels`.
+# Note also that log posteriors are NOT comparable across this change: DESI257 measured a
+# 14,347-nat offset between its masked and unmasked likelihoods on identical parameters.
+MASK_CIRCLES = ()
 
 # No sky is subtracted. The cutout's clean corners read 0.004-0.015 e/s, which is the
 # deflector's own Sersic wings plus its neighbours, not a sky pedestal: true blank sky in
@@ -250,6 +268,117 @@ LENS_LIGHT_DISK = SersicPrior(
     Ie_logsigma=0.8,
 )
 
+# Round 3: the masked interloper (MASK_CIRCLES above) modelled instead as a candidate
+# foreground galaxy -- one SIS + its own Sersic light, nested against round 2's masked
+# model so that SIS theta_E -> 0 and light Ie -> 0 recover it exactly (see priors.py's
+# build_model docstring for the nesting argument). This block is INERT unless
+# `run_fit.py --foreground` is passed -- r1_s1l1 and r2_s2l2 built their models with
+# foreground=None and are unaffected by anything below.
+#
+# Every number here comes from claude/DESI234/analysis/foreground_calibration.py, whose
+# full output is saved alongside it as foreground_calibration.txt. None is copied from
+# DESI257's FOREGROUND block or from this file's own LENS_IE/SOURCE_IE.
+#
+# Position, measured from the r2_s2l2 residual (data minus the round-2 point-estimate
+# model, rebuilt via diagnose.rebuild_model): the interloper was MASKED out of round 2's
+# likelihood, so the round-2 model contains no attempt to fit it, and the residual in its
+# disc IS the object (plus noise), not a model-mismatch artefact on some other component.
+#
+#   Background: local median over an annulus 12-20 px around the mask centre (635 px,
+#   outside the mask radius where round 2 says the profile is consistent with zero) is
+#   0.00054 e/s -- negligible next to the object's own signal, but subtracted anyway.
+#   Flux centroid (background-subtracted, negative pixels clipped to 0, r <= 10 px around
+#   the mask centre (64.0, 14.0)): crop (row 63.900, col 14.344). The peak residual pixel
+#   in that disc is 0.8206 e/s at crop (64, 14), matching MASK_CIRCLES's stated 0.82 e/s.
+#
+#   Which pixel axis feeds center_x and which feeds center_y was independently
+#   RE-VERIFIED by rendering on THIS system's own grid (80x80/0.065", supersample=1,
+#   delta-function PSF for pixel-exact placement) -- not merely cited from DESI257's
+#   config: a Sersic placed at center_x=0.5, center_y=-1.0 peaks at array (row, col) =
+#   (24, 47), matching the predicted ROW shift from center_y=-1.0 (-1.0/0.065 = -15.385 px
+#   from the array centre 39.5 -> row 24.115) and the predicted COLUMN shift from
+#   center_x=0.5 (0.5/0.065 = +7.692 px -> col 47.192). So **center_x is the
+#   COLUMN-derived coordinate, center_y is the ROW-derived one** -- same convention as
+#   DESI257's FOREGROUND block, confirmed fresh rather than assumed.
+#
+#   gigalens.simulator.LensWCS(n=80, supersample=1, pix_scale=0.065) is the same WCS
+#   SceneSimulator builds internally; its angle2pix(0, 0) returns pixel (col, row) =
+#   (39.5, 39.5), the array centre. wcs.pix2angle(col=14.344, row=63.900) gives
+#   (center_x, center_y) = (-1.63513, 1.58600) arcsec.
+#
+#   Cross-check: separation from the deflector centroid (cfg.centroid_pix, crop
+#   (row 39.130, col 39.470), pushed through the same WCS) is 2.2934" at array-space PA
+#   314.6 deg -- within 0.3% and 0.6 deg of MASK_CIRCLES's stated 2.30" at PA 314. No
+#   transposition or sign error.
+FOREGROUND_CENTER_X = -1.63513
+FOREGROUND_CENTER_Y = 1.58600
+
+# Ie calibrated by the same render-and-match procedure LENS_IE/SOURCE_IE above used:
+# build the model with a provisional ForegroundPrior, render prior draws of the
+# foreground LIGHT component ALONE (SceneSimulator(sees=...) isolating it, real PSF, on
+# this system's own grid num_pix=80/delta_pix=0.065/supersample=2 -- the data peak below
+# is already PSF-convolved, so the render must be too), and tune Ie_median until the
+# median rendered peak matches the data peak the interloper actually reaches, 0.82 e/s
+# (MASK_CIRCLES comment above; reproduced by this calibration's own peak-residual check,
+# 0.8206 e/s).
+#
+# 500 draws per seed, 5 seeds, at R_sersic_median=0.2, R_sersic_logsigma=0.5,
+# ellip_sigma=0.2, Ie_logsigma=0.8, center_sigma=0.1 (provisional for this search --
+# Ie_median is the only number the search determines):
+#
+#   Ie_median=50  seed 0 0.566  seed 1 0.688  seed 2 0.637  seed 3 0.612  seed 4 0.542  -> median 0.6121
+#   Ie_median=60  seed 0 0.679  seed 1 0.826  seed 2 0.765  seed 3 0.735  seed 4 0.650  -> median 0.7346
+#   Ie_median=70  seed 0 0.792  seed 1 0.964  seed 2 0.892  seed 3 0.857  seed 4 0.759  -> median 0.8570
+#   Ie_median=80  seed 0 0.905  seed 1 1.101  seed 2 1.020  seed 3 0.979  seed 4 0.867  -> median 0.9794
+#
+# Linear interpolation against the 0.82 target picks Ie_median=67; a dedicated
+# confirmation run there gives per-seed medians 0.758/0.922/0.854/0.820/0.726 (median
+# across seeds 0.8203, mean 0.8162) against the 0.82 target -- within 0.1%. The spread
+# within one seed's 500 draws is wide (16-84th pct roughly 0.23-3.1 e/s at this median),
+# consistent with a LogNormal prior and with LENS_IE/SOURCE_IE's own spreads.
+FOREGROUND_IE = 67.0
+
+FOREGROUND = ForegroundPrior(
+    center_x=FOREGROUND_CENTER_X,
+    center_y=FOREGROUND_CENTER_Y,
+    # Looser than every other center_sigma in this file (0.05, e.g. MASS_PRIOR's and
+    # LENS_LIGHT_SINGLE's) by design: this object is fainter relative to its surroundings
+    # than the deflector is, and its centroid comes from a background-subtracted residual
+    # rather than a direct curve-of-growth measurement on bright, isolated light. 0.1" =
+    # 1.5 px keeps the component tied to the object while giving the data more room to
+    # correct a centroid measured this way.
+    center_sigma=0.1,
+    # SIS theta_E: HalfNormal(scale=0.3), NOT a LogNormal -- see priors.py's
+    # _foreground_mass_priors_v1 for why this family is required (support must reach
+    # exactly 0). scipy.stats.halfnorm(scale=0.3): median 0.2023", 1-99% range
+    # [0.0038", 0.7727"] -- of order the object's own measured size (R_sersic_median
+    # below), reaching up to a plausible-but-not-enormous foreground galaxy's Einstein
+    # radius without a floor that would break the nesting round 3 depends on. A fitted
+    # theta_E near 0 favours the fourth-image/pure-interloper-light reading; a fitted
+    # theta_E of order 0.2-0.5" together with non-negligible light Ie favours the
+    # foreground-deflector reading.
+    theta_E_scale=0.3,
+    # From this object's own curve of growth: background-subtracted flux (same map used
+    # for the centroid above), summed in growing apertures about the measured centroid
+    # out to r=10 px (beyond which MASK_CIRCLES records the profile is consistent with
+    # zero). Half of the r<=10 px total (23.674) is enclosed at r=3.067 px = 0.1993",
+    # rounded to 0.2".
+    R_sersic_median=0.2,
+    R_sersic_logsigma=0.5,
+    # Measured, not assumed: second moments of the same background-subtracted disc
+    # (r <= 10 px about the measured centroid, negative pixels clipped) give
+    # e1=0.120, e2=-0.087, |e|=0.148 -- notably rounder than "very flattened" but not
+    # round either. 0.3 is roughly double that measurement, wider than this file's other
+    # ellip_sigma values (0.1-0.2, set against measurements an order of magnitude
+    # smaller) because a 317-pixel, background-subtracted second-moment estimate on a
+    # faint object is noisier than the curve-of-growth and light-profile measurements
+    # behind those other values, and the width should say so rather than pretend to the
+    # same precision.
+    ellip_sigma=0.3,
+    Ie_median=FOREGROUND_IE,
+    Ie_logsigma=0.8,
+)
+
 CONFIG = LensConfig(
     name="DESI234",
     cutout_file="cutout234.npy",
@@ -260,7 +389,19 @@ CONFIG = LensConfig(
     # final_92_drz.fits, recorded in cutout234.json as `delta_pix`.
     delta_pix=0.065,
     num_pix=80,
-    supersample=2,
+    # Round 3 raises this from 2 to 4. `analysis/undersampling_certify.py` measured the
+    # quadrature error against a supersample=32 reference on a 9-sample batch (MAP,
+    # HMC-median, 7 spread draws): max |delta|/sigma falls 3.132 -> 0.997 and the fraction
+    # of pixels above the 0.2 sigma/pixel tolerance falls 8.17% -> 1.97%. ss=2 and ss=4 are
+    # BOTH the `subgrid` PSF convention, so this refines the quadrature only and does not
+    # move the PSF model -- unlike 2 -> 1, which crosses into `native` and changes the PSF
+    # by 5.02 sigma, a gap supersampling cannot close. Measured wall cost of 2 -> 4 on this
+    # 80x80 image: 1.05x at batch 50, 0.90x at batch 1 -- kernel-launch overhead dominates
+    # the O(ss^2) compute, so the naive 4x is not what this costs.
+    # Neither rung reaches tolerance and the ss=32 reference is itself uncertified
+    # (self-check 0.45 sigma against a 0.05 sigma bar), so ss=4 is the better of two
+    # imperfect renders, not a solved problem. See RESULTS_v3.md section 1.1.
+    supersample=4,
     # EXPTIME header keyword, NCOMBINE 3. The WHT extension is BUNIT = UNITLESS, so it is a
     # weight and not an exposure map; over the 81x81 box around the lens its median equals
     # its maximum to 0.2%, so coverage is uniform there and a scalar exposure time is right
@@ -278,14 +419,31 @@ CONFIG = LensConfig(
         "disk": LENS_LIGHT_DISK,
     },
     clumps=CLUMPS,
-    # Upper bound on the brightest *unmasked* corner pixel. The interloper puts 0.859 e/s
-    # in the upper-left corner and is masked; with the mask applied the worst of the four
-    # corners is the lower-right at 0.241 e/s, at crop (19, 60) -- the innermost pixel of
-    # that quadrant, one PSF width from the arc's eastern tip, and meant to be there.
-    # Masking takes the upper-left corner from 0.859 to 0.041 e/s. 0.30 fails on anything new without failing on
-    # that. Note this bound is checked on all four corners -- DESI238's check looked only at
-    # the lower-left, where this system's interloper would have been invisible.
-    companion_max=0.30,
+    # Round 3's candidate foreground interloper (see FOREGROUND above). Inert unless a run
+    # is built with `priors.build_model(..., foreground=cfg.foreground_prior)` --
+    # `run_fit.py --foreground` -- so r1_s1l1 and r2_s2l2 are unaffected.
+    foreground_prior=FOREGROUND,
+    # Upper bound on the brightest *unmasked* corner pixel. `verify.py`'s corner_report
+    # checks all four corners -- DESI238's check looked only at the lower-left, where this
+    # system's interloper would have been invisible -- and it checks them AFTER the mask,
+    # so this bound moves with MASK_CIRCLES.
+    #
+    # Rounds 1-2 (masked) used 0.30. With the interloper masked the worst of the four
+    # corners was the lower-right at 0.241 e/s, at crop (19, 60) -- the innermost pixel of
+    # that quadrant, one PSF width from the arc's eastern tip, and meant to be there;
+    # masking took the upper-left corner from 0.859 e/s down to 0.041.
+    #
+    # Round 3 unmasks (MASK_CIRCLES above), which puts the interloper's own 0.859 e/s back
+    # into the upper-left corner and would fail a 0.30 bound. Raised to 0.95: about 11%
+    # headroom over the 0.859 this field's one known corner object actually reaches, so the
+    # check still fails on anything NEW appearing in any corner while admitting the object
+    # round 3 deliberately fits. This is exactly what DESI257 did when it unmasked its own
+    # SW object -- 1.05 against that object's 0.957 e/s peak, the same ~10% margin.
+    #
+    # This bound is therefore no longer a statement that the field is clean; it is a
+    # statement that the field contains one known bright corner object, which the model now
+    # carries explicitly. If MASK_CIRCLES is ever restored, restore 0.30 with it.
+    companion_max=0.95,
     # Populated after round 1 gives this lens its own known-good and known-diverged runs.
     # Until then verify.py's check 6 reports itself skipped, which is honest.
     svi_guard_reference={},

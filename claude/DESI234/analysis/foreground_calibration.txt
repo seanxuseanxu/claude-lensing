@@ -1,0 +1,121 @@
+/global/u1/s/seanjx/claude-lensing/claude/pipeline/priors.py:435: UserWarning: [plausibility] SHEAR[lens mass shear].|shear| <= 0.2: prior mass outside plausible region |shear| <= 0.2: estimated mass 0.136 (probe (K=3000000)) exceeds 0.05 — external-shear magnitude sqrt(gamma1^2+gamma2^2)>0.2 is much larger than realistic line-of-sight shear on galaxy/group scales — physically valid (the kernel is exact) but implausible, so a plausibility prompt, not a hard bound. Physically valid but atypical; check this is intended.
+  return LensModel(
+========================================================================================
+STEP 0: load DESI234 config and the round-2 (r2_s2l2) fit
+========================================================================================
+mask_circles (row, col, radius): ((64.0, 14.0, 12.0),)
+Lens: DESI234
+Model variant: n_source=2, n_lens_light=2, lens_light_n_max=10.0, source_prior_v1, lens_light_prior_v2, foreground=False, theta_E prior LogNormal(log 1.43, 0.25)
+round-2 point estimate source: HMC median
+data / model / residual shapes: (80, 80) (80, 80) (80, 80)
+
+========================================================================================
+STEP (a): interloper flux centroid, measured from the r2 residual
+========================================================================================
+local background (median, annulus 12-20 px around the mask centre, 635 px): 0.00054 e/s
+disc r<=10 px around mask centre (64.0, 14.0): 317 px
+background-subtracted, negative-clipped flux centroid: crop (row 63.900, col 14.344)
+peak residual value in the disc: 0.8206 e/s at crop (np.int64(64), np.int64(14)) (config's MASK_CIRCLES comment states the data peak there as 0.82 e/s)
+
+========================================================================================
+STEP (b): row/col -> center_x/center_y check, by rendering on DESI234's own grid
+========================================================================================
+probe model free params: 0 (all fixed -> should be 0)
+Sersic placed at center_x=0.5, center_y=-1.0 on an 80x80/0.065" grid (supersample=1, delta-fn PSF) peaks at array (row, col) = (np.int64(24), np.int64(47))
+array centre pixel: (39.5, 39.5)
+predicted COLUMN shift from center_x=0.5: +7.692 px -> col = 47.192
+predicted ROW shift from center_y=-1.0: -15.385 px -> row = 24.115
+row shift matches center_y prediction: True; col shift matches center_x prediction: True
+CONCLUSION: center_x is the COLUMN-derived coordinate, center_y is the ROW-derived one -- confirmed by rendering on DESI234's own grid, independently of DESI257's check.
+
+========================================================================================
+Centroid -> arcsec, via gigalens.simulator.LensWCS
+========================================================================================
+wcs.angle2pix(0, 0) = (col, row) = [39.5 39.5] (sanity check: should be the array centre (39.5, 39.5))
+wcs.pix2angle(col=14.344, row=63.900) -> (center_x, center_y) = (-1.63513, 1.58600) arcsec
+deflector centroid (cfg.centroid_pix, crop (row 39.130, col 39.470)) -> (center_x, center_y) = (-0.00195, -0.02405) arcsec
+separation from the deflector centroid: 2.2934" (35.28 px), array-space PA 314.6 deg
+cross-check target (config.py MASK_CIRCLES comment): 2.30" at PA 314
+
+========================================================================================
+STEP (e): R_sersic_median from this object's own curve of growth
+========================================================================================
+curve of growth (r_px, enclosed flux, enclosed/total):
+    r= 0.50 px   enclosed=    0.820   frac=0.035
+    r= 1.00 px   enclosed=    2.198   frac=0.093
+    r= 1.50 px   enclosed=    4.620   frac=0.195
+    r= 2.00 px   enclosed=    7.274   frac=0.307
+    r= 2.50 px   enclosed=    9.241   frac=0.390
+    r= 3.00 px   enclosed=   11.570   frac=0.489
+    r= 3.50 px   enclosed=   13.578   frac=0.574
+    r= 4.00 px   enclosed=   15.245   frac=0.644
+    r= 4.50 px   enclosed=   16.585   frac=0.701
+    r= 5.00 px   enclosed=   17.745   frac=0.750
+    r= 5.50 px   enclosed=   18.900   frac=0.798
+    r= 6.00 px   enclosed=   19.603   frac=0.828
+    r= 6.50 px   enclosed=   20.381   frac=0.861
+    r= 7.00 px   enclosed=   21.102   frac=0.891
+    r= 7.50 px   enclosed=   21.628   frac=0.914
+    r= 8.00 px   enclosed=   22.119   frac=0.934
+    r= 8.50 px   enclosed=   22.574   frac=0.954
+    r= 9.00 px   enclosed=   22.963   frac=0.970
+    r= 9.50 px   enclosed=   23.344   frac=0.986
+    r=10.00 px   enclosed=   23.674   frac=1.000
+total background-subtracted flux within r<=10 px: 23.674
+half-light radius (interpolated): 3.067 px = 0.1993"
+R_sersic_median adopted: 0.2"
+
+========================================================================================
+STEP (g): interloper ellipticity from residual second moments
+========================================================================================
+second moments (r<=10 px, background-subtracted, clipped>=0): Ixx=10.514, Iyy=8.257, Ixy=-0.814
+e1=0.120, e2=-0.087, |e|=0.148
+
+========================================================================================
+STEP (d): theta_E_scale = 0.3" HalfNormal -- median and 1-99% range
+========================================================================================
+median: 0.2023"
+1-99% range: [0.0038", 0.7727"]
+
+========================================================================================
+STEP (f): Ie_median calibrated by render, target data peak 0.82 e/s
+========================================================================================
+Trial Ie_median values (5 seeds x 500 draws each), to bracket the target:
+  Ie_median= 50.0  seed 0 0.566  seed 1 0.688  seed 2 0.637  seed 3 0.612  seed 4 0.542
+    -> median across seeds: 0.6121, mean: 0.6091
+  Ie_median= 60.0  seed 0 0.679  seed 1 0.826  seed 2 0.765  seed 3 0.735  seed 4 0.650
+    -> median across seeds: 0.7346, mean: 0.7309
+  Ie_median= 70.0  seed 0 0.792  seed 1 0.964  seed 2 0.892  seed 3 0.857  seed 4 0.759
+    -> median across seeds: 0.8570, mean: 0.8528
+  Ie_median= 80.0  seed 0 0.905  seed 1 1.101  seed 2 1.020  seed 3 0.979  seed 4 0.867
+    -> median across seeds: 0.9794, mean: 0.9746
+
+Interpolated Ie_median for target peak 0.82: 67.0
+
+Final calibration run at Ie_median=67.0, 500 draws/seed, 5 seeds:
+  seed 0  median 0.7582  16-84th pct [0.2348, 2.0910]
+  seed 1  median 0.9223  16-84th pct [0.2868, 3.1310]
+  seed 2  median 0.8541  16-84th pct [0.2682, 2.6749]
+  seed 3  median 0.8203  16-84th pct [0.2541, 2.4876]
+  seed 4  median 0.7262  16-84th pct [0.2911, 2.2388]
+median across seeds: 0.8203, mean: 0.8162, target: 0.82
+
+========================================================================================
+SUMMARY
+========================================================================================
+FOREGROUND_CENTER_X = -1.63513
+FOREGROUND_CENTER_Y = 1.58600
+separation from deflector: 2.2934" at array-space PA 314.6 deg (target 2.30" / 314 deg)
+center_sigma = 0.1
+theta_E_scale = 0.3 (HalfNormal median 0.2023", 1-99% [0.0038", 0.7727"])
+R_sersic_median = 0.2  (measured half-light radius 3.067 px = 0.1993")
+R_sersic_logsigma = 0.5
+ellip_sigma: measured |e| = 0.148 (e1=0.120, e2=-0.087)
+Ie_median = 67.0  (median across seeds 0.8203 vs target 0.82)
+Ie_logsigma = 0.8
+
+========================================================================================
+Parameter count check
+========================================================================================
+n_source=2, n_lens_light=2, no foreground: 36 free params (expect 36)
+n_source=2, n_lens_light=2, WITH foreground: 46 free params (expect 46)

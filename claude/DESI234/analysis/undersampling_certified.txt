@@ -1,0 +1,81 @@
+==============================================================================
+DESI234 r2_s2l2 -- undersampling CERTIFICATION (ladder=(1, 2, 4), reference_supersample=32)
+==============================================================================
+
+Same 9-sample batch as undersampling_check.py: MAP, HMC-median, draw0, draw1, draw2, draw3, draw4, draw5, draw6. This run does NOT touch that script's outputs.
+
+------------------------------------------------------------------------------
+STEP 1: full 9-sample batch, ss_ref=32, ladder (1, 2, 4) -- ss=8 dropped
+------------------------------------------------------------------------------
+[timing] step 1: 16.3s
+
+Undersampling diagnostic — dataset 0 (forward (sampled amplitudes)), tolerance 0.2 sigma/pixel
+  reference: uniform supersample=32 (self-check vs 16: native: 0.402 sigma, subgrid: 0.451 sigma — NOT CONVERGED — raise reference_supersample; numbers below are not certified)
+  supersample=1 [native-kernel PSF (bin-first)]: max |d|/sigma = 12.579 at (y=39, x=39), 10.42% of pixels above tol, delta_chi2 = +356.9, spread +64.3..+834.0 -> FAIL
+  supersample=2 [subgrid-kernel PSF]: max |d|/sigma = 3.132 at (y=39, x=41), 8.17% of pixels above tol, delta_chi2 = -340.2, spread -414.2..-215.1 -> FAIL
+  supersample=4 [subgrid-kernel PSF]: max |d|/sigma = 0.997 at (y=56, x=39), 1.97% of pixels above tol, delta_chi2 = -109.3, spread -164.3..-64.4 -> FAIL
+  PSF-convention gap (native vs subgrid kernel, both at the reference): max 5.02 sigma — changing supersample across the 1 -> >=2 boundary changes the PSF model by this much; NOT reducible by supersampling.
+  recommendation: none of the tested supersamples reach 0.2 sigma/pixel — test higher rungs, or use the experimental adaptive supersampler on the refined pixels this report localizes.
+
+reference_self_error (batch max, all 9 samples): {'native': 0.4022166411499511, 'subgrid': 0.4514606306058098}
+reference_converged: False
+recommended_supersample: None
+
+Per-rung delta_chi2 (mean, spread over the batch) and max|d|/sigma:
+  supersample=1    mean    +356.90   min     +64.34   max    +833.99   max|d|/sigma 12.579   %pix>tol 10.42%   -> FAIL
+  supersample=2    mean    -340.24   min    -414.23   max    -215.13   max|d|/sigma 3.132   %pix>tol 8.17%   -> FAIL
+  supersample=4    mean    -109.33   min    -164.29   max     -64.36   max|d|/sigma 0.997   %pix>tol 1.97%   -> FAIL
+
+Per-sample max|d|/sigma, each rung (from the batched run's per_sample_max):
+  sample                ss=1        ss=2        ss=4
+  MAP                  9.984       1.897       0.706
+  HMC-median          11.190       2.525       0.626
+  draw0               10.454       1.823       0.642
+  draw1               11.330       2.623       0.752
+  draw2               11.181       2.498       0.505
+  draw3               12.021       2.846       0.674
+  draw4               11.051       2.539       0.497
+  draw5               11.518       2.694       0.682
+  draw6               12.579       3.132       0.997
+
+------------------------------------------------------------------------------
+STEP 2: per-sample reference_self_error (bs=1 calls, same ladder/ss_ref) --
+        isolates which draw (if any) dominates the batched self-check above.
+------------------------------------------------------------------------------
+  MAP           self_error = {'native': 0.38678405186179027, 'subgrid': 0.4514606306058098}   converged=False
+  HMC-median    self_error = {'native': 0.2507476904175558, 'subgrid': 0.08385106262064819}   converged=False
+  draw0         self_error = {'native': 0.24361171214753427, 'subgrid': 0.08004196615416705}   converged=False
+  draw1         self_error = {'native': 0.4022166411499511, 'subgrid': 0.19454266863531813}   converged=False
+  draw2         self_error = {'native': 0.2901773183385056, 'subgrid': 0.10574275236673214}   converged=False
+  draw3         self_error = {'native': 0.30412404262495507, 'subgrid': 0.11542298453178114}   converged=False
+  draw4         self_error = {'native': 0.1877801752806548, 'subgrid': 0.07042993524027781}   converged=False
+  draw5         self_error = {'native': 0.2714732752053751, 'subgrid': 0.09159579447303759}   converged=False
+  draw6         self_error = {'native': 0.3667280628901928, 'subgrid': 0.1659989605809033}   converged=False
+[timing] step 2 (9 single-sample calls): 120.9s
+
+Worst sample by subgrid self-error: MAP (0.4515 sigma); by native self-error: draw1 (0.4022 sigma).
+-> No single draw dominates by a >3x margin; the self-error is spread across the batch, not concentrated in one outlier.
+
+------------------------------------------------------------------------------
+QUESTION (A): was ss=8's 8.943 sigma just reference noise (ss=16 not converged), not ss=8's real quadrature error?
+------------------------------------------------------------------------------
+At ss_ref=32 (this run), ss=4's max|d|/sigma = 0.997 (previous run at ss_ref=16 had ss=4 -> 0.988, ss=8 -> 8.943 sigma == the ss=16 reference's own subgrid self-error to 4 figures).
+Interpretation: an old ss=8 rung sits only one doubling below a reference that was itself not converged, so the ss=8-vs-ss=16 'quadrature error' and the ss=16-vs-ss=8 self-check were measuring the SAME pair of renders under a different label -- not independent quantities. Confirmed if the ss=4 number here (measured against a converged-or-more-converged ss=32 reference) stays close to the old ss=4-vs-ss=16 number (0.988), since ss=4 was two doublings below the old reference and therefore not subject to the same coincidence.
+
+------------------------------------------------------------------------------
+PSF CONVENTION: ss=2 -> ss=4 vs ss=2 -> ss=1
+------------------------------------------------------------------------------
+Rung conventions this run: {1: 'native', 2: 'subgrid', 4: 'subgrid'}
+Per the module docstring (gigalens.jax.analysis.undersampling): supersample=1 convolves the NATIVE-resolution kernel on the detector grid ('native'); supersample>=2 convolves a subgrid_kernel at supersampled resolution before pooling ('subgrid'). ss=2 and ss=4 are BOTH 'subgrid' -- raising supersample 2 -> 4 changes only the quadrature (image is refined, integrated more finely) and does NOT change the PSF model. Going 2 -> 1 would cross the convention boundary and change the PSF model itself by convention_gap_max (5.022115295033183 sigma in the first, ss_ref=16 run) -- not reducible by supersampling, a different kind of change than refining the quadrature.
+
+------------------------------------------------------------------------------
+WALL-CLOCK COST: single render, ss=4 vs ss=2 (same batch size as fit amplitude solves use internally is irrelevant here -- this times the raw SceneSimulator.simulate forward render, whose cost dominates fit wall time)
+------------------------------------------------------------------------------
+  bs=1 (single sample):
+    ss=2 render: 142.00 ms/call (mean of 12, post-JIT-warmup)
+    ss=4 render: 127.48 ms/call (mean of 12, post-JIT-warmup)
+    ratio ss=4/ss=2: 0.90x  (naive quadrature-cost scaling predicts (4/2)^2 = 4.0x)
+  bs=50 (this run's HMC chain count -- representative of a real fit step):
+    ss=2 render: 136.68 ms/call (mean of 8, post-JIT-warmup)
+    ss=4 render: 142.93 ms/call (mean of 8, post-JIT-warmup)
+    ratio ss=4/ss=2: 1.05x  (naive quadrature-cost scaling predicts (4/2)^2 = 4.0x)

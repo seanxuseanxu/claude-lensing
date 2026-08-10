@@ -1,0 +1,61 @@
+/global/u1/s/seanjx/claude-lensing/claude/pipeline/priors.py:435: UserWarning: [plausibility] SHEAR[lens mass shear].|shear| <= 0.2: prior mass outside plausible region |shear| <= 0.2: estimated mass 0.136 (probe (K=3000000)) exceeds 0.05 — external-shear magnitude sqrt(gamma1^2+gamma2^2)>0.2 is much larger than realistic line-of-sight shear on galaxy/group scales — physically valid (the kernel is exact) but implausible, so a plausibility prompt, not a hard bound. Physically valid but atypical; check this is intended.
+  return LensModel(
+
+====================
+MAP deficit: r1_s1l1
+====================
+
+=== MAP vs. HMC log posterior ===
+map.npz best_lp: stored 15796.226, recomputed 15796.226
+Scoring 2900 HMC draws (thinned by 13 from 37500)
+HMC log posterior over 2900 draws: max 16713.512, median 16683.344
+FAILED: MAP's log posterior (15796.226) is 917.286 nats BELOW the maximum scored HMC draw (16713.512). MAP did not find the posterior mode -- SVI (seeded from this MAP) and HMC (seeded from SVI) both inherit a bad starting point.
+MAP chisq_hist tail slope (last 35/350 steps): -0.00043/step (still descending when MAP stopped)
+
+chisq_hist length: 350 steps (metadata.json claims map_steps=350: CONSISTENT)
+chisq_hist tail slope, explicit last 350 of 350 steps: -1.144e-02/step (plan quoted -4.4e-5/step)
+chisq_hist tail slope, last 150 steps (DESI257 KNOWN_ISSUES item-6 window): -1.350e-03/step
+map.npz best_lp (stored):     15796.226
+map.npz best_lp (recomputed): 15796.226
+sampler log posterior over 3125 thinned draws: max 16713.512, median 16683.422
+deficit (max sampler lp - MAP best_lp): 917.3 nats (MAP stopped short)
+
+====================
+MAP deficit: r2_s2l2
+====================
+
+=== MAP vs. HMC log posterior ===
+map.npz best_lp: stored 17376.092, recomputed 17376.092
+Scoring 3000 HMC draws (thinned by 667 from 2000000)
+HMC log posterior over 3000 draws: max 17462.760, median 17448.764
+FAILED: MAP's log posterior (17376.092) is 86.668 nats BELOW the maximum scored HMC draw (17462.760). MAP did not find the posterior mode -- SVI (seeded from this MAP) and HMC (seeded from SVI) both inherit a bad starting point.
+MAP chisq_hist tail slope (last 150/1500 steps): -0.00003/step (still descending when MAP stopped)
+
+chisq_hist length: 1500 steps (metadata.json claims map_steps=350: CONTRADICTS metadata.json)
+  r2_s2l2's metadata.json is known-corrupted (KNOWN_ISSUES.md item 1: a later --stages hmc run overwrote it with argparse defaults). RESULTS_v2.md SS2.1 states the true staging was map_steps=1500 at n_vi batch 4096; chisq_hist's actual length of 1500 CONFIRMS that, independent of the corrupted metadata field.
+chisq_hist tail slope, explicit last 500 of 1500 steps: -4.374e-05/step (plan quoted -4.4e-5/step)
+chisq_hist tail slope, last 150 steps (DESI257 KNOWN_ISSUES item-6 window): -2.697e-05/step
+map.npz best_lp (stored):     17376.092
+map.npz best_lp (recomputed): 17376.092
+sampler log posterior over 3004 thinned draws: max 17462.561, median 17448.648
+deficit (max sampler lp - MAP best_lp): 86.5 nats (MAP stopped short)
+
+===================
+SVI health: r1_s1l1
+===================
+
+=== SVI health ===
+covariance min eigenvalue 9.626e-10, condition 1.627e+07 (healthy runs 1e6-6e8, limit 1e+10)
+ELBO loss final -16415.9, sd over last 300 steps 8.5
+Converged: well-conditioned covariance, settled ELBO.
+r1_s1l1: SVI covariance PASSES check_svi_covariance (min eig 9.626e-10, cond 1.627e+07, limit 1e+10) -- NOT diverged by this guard's definition.
+
+===================
+SVI health: r2_s2l2
+===================
+
+=== SVI health ===
+covariance min eigenvalue 1.097e-08, condition 7.447e+07 (healthy runs 1e6-6e8, limit 1e+10)
+ELBO loss final -17267.5, sd over last 300 steps 23.5
+Converged: well-conditioned covariance, settled ELBO.
+r2_s2l2: SVI covariance PASSES check_svi_covariance (min eig 1.097e-08, cond 7.447e+07, limit 1e+10) -- NOT diverged by this guard's definition.

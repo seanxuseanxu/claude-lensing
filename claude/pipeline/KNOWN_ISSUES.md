@@ -84,6 +84,46 @@ working configuration. This isolates which of the two changed variables is the c
 a pipeline robustness question, since MCLMC is used for every lens; it happened to surface on
 DESI257 and could recur on any of them.
 
+### 2a. Update (DESI234 round 3): it recurred in the *working* configuration, so neither
+### candidate variable is the cause
+
+`claude/DESI234/runs/r3_unmasked` (36 params, 50 chains, MCLMC) froze at **burnin 5,000 on two
+GPUs** — the exact configuration nominated above as the control. That largely disposes of both
+hypotheses: the freeze is not caused by burn-in 10,000, and it is not caused by the
+single-device chain layout, because it happens without either.
+
+The signature is the same one, measured the same way
+(`claude/DESI234/analysis/mode_structure.py`, `RESULTS_v3.md` §5.4):
+
+| | DESI257 80k (item 2) | DESI234 `r3_unmasked` |
+|---|---|---|
+| burn-in / devices | 10,000 / 1 | **5,000 / 2** |
+| between-chain sd ÷ within-chain sd | 163 | 15.4 (on `theta_E`); 20.9 on the worst parameter |
+| bulk ESS | 50 (= chain count) | 50.7 (= chain count) |
+| max R-hat | 7.9e15 | 13.9 |
+
+**`bulk ESS ≈ n_chains` is the diagnostic to key on**, not R-hat's magnitude — DESI234's freeze
+is far milder in R-hat than DESI257's yet identical in kind. The new discriminating test, added
+this round, is **chain clustering with R-hat recomputed within each cluster**: partition the
+chains by their per-chain medians and re-run `diagnose_convergence` on each subset. Frozen
+chains keep `bulk ESS ≈ n_chains_in_cluster` under *every* partition (DESI234: R-hat stayed
+above 5 at k = 2, 3, 4 and 5); genuinely multimodal chains produce at least one cluster with
+R-hat near 1. This separates the two failures, which have opposite fixes, and it costs one
+script that reads the finished checkpoint.
+
+Worth noting that the companion run `r3_fg` — same lens, same launcher, same burn-in, same
+device count, 46 parameters instead of 36 — did **not** freeze (R = 1.59, bulk ESS 71–380). So
+the trigger is neither the configuration nor the machine but something about the posterior
+geometry the sampler was handed. `r3_unmasked` is the model with a 110-sigma object in the field
+and no component to put on it, which the data rejects by Δchi² ≈ 3700; a plausible reading is
+that MCLMC's step-size adaptation degenerates on a badly misspecified target. That is a
+hypothesis, not a measurement.
+
+**Revised next step:** the one-variable test on DESI257 is no longer the highest-value probe,
+since its two variables are both now excluded by a counterexample. Instead, capture MCLMC's
+adapted step size and trajectory length from a frozen run and compare them against a healthy
+one on the same lens — the freeze is almost certainly visible there rather than in the samples.
+
 ---
 
 ## 3. The mask-aware chi-squared bug, and its fix
@@ -135,14 +175,58 @@ appearing independently in two different lenses fitted with two different delive
 kernels, points at a problem shared by the dataset rather than a per-lens light-profile
 failure.
 
-**Precedent and recommended remedy:** `claude/DESI238/PSF_REPLICATION.md` documents rebuilding
-that system's PSF directly from its own parent frame with `claude/pipeline/make_psf.py`,
-rather than trusting an undocumented delivered kernel — and found three defects in the
-delivered PSF that way, including a real 0.008" astrometric bias with no prior record.
-**Rebuilding the PSF for DESI234 and DESI257, following that validated procedure, is the
-highest-value next step for both systems** — ahead of adding more source-light freedom to
-either fit, since a PSF mismatch at the core could itself be inflating the apparent need for
-arc-level structure by biasing the fit's flux allocation.
+**Precedent and previously recommended remedy:** `claude/DESI238/PSF_REPLICATION.md` documents
+rebuilding that system's PSF directly from its own parent frame with
+`claude/pipeline/make_psf.py`, rather than trusting an undocumented delivered kernel — and
+found three defects in the delivered PSF that way, including a real 0.008" astrometric bias
+with no prior record. This section used to call rebuilding DESI234's and DESI257's PSFs the
+highest-value next step for both systems.
+
+### 5a. Correction (DESI234 round 3): the remedy above was already applied, and the two
+### leading explanations have now both been tested
+
+**The remedy was stale for DESI234.** `psf234.json` records `psf234.fits` as already built by
+the *fixed* `make_psf.py` from DESI234's own parent frame on 2026-08-08 — 16 stars, 21 extended
+objects rejected by the size cut, full provenance — i.e. after the defects `PSF_REPLICATION.md`
+found were fixed. The checkerboard persists anyway. **Rebuilding DESI234's PSF is not the next
+step; it has been done.**
+
+**The competing explanation — that this is gigalens' `supersample >= 2` subgrid-kernel
+quadrature error — is also refuted, and was refuted by direct measurement rather than by
+argument.** `claude/DESI234/analysis/undersampling_check.py` runs
+`gigalens.jax.analysis.diagnose_undersampling` on a 9-sample batch and compares the predicted
+`delta/sigma` map against the observed residual in a 10x10 px box at the deflector core, at the
+same parameter point `residuals.png` was rendered at:
+
+| | |
+|---|---|
+| observed normalised-residual peak | 6.582 sigma |
+| ss=2 predicted `delta/sigma` peak | 2.446 sigma |
+| **Pearson r over the box** | **−0.109** |
+
+The predicted quadrature error is a smooth, single-signed blob; the observation is sharp
+pixel-scale sign alternation. They share a location and nothing else.
+
+**What is nonetheless true, and is a separate finding that applies to both lenses:** DESI234
+**is** undersampled at `supersample = 2`. Against the diagnostic's 0.2 sigma/pixel tolerance,
+max `|delta|/sigma` runs 3.132 at ss=2 and 0.997 at ss=4 (certified against a ss=32 reference;
+`analysis/undersampling_certified.txt`). DESI234 round 3 therefore moved to `supersample = 4`.
+Two things make that generalisable to DESI257, whose bulge is comparably cuspy:
+
+- ss=2 and ss=4 are both the `subgrid` PSF convention, so 2 -> 4 refines quadrature and does
+  **not** move the PSF model. It is 2 -> 1 that crosses into `native` and changes the PSF by
+  `convention_gap_max` = 5.02 sigma, a gap between conventions that supersampling cannot close.
+- On an 80x80 image the wall cost of 2 -> 4 is 1.05x at batch 50 and 0.90x at batch 1 —
+  kernel-launch overhead dominates the O(ss^2) compute, so the naive 4x is not what it costs.
+  **The memory cost is real, though — see item 9.**
+
+**So the honest status of the checkerboard is: cause unknown.** Both leading explanations have
+been tested and neither survives. It is not a supersampling artifact, and the PSF-rebuild
+remedy has already been applied to the system that still shows it. Recommended next step for
+both lenses is now a *diagnostic* one — a per-pixel comparison of the delivered kernel against
+a star in each system's own frame at the sub-pixel offset the fit's centroid implies — not a
+rebuild. Until then it is an acknowledged floor on `chi2_nu` and belongs in each system's
+systematic budget rather than in its statistical error.
 
 ---
 
@@ -223,9 +307,47 @@ support is already handled this way (`priors.py`'s versioning); the mask was the
 
 ---
 
+## 9. Raising `supersample` costs memory as ss², and the MAP/SVI batch buffer is per-device
+
+Found the expensive way on DESI234 round 3: with `supersample` raised 2 -> 4, the previously
+working `--n-samples 4096` died with
+`RESOURCE_EXHAUSTED: Out of memory while trying to allocate 178.02GiB [executable_name='jit_run_map']`
+on **two** 80 GB A100s. Halving to 1536 asked for 67.07 GiB and still failed.
+
+**The second failure is the informative one.** 67 GiB is comfortably under 2 x 80 GB, so the
+allocation is not being sharded across devices — the MAP/SVI batch buffer is allocated **per
+device**, and the ceiling is one card after JAX's 75% preallocation, about **61 GiB**. Adding
+GPUs does not raise it.
+
+The scaling is clean enough to size a run by arithmetic instead of by trial:
+
+| | cost/sample | 4096 | 2048 | 1024 |
+|---|---|---|---|---|
+| ss=2 | 10.9 MiB | 44.6 GiB | 22.3 GiB | 11.2 GiB |
+| ss=4 | **43.6 MiB** | 178 GiB ✗ | 89 GiB ✗ | **43.6 GiB** ✓ |
+
+(43.6 MiB/sample is read off both failures — 178 GiB at 4096 and 67 GiB at 1536 — which agree.)
+
+**The practical rule: raising `supersample` by a factor k divides the affordable `--n-samples`
+and `--n-vi` by k².** DESI234 round 3 went 4096 -> 1024 and 2048 -> 1024, landing on the same
+43.6 GiB footprint round 2 ran at, and paid for the smaller batch with `--map-steps` 1500 ->
+5000. Smoke-test `--stages map,svi` with `--map-steps 3 --svi-steps 3` on the **largest**
+model variant before launching a long fit; it takes under a minute and it is the difference
+between finding this at launch and finding it an hour in. This applies to DESI257 whenever it
+follows DESI234 to ss=4.
+
+---
+
 ## Next steps, ordered by value
 
-1. **Rebuild the PSF for DESI234 and DESI257** (item 5) — the highest-value remaining step for
-   both systems' fits, following the validated `claude/DESI238/PSF_REPLICATION.md` procedure.
-2. **Isolate the MCLMC frozen-chain cause** (item 2) with the one-variable test: 80,000 draws,
-   burnin 5,000, two GPUs on DESI257.
+1. ~~**Rebuild the PSF for DESI234 and DESI257** (item 5)~~ — **withdrawn, see item 5a.**
+   DESI234's PSF was already rebuilt from its own frame on 2026-08-08 and the checkerboard
+   persists; the supersampling explanation was also tested and refuted. The replacement step is
+   diagnostic: compare each delivered kernel per-pixel against a star in that system's own
+   frame, at the sub-pixel offset the fit's centroid implies.
+2. ~~**Isolate the MCLMC frozen-chain cause** (item 2) with the one-variable test: 80,000 draws,
+   burnin 5,000, two GPUs on DESI257.~~ — **superseded, see item 2a.** DESI234's `r3_unmasked`
+   froze in exactly that configuration, so neither burn-in nor device count is the cause. The
+   replacement step is to capture and compare MCLMC's *adapted step size and trajectory length*
+   between a frozen run and a healthy one; and to run `mode_structure.py`-style within-cluster
+   R-hat on any future R-hat failure before calling it multimodal.
