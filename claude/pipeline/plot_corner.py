@@ -31,15 +31,19 @@ import lenses
 
 # The lens-mass parameters, as name suffixes resolved through diagnose.column(kind="mass").
 # The EPL's six and the external shear's two are all the mass sites a model built by
-# priors.build_model carries, so each suffix matches exactly one column -- and if a variant
-# ever adds a second deflector, diagnose.column raises rather than picking one of them.
+# priors.build_model carries at n_source/n_lens_light variants, so each suffix used to
+# match exactly one column. A ``foreground`` model adds a second SIS mass component with
+# its own theta_E/center_x/center_y, so those three are qualified as "mass/0/<name>" --
+# host is always mass index 0 in priors.build_model -- to keep picking the HOST's values
+# rather than raising on an ambiguous match. gamma/e1/e2 (host-only) and gamma1/gamma2
+# (shear-only) stay bare; the SIS carries none of them.
 MASS_PARAMS = [
-    "theta_E",
+    "mass/0/theta_E",
     "gamma",
     "e1",
     "e2",
-    "center_x",
-    "center_y",
+    "mass/0/center_x",
+    "mass/0/center_y",
     "gamma1",
     "gamma2",
 ]

@@ -179,6 +179,66 @@ def load_hmc_checkpoint(path):
     return np.load(path, allow_pickle=True)["samples"]
 
 
+# Which metadata.json fields belong to which stage -- the mapping merge_prior_metadata
+# uses to decide what to carry forward. Kept as one dict literal, rather than scattered
+# per-stage logic, so the mapping is auditable in one place.
+STAGE_METADATA_FIELDS = {
+    "map": ["n_samples", "map_steps"],
+    "svi": ["n_vi", "svi_steps", "svi_peak_lr", "svi_warmup_frac"],
+    "hmc": [
+        "sampler", "n_hmc", "burnin", "num_results", "target_acceptance",
+        "desired_energy_variance", "max_leapfrog",
+    ],
+}
+
+
+def merge_prior_metadata(config, prev_metadata, stages):
+    """Carry forward metadata fields belonging to stages NOT re-run in this invocation.
+
+    KNOWN_ISSUES.md item 1: a ``--stages hmc`` re-run used to write ``metadata.json`` fresh
+    from argparse, so every field belonging to a stage that was not re-run got overwritten
+    with that flag's argparse DEFAULT, not the value its checkpoint was actually produced
+    with. Confirmed instance: ``claude/DESI257/runs/r2_s2l2/metadata.json`` claimed
+    ``svi_peak_lr: 0.002`` (the default) when the SVI that made the checkpoint used
+    ``1e-3`` (``runs/r2_s2l2.log``'s own printed schedule line).
+
+    ``config`` is this invocation's fresh metadata dict, already fully populated from
+    argparse/computed values. ``prev_metadata`` is the run directory's existing
+    ``metadata.json``, or ``{}`` if there is none. For each stage not in this invocation's
+    ``stages``, its fields (per ``STAGE_METADATA_FIELDS``) are overwritten back to
+    ``prev_metadata``'s recorded values -- but only when ``prev_metadata`` actually has
+    that field, so a run whose prior metadata predates a field does not get a fabricated
+    value silently carried forward.
+
+    ``stages`` in the returned dict is always THIS invocation's stages, not the union of
+    this and the prior run's -- it records what this call did, not the run's full history.
+
+    ``timings`` is handled the same way, at the whole-stage level: entries for stages not
+    re-run are copied from ``prev_metadata["timings"]``, so a ``--stages hmc`` rerun does
+    not lose the record of how long the original MAP/SVI stages took.
+
+    ``n_devices`` is a fact about the LAST invocation, not a per-stage fact the way
+    ``timings`` is (nothing here records one device count per stage), so it is left as
+    this invocation's value rather than merged -- a ``--stages hmc`` rerun's ``n_devices``
+    describing the hmc run is also the value a reader asking "what produced hmc.npz" wants.
+    """
+    merged = dict(config)
+    ran = set(stages)
+    for stage, fields in STAGE_METADATA_FIELDS.items():
+        if stage in ran:
+            continue
+        for field in fields:
+            if field in prev_metadata:
+                merged[field] = prev_metadata[field]
+
+    merged_timings = dict(prev_metadata.get("timings", {}))
+    merged_timings.update(config.get("timings", {}))
+    merged["timings"] = merged_timings
+
+    merged["stages"] = list(stages)
+    return merged
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Fit one lens through the MAP / SVI / HMC pipeline"
@@ -259,6 +319,13 @@ def main():
         help="Upper bound of the lens-light n_sersic Uniform prior (n_lens_light=1 only)",
     )
     parser.add_argument(
+        "--foreground",
+        action="store_true",
+        help="Add the SIS + Sersic foreground-interloper pair from the lens config's "
+             "foreground_prior (round 3b's falsification model, 10 extra free params). "
+             "Errors if the config defines no foreground_prior.",
+    )
+    parser.add_argument(
         "--svi-peak-lr",
         type=float,
         default=2e-3,
@@ -298,6 +365,12 @@ def main():
 
     cfg = lenses.load(args.lens)
 
+    if args.foreground and cfg.foreground_prior is None:
+        raise ValueError(
+            f"--foreground was given but {cfg.name}'s config defines no foreground_prior; "
+            f"there is nothing to build the SIS + Sersic pair from."
+        )
+
     # Set output directory. Derived from the lens config, not from this file's location --
     # the pipeline lives outside any one lens's directory.
     if args.out is None:
@@ -328,6 +401,7 @@ def main():
         n_source=args.n_source,
         n_lens_light=args.n_lens_light,
         lens_light_n_max=args.lens_light_n_max,
+        foreground=cfg.foreground_prior if args.foreground else None,
     )
     param_names = list(model.z_param_names)
 
@@ -388,11 +462,19 @@ def main():
         "lens_light_prior_version": priors.lens_light_prior_version_for(
             args.n_lens_light
         ),
+        # Whether this run's model carries the SIS + Sersic foreground-interloper pair
+        # (round 3b), and which versioned support it used -- same checkpoint hazard as the
+        # other *_prior_version fields: the stored samples are unconstrained, so decoding
+        # them without knowing whether the extra 10 columns exist (and under what support)
+        # silently produces wrong or shape-mismatched physical values.
+        "foreground": bool(args.foreground),
+        "foreground_prior_version": priors.FOREGROUND_PRIOR_VERSION if args.foreground else None,
     }
     print(f"Lens: {cfg.name}  ->  {out_dir}")
     print(f"JAX {jax.__version__}, devices: {jax.devices()}")
     print(f"Model: {len(param_names)} parameters "
-          f"(n_source={args.n_source}, n_lens_light={args.n_lens_light})")
+          f"(n_source={args.n_source}, n_lens_light={args.n_lens_light}, "
+          f"foreground={args.foreground})")
 
     timings = {}
 
@@ -551,8 +633,12 @@ def main():
         print(f"SVI covariance: min eigenvalue {min_eig:.3e}, condition {cond:.3e} "
               f"(healthy runs 1e6-6e8, limit {args.svi_max_cond:.0e})")
 
-    else:
-        # Load SVI checkpoint
+    elif "hmc" in stages:
+        # Load SVI checkpoint. Only the sampling stage needs the surrogate, so this branch
+        # is gated on it: `--stages map` used to fall in here and die on a missing svi.npz
+        # after having already written a perfectly good map.npz, which made a MAP-only
+        # step-count sweep (KNOWN_ISSUES.md item 6) look like a failed run and skipped the
+        # metadata write. Found 2026-08-09 doing exactly that sweep.
         svi_npz = out_dir / "svi.npz"
         if not svi_npz.exists():
             raise FileNotFoundError(f"SVI checkpoint not found: {svi_npz}")
@@ -643,9 +729,17 @@ def main():
         save_hmc_checkpoint(hmc_npz, samples)
         print(f"{args.sampler.upper()} checkpoint saved to {hmc_npz}  {samples.shape}")
 
-    # Write metadata
+    # Write metadata. If a metadata.json already exists in out_dir (a --stages hmc-style
+    # partial re-run), merge it in first -- see merge_prior_metadata / KNOWN_ISSUES.md
+    # item 1: writing `config` alone would overwrite prior stages' recorded fields with
+    # this invocation's argparse defaults for stages it never ran.
     config["timings"] = timings
     metadata_path = out_dir / "metadata.json"
+    prev_metadata = {}
+    if metadata_path.exists():
+        with open(metadata_path) as f:
+            prev_metadata = json.load(f)
+    config = merge_prior_metadata(config, prev_metadata, stages)
     with open(metadata_path, "w") as f:
         json.dump(config, f, indent=2)
     print(f"Metadata saved to {metadata_path}")

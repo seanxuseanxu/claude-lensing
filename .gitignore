@@ -242,3 +242,12 @@ carousel-flythrough/papers/*
 !claude/DESI238/runs/seed1/svi.npz
 !claude/DESI238/runs/twosource/svi.npz
 !claude/DESI238/runs/twosource_v2/svi.npz
+
+# Exception: DESI257's MAP step-count sweep. 36 KB of MAP checkpoints and a 5 KB stdout log
+# that are the *record of a measurement*, not run output to be regenerated -- the sweep chose
+# round 3's step count, `runs/mapsweep/README.md` cites all three by name, and the third point
+# was already lost once to a cleared /tmp. `map_5000.npz` is additionally the bit-for-bit start
+# of the round-3 posterior. The large checkpoints in `r3_unmasked/` stay ignored.
+!claude/DESI257/runs/mapsweep/map_1500.npz
+!claude/DESI257/runs/mapsweep/map_5000.npz
+!claude/DESI257/runs/mapsweep/sweep.log

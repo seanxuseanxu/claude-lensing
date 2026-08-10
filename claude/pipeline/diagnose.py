@@ -39,6 +39,7 @@ numbers, suspect the redundant work this file used to do (loading ``hmc.npz`` or
 """
 
 import argparse
+import dataclasses
 import json
 import time
 from pathlib import Path
@@ -95,9 +96,10 @@ class RunModel:
     Attributes:
         cfg, image, psf, sim_config, model (``LensModel``), prob (``ProbModel``),
         pnames (``model.z_param_names``), labels (``model.z_labels``), spans, run_cfg (the
-        raw metadata dict), ``mask`` (the keep-mask the fit used, or None), and the
-        resolved variant fields ``n_source``, ``n_lens_light``, ``lens_light_n_max``,
-        ``theta_e_center``, ``theta_e_width``.
+        raw metadata dict), ``mask`` (the keep-mask the fit used, or None), the resolved
+        ``mask_circles`` that mask was built from, and the resolved variant fields
+        ``n_source``, ``n_lens_light``, ``lens_light_n_max``, ``theta_e_center``,
+        ``theta_e_width``, ``foreground`` (bool), ``foreground_prior_version``.
     """
 
     def __init__(self, **kw):
@@ -170,6 +172,24 @@ def rebuild_model(run_dir, lens=None, theta_e_center=1.5, theta_e_width=0.35, qu
             priors.lens_light_prior_version_for(n_lens_light),
         )
     )
+    # foreground: whether the run's model carries the SIS + Sersic interloper pair, and
+    # which versioned support it used. Absent in metadata written before round 3b, which
+    # is correctly read as False/no-op -- those runs have no such component.
+    foreground_flag = bool(run_cfg.get("foreground", False))
+    # run_fit.py writes "foreground_prior_version": null when --foreground was not given,
+    # so a bare .get(..., default) would return that None rather than the default -- guard
+    # explicitly rather than let int(None) raise somewhere less legible.
+    recorded_fpv = run_cfg.get("foreground_prior_version")
+    foreground_prior_version = (
+        priors.FOREGROUND_PRIOR_VERSION if recorded_fpv is None else int(recorded_fpv)
+    )
+    foreground = cfg.foreground_prior if foreground_flag else None
+    if foreground_flag and foreground is None:
+        raise ValueError(
+            f"{run_dir} was fitted with foreground=True but {cfg.name}'s config defines "
+            f"no foreground_prior; the model cannot be rebuilt without the location/scale "
+            f"parameters that produced this run."
+        )
 
     if not quiet:
         print(f"Lens: {cfg.name}")
@@ -177,7 +197,9 @@ def rebuild_model(run_dir, lens=None, theta_e_center=1.5, theta_e_width=0.35, qu
               f"lens_light_n_max={lens_light_n_max}, "
               f"source_prior_v{source_prior_version}, "
               f"lens_light_prior_v{lens_light_prior_version}, "
-              f"theta_E prior LogNormal(log {theta_e_center}, {theta_e_width})")
+              f"foreground={foreground_flag}"
+              + (f" (prior_v{foreground_prior_version})" if foreground_flag else "") +
+              f", theta_E prior LogNormal(log {theta_e_center}, {theta_e_width})")
 
     image, psf, sim_config = data.load(cfg)
     model = priors.build_model(
@@ -189,11 +211,38 @@ def rebuild_model(run_dir, lens=None, theta_e_center=1.5, theta_e_width=0.35, qu
         lens_light_n_max=lens_light_n_max,
         source_prior_version=source_prior_version,
         lens_light_prior_version=lens_light_prior_version,
+        foreground=foreground,
+        foreground_prior_version=foreground_prior_version,
     )
-    # mask_circles comes from the lens config, not the run's metadata.json -- it is a fact
-    # about the field, like the crop, not a per-run choice. A run fitted with a mask and
-    # diagnosed without one would compare different likelihoods.
-    mask = data.build_mask(cfg, image.shape)
+    # mask_circles is a PER-RUN choice, not a fact about the field like the crop --
+    # DESI257's config masked its SW object for r1_s1l1/r2_s2l2 and later stopped doing so.
+    # ``run_fit.py`` records the value it actually fit with under "mask_circles" in
+    # metadata.json, so that recorded value wins here; cfg.mask_circles is used only as a
+    # fallback for runs written before that key existed. Using today's config unconditionally
+    # would compare a masked fit's samples against an unmasked likelihood, or vice versa.
+    if "mask_circles" in run_cfg:
+        raw = run_cfg["mask_circles"]
+        # JSON round-trips a tuple of triples as a list of lists; restore the
+        # tuple-of-triples shape data.build_mask expects.
+        mask_circles = None if raw is None else tuple(tuple(c) for c in raw)
+    else:
+        mask_circles = cfg.mask_circles
+    if mask_circles != cfg.mask_circles and not quiet:
+        print(f"NOTE: run's recorded mask_circles {mask_circles} differs from "
+              f"{cfg.name}'s current config ({cfg.mask_circles}); using the recorded value.")
+    mask = data.build_mask(dataclasses.replace(cfg, mask_circles=mask_circles), image.shape)
+
+    # n_masked_pixels is the kept-pixel count run_fit.py recorded (see its own comment) --
+    # cross-check it against the rebuilt mask so this reconstruction is verified rather than
+    # merely hoped correct.
+    n_kept = int(mask.sum()) if mask is not None else int(image.size)
+    n_kept_recorded = run_cfg.get("n_masked_pixels")
+    if n_kept_recorded is not None and int(n_kept_recorded) != n_kept:
+        raise ValueError(
+            f"{run_dir} recorded n_masked_pixels={n_kept_recorded} but the mask rebuilt "
+            f"from mask_circles={mask_circles} keeps {n_kept} pixels. The reconstructed "
+            f"mask does not match what this run was fitted with."
+        )
     ds = ImageData(
         image,
         sim_config,
@@ -221,6 +270,7 @@ def rebuild_model(run_dir, lens=None, theta_e_center=1.5, theta_e_width=0.35, qu
         model=model,
         prob=prob,
         mask=mask,
+        mask_circles=mask_circles,
         pnames=list(model.z_param_names),
         labels=list(model.z_labels or model.z_param_names),
         spans=priors.source_component_spans(model),
@@ -231,6 +281,8 @@ def rebuild_model(run_dir, lens=None, theta_e_center=1.5, theta_e_width=0.35, qu
         theta_e_width=theta_e_width,
         source_prior_version=source_prior_version,
         lens_light_prior_version=lens_light_prior_version,
+        foreground=foreground_flag,
+        foreground_prior_version=foreground_prior_version,
     )
 
 
@@ -241,6 +293,13 @@ def column(model, suffix, kind=None):
     restricts to ``"mass"`` or ``"light"`` sites. Raises if the match is not unique --
     an ambiguous name silently picking the first hit is exactly how a plot ends up
     labelled with one component's value and drawn from another's.
+
+    With a ``foreground`` component the model carries a SECOND ``theta_E`` (the SIS's) and
+    a second ``center_x``/``center_y`` (both the SIS's and its light's), so a bare
+    ``suffix="theta_E"`` is no longer unique among ``kind="mass"`` sites. ``priors.py``
+    always builds the host EPL first, so ``suffix="mass/0/theta_E"`` picks it
+    unambiguously regardless of how many other mass components follow -- callers that need
+    the host's Einstein radius should use that, not the bare name.
     """
     names = list(model.z_param_names)
     hits = [
@@ -324,6 +383,19 @@ def masked_chisq(norm_res, keep):
     """
     keep = np.asarray(keep, dtype=bool)
     return float(np.mean(norm_res[keep] ** 2)), int(keep.sum())
+
+
+def map_hmc_verdict(map_lp, hmc_max_lp):
+    """Return ``(passed, deficit)``: MAP's log posterior must be >= the max HMC draw's.
+
+    Pure and side-effect-free so ``map_convergence_check``'s pass/fail logic is testable on
+    synthetic numbers without a checkpoint or a model. ``deficit`` is ``hmc_max_lp -
+    map_lp`` in nats; positive means MAP scored lower than some HMC draw, which cannot
+    happen at the true mode (MAP is by definition the highest-density point) and is the
+    signature of an optimiser that stopped short.
+    """
+    deficit = float(hmc_max_lp) - float(map_lp)
+    return deficit <= 0.0, deficit
 
 
 def curve_radius(curve, center):
@@ -703,36 +775,47 @@ def label_switching_check(con, spans, pnames):
 
 
 def boundary_pinning_check(model, con_flat, pnames):
-    """Warn when a posterior sits against a Uniform prior's bound.
+    """Warn when a posterior sits against a hard prior bound -- Uniform's edges or a
+    TruncatedNormal's truncation.
 
     HMC mixes badly along a boundary, and a pinned parameter means the prior -- not the
-    data -- is setting the value. The first production run had two such pinnings
+    data -- is setting the value. The first production run had two such Uniform pinnings
     (``lens_light.n_sersic`` at its ceiling of 6, ``source.n_sersic`` at its floor of 0.5)
-    and only the first was noticed by eye. This makes the check automatic.
+    and only the first was noticed by eye. DESI257's ``gamma`` is a
+    ``TruncatedNormal(2.0, 0.25, 1.0, 3.0)`` (priors.py) whose round-2 mode B posterior
+    peaked at ~2.86 against the 3.0 ceiling, with samples reaching 2.885 -- a pinning this
+    check did not catch until TruncatedNormal bounds were added here too. This makes both
+    checks automatic.
 
     ``model.prior`` is a ``JointDistributionNamed`` over the *unique* free parameters,
     keyed by exactly the ``z_param_names`` strings, so the walk is a flat dict lookup --
     no nested structure to traverse in step with anything.
 
-    Only ``Uniform`` priors are checked. A parameter in the tail of an unbounded prior is
-    a different phenomenon and not necessarily pathological.
+    Only ``Uniform`` and ``TruncatedNormal`` are checked -- both have a hard bound the
+    posterior can pile up against. Unbounded priors (``Normal``, ``LogNormal``) are
+    deliberately excluded: a parameter in their tail is a different phenomenon, not
+    necessarily pathological, since there is no bound to pin against.
     """
     from tensorflow_probability.substrates.jax import distributions as tfd
 
     bounds = {}
     for key, dist in (model.prior.model or {}).items():
-        if isinstance(dist, tfd.Uniform) and key in pnames:
-            bounds[key] = (float(dist.low), float(dist.high))
+        if key not in pnames:
+            continue
+        if isinstance(dist, tfd.Uniform):
+            bounds[key] = (float(dist.low), float(dist.high), "Uniform")
+        elif isinstance(dist, tfd.TruncatedNormal):
+            bounds[key] = (float(dist.low), float(dist.high), "TruncatedNormal")
 
     if not bounds:
         return
 
-    print("\n=== Boundary pinning (Uniform priors) ===")
+    print("\n=== Boundary pinning (Uniform bounds, TruncatedNormal truncation) ===")
     med = np.median(con_flat, axis=0)
     labels = list(model.z_labels or pnames)
     width = max(len(labels[pnames.index(n)]) for n in bounds)
     any_pinned = False
-    for name, (lo, hi) in bounds.items():
+    for name, (lo, hi, family) in bounds.items():
         idx = pnames.index(name)
         v = med[idx]
         frac = (v - lo) / (hi - lo)
@@ -742,7 +825,7 @@ def boundary_pinning_check(model, con_flat, pnames):
         elif frac > 0.98:
             tag, any_pinned = "  <-- PINNED at upper bound", True
         print(f"{labels[idx]:<{width}} {v:>9.4f}  in [{lo:g}, {hi:g}]  "
-              f"({100*frac:5.1f}% of range){tag}")
+              f"({100*frac:5.1f}% of range)  {family}{tag}")
 
     if any_pinned:
         print("\nA pinned parameter is set by its prior, not by the data, and HMC cannot "
@@ -869,7 +952,9 @@ def theta_E_check(run_dir, rm, hmc_samples=None, con=None):
     if con is None:
         con = to_constrained(rm.model, np.asarray(hmc_samples).reshape(-1, hmc_samples.shape[-1]))
     con = np.asarray(con).reshape(-1, con.shape[-1]) if np.asarray(con).ndim == 3 else np.asarray(con)
-    idx = column(rm.model, "theta_E", kind="mass")
+    # "mass/0/theta_E", not bare "theta_E": with a foreground component the SIS also has a
+    # theta_E, and the host EPL (always mass index 0) is the one this check is about.
+    idx = column(rm.model, "mass/0/theta_E", kind="mass")
     lo, med, hi = np.percentile(con[:, idx], [16, 50, 84])
 
     mu, sigma = np.log(rm.theta_e_center), rm.theta_e_width
@@ -887,6 +972,86 @@ def theta_E_check(run_dir, rm, hmc_samples=None, con=None):
     elif p99 - med < 0.1 * (p99 - p01):
         print("WARNING: posterior pinned near the UPPER prior edge. The prior may be "
               "truncating a solution that wants a larger Einstein radius.")
+
+
+def map_convergence_check(run_dir, rm, hmc_samples=None, max_hmc_eval=3000):
+    """Check that MAP actually found the maximum a posteriori point.
+
+    MAP is by definition the highest-density point of the posterior, so an optimiser that
+    stopped below typical HMC draws did not converge -- and since SVI starts from MAP and
+    the sampler is seeded from SVI, that is a seeding problem for the whole pipeline, not a
+    cosmetic one. Measured on DESI257 r2_s2l2: ``map.npz``'s ``best_lp = 16603.62`` while
+    ordinary HMC draws score 17197-17253, a ~600 nat deficit invisible from ``best_lp``
+    alone without this comparison.
+
+    ``best_lp`` is independently RE-COMPUTED through ``rm.prob.log_prob`` rather than
+    trusted as stored, and both are printed -- a disagreement between them would mean
+    ``map.npz``'s own bookkeeping is stale, not that the model is wrong.
+    ``ProbModel.log_prob(z)`` returns ``(log_posterior, red_chi2)`` with batch dims
+    ``z.shape[:-1]``, so a single flat ``z`` yields a scalar and a batch of ``z`` yields one
+    log-posterior per row -- the same convention ``log_like`` documents.
+
+    HMC draws are thinned to at most ``max_hmc_eval`` via ``plot_corner.thin_to_cap`` (the
+    same helper ``corner_plot`` uses) before being scored in one batch, so this stays cheap
+    on a 500,000-draw run.
+
+    Skipped with no output when ``map.npz`` or ``hmc.npz`` is absent -- there is nothing to
+    compare.
+    """
+    mp = load_checkpoint(run_dir, "map")
+    if mp is None:
+        return
+    if hmc_samples is None:
+        hmc = load_checkpoint(run_dir, "hmc")
+        if hmc is None:
+            return
+        hmc_samples = np.asarray(hmc["samples"])
+    if hmc_samples is None:
+        return
+
+    best_z = np.asarray(mp["best_z"]).reshape(-1)
+    stored_lp = float(np.asarray(mp["best_lp"]))
+    map_lp, _ = rm.prob.log_prob(jnp.asarray(best_z))
+    map_lp = float(np.asarray(map_lp))
+
+    print("\n=== MAP vs. HMC log posterior ===")
+    print(f"map.npz best_lp: stored {stored_lp:.3f}, recomputed {map_lp:.3f}")
+    if abs(map_lp - stored_lp) > 1.0:
+        print(f"NOTE: stored and recomputed best_lp disagree by "
+              f"{abs(map_lp - stored_lp):.3f} nats -- map.npz's own bookkeeping may be "
+              f"stale, independent of whatever the MAP-vs-HMC check below finds.")
+
+    from plot_corner import thin_to_cap
+    hmc_samples = np.asarray(hmc_samples)
+    n_total = hmc_samples.shape[0] * hmc_samples.shape[1]
+    thinned, factor = thin_to_cap(hmc_samples, max_hmc_eval)
+    flat = thinned.reshape(-1, thinned.shape[-1])
+    if factor > 1:
+        print(f"Scoring {flat.shape[0]} HMC draws (thinned by {factor} from {n_total})")
+    hmc_lp, _ = rm.prob.log_prob(jnp.asarray(flat))
+    hmc_lp = np.asarray(hmc_lp)
+    hmc_max, hmc_med = float(np.max(hmc_lp)), float(np.median(hmc_lp))
+    print(f"HMC log posterior over {flat.shape[0]} draws: max {hmc_max:.3f}, "
+          f"median {hmc_med:.3f}")
+
+    passed, deficit = map_hmc_verdict(map_lp, hmc_max)
+    if passed:
+        print(f"OK: MAP's log posterior ({map_lp:.3f}) is >= the maximum scored HMC draw "
+              f"({hmc_max:.3f}, margin {-deficit:.3f} nats).")
+    else:
+        print(f"FAILED: MAP's log posterior ({map_lp:.3f}) is {deficit:.3f} nats BELOW "
+              f"the maximum scored HMC draw ({hmc_max:.3f}). MAP did not find the "
+              f"posterior mode -- SVI (seeded from this MAP) and HMC (seeded from SVI) "
+              f"both inherit a bad starting point.")
+
+    chisq_hist = np.asarray(mp["chisq_hist"], dtype=np.float64).reshape(-1)
+    if len(chisq_hist) >= 10:
+        tail_len = max(1, len(chisq_hist) // 10)
+        tail = chisq_hist[-tail_len:]
+        slope = float(tail[-1] - tail[0]) / max(1, tail_len - 1)
+        state = "still descending" if slope < 0 else "flat or rising"
+        print(f"MAP chisq_hist tail slope (last {tail_len}/{len(chisq_hist)} steps): "
+              f"{slope:+.5f}/step ({state} when MAP stopped)")
 
 
 def svi_report(run_dir):
@@ -996,9 +1161,12 @@ def corner_plot(run_dir, out_dir, rm, subset=None, hmc_samples=None, con=None):
     con_flat = thinned.reshape(-1, n_params)
 
     if subset is None:
+        # "mass/0/theta_E" not bare "theta_E": with a foreground component the SIS also
+        # has a theta_E, and this default subset is about the host EPL specifically.
+        # gamma/e1/e2 stay bare -- the SIS carries neither, so they are still unique.
         subset = [
             column(rm.model, s, kind="mass")
-            for s in ("theta_E", "gamma", "e1", "e2", "gamma1", "gamma2")
+            for s in ("mass/0/theta_E", "gamma", "e1", "e2", "gamma1", "gamma2")
         ]
     idx = list(subset)
 
@@ -1065,6 +1233,14 @@ def main():
     print(f"Reduced chi-squared at point estimate: {chi2:.3f} "
           f"(over {n_kept}/{rm.image.size} unmasked pixels)")
     print(f"Residual figure: {res_path}")
+
+    # MAP is by definition the highest-density point; if HMC draws outscore it, MAP did not
+    # converge and SVI/HMC inherited a bad seed. Cheap (one batched log_prob call), and
+    # worth reading before svi_report -- a failed MAP casts doubt on everything seeded from
+    # it, including the SVI covariance svi_report is about to judge.
+    t0 = time.perf_counter()
+    map_convergence_check(run_dir, rm, hmc_samples=hmc_samples)
+    print(f"[timing] MAP vs HMC log posterior: {time.perf_counter() - t0:.1f}s")
 
     # Before Rhat: an ill-conditioned SVI covariance invalidates the HMC output outright,
     # so this line has to be read first.

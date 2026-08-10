@@ -12,6 +12,8 @@ by bare name.
 | `test_corner_check.py` | `verify.corner_report`'s four-corner companion check, especially the upper-left corner a lower-left-only check would miss. |
 | `test_masked_chisq.py` | `diagnose.masked_chisq` / `diagnose.residual_figure` against `ProbModel`'s own `red_chi2` on a synthetic image with masked outliers — moved out of `verify.py` (was check 7) since it is a fact about pipeline code, not a per-lens preflight. |
 | `test_make_data.py` | `make_cutout.py` (cut, centroid, provenance round-trip) and `make_psf.py` — *my* code around photutils/astropy, not those libraries themselves. |
+| `test_diagnose_and_metadata.py` | `diagnose.map_hmc_verdict` (MAP-vs-HMC pass/fail, incl. the DESI257 r2_s2l2 deficit), `diagnose.boundary_pinning_check`'s TruncatedNormal coverage, and `run_fit.merge_prior_metadata` (KNOWN_ISSUES.md item 1: a `--stages hmc` rerun must not overwrite prior stages' metadata with argparse defaults). |
+| `test_foreground_roundtrip.py` | round 3b's foreground-interloper model (`priors.build_model(..., foreground=...)`, DESI257's `cfg.foreground_prior`): 36 -> 46 free params, `diagnose.rebuild_model` reconstructs identical `z_param_names` from a hand-written `metadata.json`, and `diagnose.column(..., "mass/0/theta_E", kind="mass")` still resolves to the host EPL rather than raising on the SIS's own `theta_E`. Also checks a run with no `"foreground"` key in metadata still rebuilds the plain 36-param model. |
 
 ```bash
 JAX_PLATFORMS=cpu PYTHONPATH=claude/pipeline python claude/pipeline/tests/test_sersic_bn.py
@@ -19,4 +21,6 @@ PYTHONPATH=claude/pipeline python claude/pipeline/tests/test_mask.py
 PYTHONPATH=claude/pipeline python claude/pipeline/tests/test_corner_check.py
 CUDA_VISIBLE_DEVICES=0 PYTHONPATH=claude/pipeline python claude/pipeline/tests/test_masked_chisq.py --lens DESI238
 PYTHONPATH=claude/pipeline python claude/pipeline/tests/test_make_data.py
+PYTHONPATH=claude/pipeline python claude/pipeline/tests/test_diagnose_and_metadata.py
+CUDA_VISIBLE_DEVICES=0 PYTHONPATH=claude/pipeline python claude/pipeline/tests/test_foreground_roundtrip.py
 ```

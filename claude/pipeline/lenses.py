@@ -88,6 +88,55 @@ class MassPrior:
 
 
 @dataclass(frozen=True)
+class ForegroundPrior:
+    """Location-scale parameters for a candidate foreground interloper: one SIS mass
+    component plus one Sersic light component, standing in for a specific object the data
+    shows -- not a generic extra deflector.
+
+    This is what ``priors.build_model(..., foreground=cfg.foreground_prior)`` adds to the
+    lens plane for round 3b's interloper-reading falsification (see that function's
+    docstring for the nesting argument: SIS ``theta_E -> 0`` and light ``Ie -> 0`` must both
+    reduce this model back to the model without a foreground component). Both components
+    are centred on the SAME measured position -- one physical object, one centroid -- so
+    there is a single ``center_x``/``center_y``/``center_sigma`` here rather than one pair
+    per component.
+
+    No bounds live here, same rule as ``SersicPrior``/``MassPrior``: the SIS ``theta_E``
+    HalfNormal's scale is a location-scale parameter, but its support (down to exactly 0)
+    and the light priors' Uniform/TruncatedNormal limits are fixed by the prior version in
+    ``priors.py``.
+
+    Attributes:
+        center_x: measured centroid of the object, arcsec, relative to the crop centre.
+            Convert a measured (row, col) crop-pixel centroid through the running code's
+            own ``gigalens.simulator.LensWCS`` (``pix2angle``), not by hand from the pixel
+            scale alone -- see the comment in the config that sets this for the check that
+            established column maps to ``center_x`` and row to ``center_y``.
+        center_y: as ``center_x``, the row-derived component.
+        center_sigma: sigma of the ``center_x``/``center_y`` Normal priors, shared by the
+            SIS and the light component. Tight enough to keep the component on the object
+            it represents (that is the entire point of adding it) but wide enough for the
+            data to move it off the measured centroid.
+        theta_E_scale: scale of the SIS ``theta_E`` HalfNormal prior.
+        R_sersic_median, R_sersic_logsigma, ellip_sigma, Ie_median, Ie_logsigma: the
+            interloper light component's own Sersic prior, same meaning as the
+            identically-named ``SersicPrior`` fields. ``Ie_median`` must be calibrated
+            against this object's own measured peak (render prior draws, compare median
+            rendered peak to the data peak), not copied from another component.
+    """
+
+    center_x: float
+    center_y: float
+    center_sigma: float
+    theta_E_scale: float
+    R_sersic_median: float
+    R_sersic_logsigma: float
+    ellip_sigma: float
+    Ie_median: float
+    Ie_logsigma: float
+
+
+@dataclass(frozen=True)
 class LensConfig:
     """Everything the pipeline needs to know about one lens system.
 
@@ -136,6 +185,11 @@ class LensConfig:
             behaviour. Use this for a foreground interloper that no square crop can exclude
             without also clipping the arcs; a crop that alone suffices should still be
             preferred over a mask.
+        foreground_prior: location-scale parameters for a candidate foreground interloper
+            (one SIS + one Sersic light component), or ``None``. ``None`` is the default
+            and every lens except one testing the interloper reading of a specific object
+            leaves it that way. See ``ForegroundPrior`` and
+            ``priors.build_model(..., foreground=...)``.
         svi_guard_reference: ``{run_label: should_pass}`` naming stored runs under
             ``runs/`` whose SVI covariance conditioning is *known* to be healthy or
             diverged. ``verify.py`` asserts the guard classifies each correctly. This is
@@ -163,6 +217,7 @@ class LensConfig:
     clumps: Mapping[str, Tuple[float, float]] = field(default_factory=dict)
     companion_max: Optional[float] = None
     mask_circles: Optional[Tuple[Tuple[float, float, float], ...]] = None
+    foreground_prior: Optional[ForegroundPrior] = None
     svi_guard_reference: Mapping[str, bool] = field(default_factory=dict)
     parent_frame: Optional[str] = None
     notes: str = ""

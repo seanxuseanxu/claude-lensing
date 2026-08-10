@@ -61,6 +61,7 @@ from tensorflow_probability.substrates.jax import distributions as tfd
 from gigalens.jax.profiles.light.sersic import SersicEllipse
 from gigalens.jax.profiles.mass.epl import EPL
 from gigalens.jax.profiles.mass.shear import Shear
+from gigalens.jax.profiles.mass.sis import SIS
 from gigalens.jax.scene import Component, LensModel, Plane
 
 # Version of the source-component prior that build_model produces by default. Bump this
@@ -180,6 +181,69 @@ def _lens_light_prior_for(cfg, which):
         ) from None
 
 
+# Version of the foreground-interloper prior (SIS mass + Sersic light) that build_model
+# adds when given a ``foreground``. Same versioning discipline as SOURCE_PRIOR_VERSION:
+# bump on a support change, never repoint an existing entry.
+FOREGROUND_PRIOR_VERSION = 1
+
+
+def _foreground_mass_priors_v1(p):
+    """SIS mass-component priors for a candidate foreground interloper (v1). Support:
+    theta_E in [0, inf).
+
+    theta_E is a **HalfNormal**, not the LogNormal every other Einstein radius in this
+    codebase uses. That is deliberate, not an oversight: this component exists so a fit
+    can choose between "the SW object has no mass" (theta_E -> 0) and "it deflects like a
+    foreground galaxy" (theta_E of order the object's own scale), and a LogNormal's support
+    is bounded away from 0 by construction -- it would rule the first reading out before
+    the data gets a vote. HalfNormal(scale=p.theta_E_scale) has mode and lower bound at
+    exactly 0, and its scale is chosen (see the config that sets it) to put real mass out
+    to ~1", a plausible foreground galaxy's Einstein radius. There is deliberately no upper
+    floor either: see build_model's foreground docstring for the nesting argument this
+    preserves -- a bound here would be the same mistake as a floor on the light Ie below.
+
+    A fitted theta_E near 0 says the interloper reading is disfavoured relative to the
+    fourth-image reading (round 3's model, which this model nests); a fitted theta_E well
+    away from 0, with the light component's Ie also away from 0, says the SW object is
+    doing double duty as a plausible foreground galaxy -- both deflecting and emitting at a
+    self-consistent mass-to-light ratio for its type.
+    """
+    return dict(
+        theta_E=tfd.HalfNormal(p.theta_E_scale),
+        center_x=tfd.Normal(p.center_x, p.center_sigma),
+        center_y=tfd.Normal(p.center_y, p.center_sigma),
+    )
+
+
+def _foreground_light_priors_v1(p):
+    """Sersic light-component priors for the same candidate foreground interloper (v1).
+    Support: n in (0.3, 6), |e| < 0.5 -- identical to a source Sersic component's, because
+    there is no reason this object's light should carry a different shape prior than any
+    other free Sersic component in this pipeline.
+
+    Ie's LogNormal support runs down to arbitrarily faint (no floor), which is the light
+    side of the same nesting argument the mass prior's docstring states: Ie -> 0 switches
+    this component off, reducing the model to round 3's (the SW object as pure fourth
+    image, no separate foreground light). Do not add a floor here for the same reason a
+    floor on theta_E above would break the nesting.
+    """
+    return dict(
+        R_sersic=tfd.LogNormal(jnp.log(p.R_sersic_median), p.R_sersic_logsigma),
+        n_sersic=tfd.Uniform(0.3, 6.0),
+        e1=tfd.TruncatedNormal(0.0, p.ellip_sigma, -0.5, 0.5),
+        e2=tfd.TruncatedNormal(0.0, p.ellip_sigma, -0.5, 0.5),
+        center_x=tfd.Normal(p.center_x, p.center_sigma),
+        center_y=tfd.Normal(p.center_y, p.center_sigma),
+        Ie=tfd.LogNormal(jnp.log(p.Ie_median), p.Ie_logsigma),
+    )
+
+
+# Every foreground prior version that has ever been written, so a run fitted with any of
+# them stays readable. Each entry is (mass_priors_fn, light_priors_fn); add an entry when
+# adding a version, never repoint an existing one.
+_FOREGROUND_PRIOR_BUILDERS = {1: (_foreground_mass_priors_v1, _foreground_light_priors_v1)}
+
+
 def build_model(
     cfg,
     theta_E_center=None,
@@ -190,17 +254,22 @@ def build_model(
     lens_light_n_max=10.0,
     source_prior_version=SOURCE_PRIOR_VERSION,
     lens_light_prior_version=None,
+    foreground=None,
+    foreground_prior_version=FOREGROUND_PRIOR_VERSION,
 ):
     """Build the ``LensModel``: EPL + external shear, ``n_lens_light`` Sersic deflector
-    light components on the lens plane, ``n_source`` Sersic sources behind it.
+    light components on the lens plane, ``n_source`` Sersic sources behind it, and
+    optionally one more SIS + Sersic pair on the lens plane standing in for a specific
+    foreground interloper.
 
     The profile *choice* is a modelling decision shared across systems and lives here; the
     numbers that distinguish one lens from another come from ``cfg``. If a lens needs a
     different profile family, that is a new function in this file, not a config field.
 
     Free-parameter count: 22 at ``n_source=1, n_lens_light=1``; 29 with a second source;
-    36 with both. ``model.z_param_names`` is the authoritative column->name map for the
-    flat ``z``; never reconstruct it from declaration order.
+    36 with both; 46 with both plus ``foreground`` (10 more: SIS's 3, Sersic's 7).
+    ``model.z_param_names`` is the authoritative column->name map for the flat ``z``; never
+    reconstruct it from declaration order.
 
     ``use_lstsq=False`` throughout, which pairs with ``ProbModel(..., mode="forward")``.
     The escalation path -- shapelets with ``use_lstsq=True`` -- needs ``mode="lstsq"``
@@ -212,6 +281,22 @@ def build_model(
     component, and reusing a distribution raises. Names ("host", "bulge", "src0") are
     display labels only -- they feed ``model.z_labels`` and plot titles, and deliberately
     do not enter the parameter path, so renaming one can never permute a saved chain.
+
+    **Why ``foreground`` is a nested model, not a competing one.** A masked fit and an
+    unmasked fourth-image fit are not a fair comparison of "interloper" against
+    "fourth image": masking always removes the SW object's light from the likelihood, so
+    it silently assumes the interloper reading (an interloper deflects whether or not its
+    light is fitted) rather than testing it. The fair comparison adds a component that
+    *can* act like a foreground galaxy -- it deflects (SIS) and it emits (Sersic) -- and
+    lets the fit decide how much of either it wants. With the SIS ``theta_E -> 0`` and the
+    light's ``Ie -> 0``, this model IS the model without ``foreground``: the extra galaxy
+    contributes no deflection and no light, so it exactly reduces to the fourth-image
+    model. That nesting is why the two priors below carry no floor near zero (see their own
+    docstrings) -- a floor would make the reduction impossible and turn a nested comparison
+    into two disjoint models that cannot be compared by a chi-squared difference over the
+    10 extra parameters. The fitted SIS ``theta_E`` is therefore itself the discriminating
+    measurement: pinned near 0 favours the fourth-image reading, well away from 0 (with
+    nonzero ``Ie``) favours the foreground reading.
 
     Args:
         cfg: the ``LensConfig`` supplying every location and scale.
@@ -234,6 +319,14 @@ def build_model(
             split. Defaults to whatever ``n_lens_light`` implies, which is the only
             consistent pairing -- the versions differ in component count, so they are not
             independently selectable. Same checkpoint hazard as ``source_prior_version``.
+        foreground: a ``lenses.ForegroundPrior`` (typically ``cfg.foreground_prior``), or
+            ``None`` (the default) to build the model without the extra SIS + Sersic pair.
+            Adding this changes the flat-``z`` column count and order, so it is recorded in
+            ``metadata.json`` exactly like ``n_source``/``n_lens_light`` -- see
+            ``run_fit.py`` and ``diagnose.rebuild_model``.
+        foreground_prior_version: which versioned support the foreground SIS + Sersic pair
+            uses. Same checkpoint hazard as ``source_prior_version``. Ignored when
+            ``foreground`` is ``None``.
     """
     if n_source < 1:
         raise ValueError(f"n_source must be >= 1, got {n_source}")
@@ -252,6 +345,11 @@ def build_model(
             f"lens_light_prior_version={lens_light_prior_version} does not describe "
             f"n_lens_light={n_lens_light} (which implies v{expected_llv}). The versions "
             f"differ in component count, so they cannot be mixed."
+        )
+    if foreground is not None and foreground_prior_version not in _FOREGROUND_PRIOR_BUILDERS:
+        raise ValueError(
+            f"foreground_prior_version must be one of "
+            f"{sorted(_FOREGROUND_PRIOR_BUILDERS)}, got {foreground_prior_version}"
         )
 
     m = cfg.mass_prior
@@ -317,9 +415,26 @@ def build_model(
         for i in range(n_source)
     ]
 
+    # The candidate foreground interloper: unlensed (it sits on the SAME lens plane as the
+    # host, not behind it), so its SIS goes in the lens plane's mass list -- ADDED AFTER
+    # host, so host stays mass index 0 and diagnose.column("mass/0/theta_E") keeps picking
+    # the host's Einstein radius unambiguously even though the SIS now has one too -- and
+    # its Sersic light goes in the lens plane's light list, alongside the deflector's own.
+    lens_mass = [host, ext_shear]
+    if foreground is not None:
+        mass_priors_fn, light_priors_fn = _FOREGROUND_PRIOR_BUILDERS[foreground_prior_version]
+        lens_mass.append(
+            Component(SIS(), mass_priors_fn(foreground), name="foreground")
+        )
+        lens_light = lens_light + [
+            Component(
+                SersicEllipse(use_lstsq=False), light_priors_fn(foreground), name="foreground"
+            )
+        ]
+
     return LensModel(
         [
-            Plane(name="lens", mass=[host, ext_shear], light=lens_light),
+            Plane(name="lens", mass=lens_mass, light=lens_light),
             # A lone source plane may take the documented deflection_ratio=1.0 default,
             # but state it: an implicit geometry is the sort of thing that stops being
             # true the moment a second source plane is added.

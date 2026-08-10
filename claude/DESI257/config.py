@@ -13,9 +13,11 @@ Provenance of the data products this file points at:
   psf257.fits    -- claude/pipeline/make_psf.py,    sidecar psf257.json (21 stars)
 Both sidecars record the parent frame's sha256, the exact slice, and the thresholds used.
 
-This system's counter-image identification is the least secure of the three modelled here,
-and the ambiguity is stated in CLUMPS rather than resolved by fiat. Read that comment
-before using any number that depends on theta_E.
+This system's counter-image identification is the least secure of the three modelled here.
+The ambiguity is stated in CLUMPS rather than resolved by fiat; what changed at round 3 is
+that one of the three arguments for the interloper reading turned out to be a physics
+error, not a judgement call. Read that comment before using any number that depends on
+theta_E.
 """
 
 import sys
@@ -23,7 +25,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "pipeline"))
 
-from lenses import LensConfig, MassPrior, SersicPrior  # noqa: E402
+from lenses import ForegroundPrior, LensConfig, MassPrior, SersicPrior  # noqa: E402
 
 # ---------------------------------------------------------------------------------------
 # Data conditioning
@@ -75,19 +77,31 @@ CROP = (slice(20, 100), slice(20, 100))
 # at array-space PA 218 -- peaking at 0.957 e/s, 131 sigma. It is the brightest thing in the
 # field after the deflector itself, and it dominates the lower-left corner.
 #
-# It is masked because it is read as an INTERLOPER, not as a fourth image. That reading is a
-# judgement; the evidence for and against it is set out in CLUMPS below, and round 5 is a
-# falsification run that fits it as a fourth image instead.
+# **It is no longer masked.** Rounds 1 and 2 masked it with a 12 px disc -- 403 of 6400
+# pixels, 6.3% -- on the reading that it is a foreground INTERLOPER. The load-bearing
+# argument for that reading was wrong: it held that a demagnified fourth image must be the
+# faintest image, not the brightest. Demagnification requires a radial critical curve, which
+# requires gamma < 2, and both modes of the round-2 fit sit at gamma > 2 (2.51 and 2.84).
+# With no radial caustic there is no demagnified image to be faint, and all four images of a
+# quad sit near the tangential critical curve and are magnified. See README.md, "The SW
+# object", for the retraction and for the positive evidence that it is the fourth image --
+# the strongest piece being that round 2 renders a bright blob at that position while blind
+# to those pixels.
 #
-# Radius 12 px: its residual profile falls through 1 sigma between r = 10 and 12 px. The
-# disc excludes 403 of 6400 pixels (6.3%), and the nearest catalogued clump -- the E arc's
-# northern end -- is 45 px from the disc edge, so nothing lensed is anywhere near it. With
-# the mask applied the lower-left corner falls from 0.957 to 0.079 e/s.
+# The masked runs stay readable: run_fit.py records mask_circles in each run's
+# metadata.json and diagnose.rebuild_model reconstructs the mask from that recorded value
+# rather than from this file, so r1_s1l1 and r2_s2l2 are still diagnosed against the
+# likelihood they were actually fitted with.
 #
-# Why not leave it unmasked: the source components' priors put no constraint on where a
-# component may sit, so a free Sersic can and will go and sit on a 131-sigma blob. That is
-# not a hypothetical; it is the cheapest way for the model to buy chi-squared.
-MASK_CIRCLES = ((8.0, 15.0, 12.0),)
+# The hazard that motivated the mask is real and is now checked rather than avoided: the
+# source components' priors put no constraint on where a component may sit, so a free
+# Sersic can go and sit on a 131-sigma blob without lensing it. What distinguishes the two
+# is whether the SW object is reproduced by the SAME source components that reproduce the E
+# arc and the N blob, through the same mass model -- which is a four-image configuration --
+# or by a component that has gone off to sit on it alone. Round 3 tests that, and round 3b
+# tests the interloper reading in the only form that is a fair comparison: unmasked, with a
+# foreground deflector at that position.
+MASK_CIRCLES = None
 
 # No sky is subtracted. The azimuthal median at r = 45-55 px reads 0.043 e/s, which is the
 # deflector's own Sersic wings, not a sky pedestal: true blank sky in this frame is
@@ -145,25 +159,35 @@ SOURCE_IE = 24.0
 # should be. Two images at 1.85" and 1.55" on opposite-ish sides is already a lens; taking
 # theta_E as the mean of the two gives 1.70".
 #
-# **The open question is the SW object at 2.58", PA 218.** Three images invite a fourth, and
-# PA 218 is close to where a quad would put it. I read it as an interloper and mask it
-# (MASK_CIRCLES), on three grounds:
-#   - morphology: a smooth, centrally-concentrated ellipse with a bright core, which is what
-#     an ordinary galaxy looks like and not what a lensed knot looks like;
-#   - brightness ordering: at 131 sigma it is 2x brighter than the brightest arc pixel while
-#     sitting 1.4x farther out. A demagnified fourth image is the FAINTEST, not the
-#     brightest;
-#   - orientation: its major axis is 18 deg off tangential, where the E arc's is within
-#     1-2 deg.
+# **The SW object at 2.58", PA 218 is most likely the fourth image.** Three images invite a
+# fourth, and PA 218 is close to where a quad would put it. Rounds 1 and 2 read it as an
+# interloper and masked it; that reading is retracted. Of its three grounds:
+#   - brightness ordering -- "a demagnified fourth image is the FAINTEST, not the
+#     brightest" -- is **wrong, and it was the load-bearing one**. Demagnification needs a
+#     radial critical curve, which needs gamma < 2; this fit's gamma is 2.5-2.8, so there is
+#     no radial caustic, no faint image to be faint, and all four images of a quad sit near
+#     the tangential critical curve and are magnified. The argument does not discriminate;
+#   - orientation (18 deg off tangential, against the E arc's 1-2 deg) is weak: a
+#     counter-image near a fold need not be strongly tangentially elongated;
+#   - morphology is what remains, and a compact image of a compact source looks compact.
 #
-# None of those is decisive on its own. If the reading is wrong, the consequence is a
-# theta_E biased LOW, since fitting the SW object as an image would demand a critical curve
-# out near 2.1-2.2" rather than 1.70". MASS_PRIOR's theta_E_logsigma is therefore set to
-# 0.35 -- DESI238's, and wider than DESI234's 0.25 -- specifically so the prior's support
-# covers both readings and the data is allowed to prefer the other one. Round 5 fits the SW
-# object as a fourth image, unmasked, and compares. **Until that run exists, every theta_E
-# from this system carries the interloper reading as an assumption, and must be reported
-# with it.**
+# Against them, and measured on the round-2 fit that never saw those 403 pixels: the model
+# renders a bright blob at the SW position anyway, and component-wise rendering identifies
+# it as lensed source light (plane 1, component 1, peaking at crop (6, 17) at 1.12 e/s),
+# not lens-light wings. Neither source component's CENTROID is inside the tangential
+# caustic (src0 0.338" outside, src1 0.081" outside, in 300/300 posterior draws), but a
+# Sersic is not a point: integrating each component's own light over the caustic interior
+# gives flux fractions 0.081 [0.076, 0.087] for src0 and 0.176 [0.168, 0.187] for src1, so
+# part of the source is quadruply imaged in every draw. The tangential critical curve also
+# passes right by the SW object, and a 3-image tangential configuration is exotic where 4
+# is generic. See README.md and analysis/caustic_flux_fraction.py.
+#
+# The consequence of having masked it is a theta_E biased LOW: fitting it as an image
+# demands a critical curve near 2.1-2.2" rather than 1.70". MASS_PRIOR's theta_E_logsigma is
+# 0.35 -- DESI238's, and wider than DESI234's 0.25 -- so the prior's support covers both
+# readings and the data is allowed to choose. **The masked rounds' theta_E carry the
+# interloper reading as an assumption and must be reported with it; round 3 is the fit that
+# does not.**
 CLUMPS = {
     "E arc S": (1.90, 60.0),
     "E arc mid": (1.80, 76.0),
@@ -253,6 +277,85 @@ LENS_LIGHT_DISK = SersicPrior(
     Ie_logsigma=0.8,
 )
 
+# Round 3b: the SW object modelled as a candidate foreground galaxy (SIS + its own Sersic
+# light), the fair counterpart to round 3's fourth-image reading -- see priors.py's
+# build_model docstring for why the two must nest rather than compete as separate models.
+#
+# Position, converted from the crop-pixel centroid the same way every other centre in this
+# file is (arcsec relative to the crop centre), and VERIFIED against the running code
+# rather than assumed from delta_pix alone:
+#
+#   RESULTS_v2.md Sec 5.2 measured the SW flux centroid directly from the data
+#   (background-subtracted, r <= 10 px around the mask centre): crop (row 6.68, col 16.15).
+#
+#   gigalens.simulator.LensWCS(n=80, supersample=1, pix_scale=0.065) is the same WCS
+#   SceneSimulator builds internally. Its angle2pix(0, 0) returns pixel (row, col) =
+#   (39.5, 39.5), confirming the array-centre pixel this file's other comments assume.
+#
+#   Which pixel axis feeds center_x and which feeds center_y is NOT obvious from
+#   angle2pix(0, 0) alone (that check is symmetric), so it was checked by rendering: a
+#   Sersic placed at center_x=0.5, center_y=-1.0 on a 41x41/0.065" grid peaks at array
+#   (row, col) = (5, 28), i.e. row shifted by -15 px (matching center_y=-1.0 ->
+#   -1.0/0.065 = -15.38) and col shifted by +8 px (matching center_x=0.5 -> 0.5/0.065 =
+#   7.69). So **center_x is the COLUMN-derived coordinate, center_y is the ROW-derived
+#   one** -- confirmed against SceneSimulator's own rendering, not inferred from the pixel
+#   scale.
+#
+#   wcs.pix2angle(col, row) with (col, row) = (16.15, 6.68) (col first, matching the
+#   center_x/center_y order just established) gives (center_x, center_y) =
+#   (-1.51775, -2.13330) arcsec. Cross-check: separation from the deflector centroid
+#   (crop-centre offset (-0.01716, -0.00670), from CENTROID_PIX above) is 2.603" at
+#   array-space PA 215.2 deg -- within 1% and 3 deg of README.md's eyeballed 2.58" / PA
+#   218, which is the expected level of agreement between a sub-pixel flux centroid and an
+#   earlier by-eye estimate.
+FOREGROUND_CENTER_X = -1.51775
+FOREGROUND_CENTER_Y = -2.13330
+
+# Ie calibrated the same way LENS_IE/SOURCE_IE were: render prior draws of the foreground
+# light component ALONE (SceneSimulator(sees=...) isolating it, on this system's own
+# num_pix/delta_pix/supersample grid) and compare the median rendered peak against the
+# data peak the SW object actually reaches, 0.957 e/s (README.md, "The SW object").
+#
+# 500 draws per seed, 5 seeds, R_sersic_median=0.25" (a compact object, see below),
+# R_sersic_logsigma=0.5, ellip_sigma=0.2, Ie_logsigma=0.8, center_sigma=0.05 (all provisional
+# -- Ie_median is the only number this calibration determines):
+#
+#   Ie_median=63  seed 0  0.922   seed 1  1.008   seed 2  0.930   seed 3  1.008   seed 4  0.941
+#
+# median across seeds 0.961, mean 0.962, against the 0.957 e/s target -- both within 1%.
+# The spread within one seed's 500 draws is wide (16-84th pct roughly 0.30-3.0 e/s at this
+# median), consistent with a LogNormal prior and with LENS_IE/SOURCE_IE's own spreads.
+FOREGROUND_IE = 63.0
+
+FOREGROUND = ForegroundPrior(
+    center_x=FOREGROUND_CENTER_X,
+    center_y=FOREGROUND_CENTER_Y,
+    # Tight enough to keep the component on the SW object (0.05" matches every other
+    # center_sigma in this file, e.g. MASS_PRIOR's and LENS_LIGHT_SINGLE's) but not so
+    # tight the data cannot move it -- same value, same reasoning, as those.
+    center_sigma=0.05,
+    # SIS theta_E: HalfNormal(scale=0.5), NOT a LogNormal -- see priors.py's
+    # _foreground_mass_priors_v1 for why this family is required (support must reach
+    # exactly 0). scipy.stats.halfnorm(scale=0.5): median 0.337", 1-99% range
+    # [0.006", 1.29"], which brackets "negligible" through "a plausible foreground galaxy's
+    # Einstein radius" (~1") without a floor that would break the nesting round 3b depends
+    # on. A fitted theta_E near 0 favours the fourth-image reading; a fitted theta_E of
+    # order 0.3-1" together with a non-negligible light Ie favours the foreground reading.
+    theta_E_scale=0.5,
+    # A compact object: it was covered by a 12 px = 0.78" mask radius in rounds 1-2, so
+    # 0.25" (roughly a third of that) is a reasonable starting half-light radius for a
+    # "smooth, centrally-concentrated ellipse" (README.md) rather than something extended
+    # like the deflector's own disk. 0.5 dex of width lets the data move it either way.
+    R_sersic_median=0.25,
+    R_sersic_logsigma=0.5,
+    # No separate measurement of this object's own ellipticity exists (it was masked, not
+    # characterised, in rounds 1-2); 0.2 matches every other component's ellip_sigma in
+    # this file rather than asserting a number nothing here has measured.
+    ellip_sigma=0.2,
+    Ie_median=FOREGROUND_IE,
+    Ie_logsigma=0.8,
+)
+
 CONFIG = LensConfig(
     name="DESI257",
     cutout_file="cutout257.npy",
@@ -273,6 +376,12 @@ CONFIG = LensConfig(
     crop=CROP,
     centroid_pix=(59.397 - 20, 59.236 - 20),
     mask_circles=MASK_CIRCLES,
+    # Round 3b's candidate foreground interloper (SIS + Sersic), centred on the SW object.
+    # None of the OTHER rounds' models change: build_model only adds this when
+    # priors.build_model(..., foreground=...) is given it explicitly (run_fit.py's
+    # --foreground flag), so r1_s1l1/r2_s2l2/round-3's unmasked refit are all unaffected by
+    # this field existing.
+    foreground_prior=FOREGROUND,
     mass_prior=MASS_PRIOR,
     source_prior=SOURCE_PRIOR,
     lens_light_priors={
@@ -281,22 +390,27 @@ CONFIG = LensConfig(
         "disk": LENS_LIGHT_DISK,
     },
     clumps=CLUMPS,
-    # Upper bound on the brightest *unmasked* corner pixel. The SW object puts 0.957 e/s in
-    # the lower-left corner and is masked; with the mask applied the worst of the four
-    # corners is the upper-left at 0.1906 e/s, at crop (60, 19). That pixel is the innermost
-    # pixel of its quadrant, 1.88" from the deflector, and its mirror across the centre --
-    # crop (19, 61), 1.94" out -- reads 0.1906 too. Two pixels equal to four figures at
-    # opposite PAs is the signature of smooth elliptical galaxy light, not of a companion.
-    # Masking takes the lower-left corner from 0.957 to 0.079 e/s. 0.30 fails on anything
-    # new without failing on that.
-    companion_max=0.30,
+    # Upper bound on the brightest corner pixel. With MASK_CIRCLES gone this check no
+    # longer guards what it originally guarded: the SW object puts 0.957 e/s in the
+    # lower-left corner and is now deliberately in the likelihood, as the candidate fourth
+    # image. 1.05 is that 0.957 with 10% of headroom -- it still fails on anything new and
+    # brighter appearing in any corner, which is the check's remaining purpose, and it is
+    # set from the measurement rather than switched off.
+    #
+    # The number the old 0.30 was calibrated against is worth keeping: with the mask applied
+    # the worst corner was the upper-left at 0.1906 e/s, at crop (60, 19) -- the innermost
+    # pixel of its quadrant, 1.88" out -- and its mirror across the centre, crop (19, 61) at
+    # 1.94", reads 0.1906 too. Two pixels equal to four figures at opposite PAs is the
+    # signature of smooth elliptical galaxy light, not of a companion. So no corner other
+    # than the SW object's carries anything that needs excluding.
+    companion_max=1.05,
     # Populated after round 1 gives this lens its own known-good and known-diverged runs.
     # Until then verify.py's check 6 reports itself skipped, which is honest.
     svi_guard_reference={},
     notes=(
         "HST WFC3/IR F140W, EXPTIME 1197.699 s, NCOMBINE 3, TARGNAME DESI-257.4348+31.9046. "
-        "E arc at 1.85\" plus an N counter-image at 1.55\"; one masked object at 2.58\" whose "
-        "interloper-vs-fourth-image status is unresolved and is round 5's falsification "
-        "test. See README.md."
+        "E arc at 1.85\" plus an N counter-image at 1.55\"; a fourth object at 2.58\", masked "
+        "as an interloper in rounds 1-2 on an argument since retracted, now fitted as the "
+        "fourth image. See README.md."
     ),
 )

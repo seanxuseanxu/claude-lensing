@@ -1,13 +1,44 @@
 # DESI257, round 2: bulge+disk light, two source components
 
-**Date:** 2026-08-08. First fit of this system with data. Round 1 (`r1_s1l1`) is documented
-below for comparison only — it did not converge and its `theta_E` (2.004") is quoted only to
-show the number, not as a measurement.
+> # RETRACTED, 2026-08-09
+>
+> **The headline is withdrawn. There is no quotable `theta_E` from this run.**
+>
+> 1. **"Dominant mode" was not measured.** The 73.4% draw fraction is substantially a
+>    measurement of where the chains were *seeded*: the SVI surrogate mean sits at
+>    `gamma = 2.4188`, inside mode A, and **48 of 50 chains have `gamma < 2.66` at
+>    post-burn-in draw 0**. The mode weights were never measured, and the mode that was
+>    quoted is the *shallower* of the two. Section 3 is rewritten around this.
+> 2. **The fit was conditioned on a mask that should not have been there.** The SW object was
+>    masked out on the argument that a demagnified fourth image must be the faintest, not the
+>    brightest. That argument is a physics error: demagnification needs a radial critical
+>    curve, which needs `gamma < 2`, and both modes here have `gamma > 2`. The object is most
+>    likely the fourth image, and this run was fitted without the field's most constraining
+>    datum. See `README.md`, "The SW object", and round 3 (`r3_unmasked`).
+>
+> **Both points are now settled by measurement, not argument.** Round 3 (`RESULTS_v3.md`)
+> refits this model with the SW object in the likelihood, one variable changed. The
+> bimodality **closes**: R-hat <= 1.001 on all 36 parameters and all 50 chains with no chain
+> selection, against round 2's 1.003 on a hand-picked 17. The model reproduces the SW
+> object's peak flux to 1.2% with no component added for it, and `gamma` (2.54 -> 1.99),
+> `|shear|` (0.148 -> 0.044) and `|e_host|` (0.380 -> 0.143) relax simultaneously. So the two
+> modes were an artefact of the mask, and the mode-weight question below is moot rather than
+> open. Quote `theta_E` from round 3, not from here.
+>
+> **What still stands, and is not retracted:** sections 3.1-3.3's and 5.1's measurements —
+> the two-mode structure, the crossing counts, the per-mode parameter values, and the
+> validation of the `LensSolver` method against the four known images. Section 2's conclusion
+> about round 1's `n_sersic` pinning also stands. What is retracted is the *inference* drawn
+> from those measurements: which mode to quote, and whether the SW object is an interloper.
 
-**Headline, stated with its central caveat: `theta_E = 1.9811 (-0.0041,+0.0042)"` in the
-dominant posterior mode (73.4% of draws, 17/50 chains, within-mode R-hat 1.0092). The full
-50-chain posterior is multimodal and its combined R-hat fails outright (worst 1.461) — do not
-quote a full-chain number as the result.** Section 3 is the central section of this document.
+**Date:** 2026-08-08, retracted 2026-08-09. First fit of this system with data. Round 1
+(`r1_s1l1`) is documented below for comparison only — it did not converge and its `theta_E`
+(2.004") is quoted only to show the number, not as a measurement.
+
+**Superseded headline, kept so the record is legible: `theta_E = 1.9811 (-0.0041,+0.0042)"`
+in the "dominant" posterior mode (73.4% of draws, 17/50 chains, within-mode R-hat 1.0092).**
+Both the multimodality caveat that accompanied it and the reasons above apply. Section 3 is
+the central section of this document.
 
 ---
 
@@ -131,14 +162,60 @@ this failure mode explicitly). Mode B is a genuine, prior-disfavoured degeneracy
 model-build time (also reproduced in the fit log: `estimated mass 0.136 exceeds 0.05` for
 `|shear| <= 0.2`).
 
-**Conclusion, stated as directly as the data supports it:** quoting the dominant mode
-(`theta_E = 1.981 +/- 0.004"`, within-mode R-hat 1.0092) with the multimodality flagged is
-defensible. Quoting the full 50-chain median (`theta_E = 1.983 (-0.005,+0.015)"`, R-hat 1.417)
-is not — that number averages over two physically distinct solutions and its own convergence
-diagnostic says so. **Neither is a final answer until the modes mix honestly** (next steps,
-section 8, item 2).
+### 3.4 Why "dominant" was the wrong word, and why there is no quotable number
 
-### 3.4 Critical-curve validation (full-chain point estimate)
+**Retraction, 2026-08-09.** The original conclusion here was that quoting mode A
+(`theta_E = 1.981 +/- 0.004"`) with the multimodality flagged is defensible. It is not, for
+two reasons that the measurements above do not support and a third measurement refutes.
+
+**(a) The 73.4% is a seeding artefact, not a mode weight.** Measured directly from this run's
+own checkpoints:
+
+| | `gamma` |
+|---|---|
+| MAP best particle | 2.3427 |
+| SVI surrogate mean | 2.4188 |
+| 50 chains at post-burn-in draw 0 | min 2.3881, median 2.5036, max 2.8054 |
+| chains starting below the 2.66 threshold | **48 / 50** |
+
+Every chain but two was started inside mode A, by a surrogate that was itself centred there,
+by a MAP that was itself centred there. A draw fraction measured from chains seeded that way
+is a measurement of the seed. It is not evidence about how much posterior mass each mode
+holds. That MAP is separately known not to have converged — 681.8 nats below this run's own
+best draw — so the whole seeding chain is compromised at its root
+(`claude/pipeline/KNOWN_ISSUES.md` item 6).
+
+**(b) The mode that was quoted is the shallower one.** Scoring 20,000 thinned draws through
+this run's own `ProbModel.log_prob`:
+
+| | mode A (`gamma < 2.66`) | mode B (`gamma > 2.66`) |
+|---|---|---|
+| median log posterior | 17196.6 | **17252.9** |
+| median log prior | -26.5 | -36.9 |
+| median `chi2_nu` (5997 px) | 1.0544 | **1.0322** |
+
+Mode B fits better by **Δchi² = 133.3** over 5997 pixels and sits **56.3 nats higher** in log
+posterior, having already paid a prior penalty of 10.4 nats. The document quoted the mode
+that fits the data *less* well, on a fraction that measured the seed.
+
+**(c) But depth is not mass, and asserting mode B would repeat the error with the sign
+flipped.** Those are densities at the median, not integrals. A shallower mode with a larger
+volume can hold more probability than a deeper narrow one, and **no volume has been
+measured.** So:
+
+**The mode weights of this posterior are unmeasured, and no `theta_E` from this run is
+quotable** — not mode A's 1.9811", not mode B's 2.0017", not the full-chain median
+(1.983 (-0.005,+0.015)", R-hat 1.417, which averages two physically distinct solutions and
+whose own diagnostic says so).
+
+This may be moot. Section 3.3's mode B is exactly the contortion needed to suppress a fourth
+image the model is not allowed to see — `|e| = 0.645` (q ~ 0.22), `gamma = 2.836`,
+`|shear| = 0.195` — and round 3 removes the mask that forces it. If the bimodality closes
+there, the weights never need measuring. If it does not, they have to be measured (Laplace
+weight per mode from the existing draws, plus a resample with chains deliberately split
+across both modes so occupancy becomes a measurement rather than an inheritance).
+
+### 3.5 Critical-curve validation (full-chain point estimate)
 
 Independent of the multimodality question, the point-estimate mass model is geometrically
 self-consistent: `LensSolver`'s tangential critical-curve radius is **2.0046"** against the
@@ -217,15 +294,44 @@ elsewhere entirely, at crop (19, 24), roughly 30x fainter at the SW location tha
 component's own peak — so this is not lens-light wing contamination being mistaken for a
 source prediction.
 
-### 5.3 Hold-backs, stated plainly
+### 5.3 Hold-backs, one of them withdrawn (2026-08-09)
 
-- **Only a 2-image topology is found** at this point estimate for each source component — not
-  the 4-image topology the fourth-image hypothesis requires.
+- ~~**Only a 2-image topology is found** at this point estimate for each source component —
+  not the 4-image topology the fourth-image hypothesis requires.~~ **WITHDRAWN. This was a
+  misreading, and the error was in the inference, not the number.** `LensSolver` was being
+  asked to solve for a **point source at each component's centroid**. A point outside the
+  tangential caustic produces 2 images; that is the correct answer for such a point and says
+  nothing about an extended source. Re-measured over 300 draws from the dominant-mode chains
+  (`analysis/caustic_flux_fraction.py`):
+
+  | | `src0` | `src1` |
+  |---|---|---|
+  | centroid inside the tangential caustic | 0/300 draws | 0/300 draws |
+  | signed distance, centroid to caustic (median) | 0.338" outside | **0.081" outside** |
+  | point-source images at the centroid | 2 | 2 |
+  | **fraction of the component's own flux inside the caustic** | **0.081 [0.076, 0.087]** | **0.176 [0.168, 0.187]** |
+
+  So the original observation reproduces exactly — both centroids outside, both giving 2
+  images — and the conclusion drawn from it does not. **Part of the source is quadruply
+  imaged**, at both components, in every draw examined: a Sersic is not a point, and 8% and
+  18% of the two components' flux lies inside the caustic. The 4-image topology the
+  fourth-image hypothesis requires is present.
+
+  Method notes, so the numbers are readable at their true precision: geometry from
+  `LensSolver.critical_and_caustics` and `.solve_images` only; the flux integral is a grid
+  sum over the installed `SersicEllipse.light()`, converged to under 1% relative across a 3x
+  change of window (k = 10, 18, 30); the point-in-polygon test is `matplotlib.path.Path`. The
+  16-84 intervals are over 300 draws subsampled without an ESS correction, so they are
+  credible intervals but not ESS-corrected ones. `gamma`'s median of 2.513 admits no radial
+  critical curve, and exactly one critical curve was found in all 300 draws — the geometry is
+  not numerically pathological.
+
 - **The two source components disagree** on whether the SW object is predicted at all (0.09"
-  vs 0.42").
-- **This used a single median z with no posterior propagation.** It is not known whether
-  0.091" is within 1-sigma of zero or 5-sigma — turning this into an uncertainty is next
-  steps' item 3, and needs no new fit.
+  vs 0.42"). This hold-back stands.
+- ~~**This used a single median z with no posterior propagation.**~~ **Addressed** for the
+  caustic-membership question above, which is now measured over 300 draws. The *image
+  position* test (the 0.091" and 0.421" separations) has still not been propagated; that part
+  of the hold-back stands.
 
 ### 5.4 `theta_E` context — does not select either hypothesis
 
@@ -270,11 +376,15 @@ MCLMC struggles to move between them.
 
 ## 7. Caveats, stated plainly
 
-- **The headline number is a dominant-mode value, not a full-posterior value** — section 3.
-  26.6% of the posterior's own draws sit in a mode this document does not quote as the answer.
+- **The headline number is retracted** — see the banner and section 3.4. It is not that the
+  uncertainty was understated; it is that the mode was chosen on a fraction that measures the
+  seeding, and the deeper mode is the other one.
+- **The whole run is conditioned on a mask that should not have been applied** — the SW
+  object is most likely the fourth image (`README.md`). Every number here that depends on the
+  mass model carries that as an assumption.
 - **The within-mode R-hat of 1.0092 is unreplicated** — section 3.2.
-- **The SW blind-prediction test is suggestive, not conclusive** — section 5.3: wrong
-  topology, disagreeing source components, no posterior propagation.
+- **The SW blind-prediction test is suggestive, not conclusive** — section 5.3, and one of
+  its three hold-backs is itself withdrawn there.
 - **The 80,000-draw resample failed for an unattributed reason** — section 4. Whatever caused
   it has not been ruled out as a property of this system rather than of that one run.
 - **The background RMS carries a +/-15% patch-to-patch spread** (`README.md`), propagated into
@@ -289,20 +399,25 @@ MCLMC struggles to move between them.
 
 ## 8. Next steps, ordered by value
 
-1. **Rebuild the PSF.** Pipeline-level next step; see `claude/pipeline/KNOWN_ISSUES.md` item 5
-   (the core checkerboard residual, section 6, is common to DESI234 and DESI257).
-2. **Get the modes to mix honestly.** Blocked on the pipeline's MCLMC frozen-chain failure
-   (section 4; the isolating test is pipeline-level, see `claude/pipeline/KNOWN_ISSUES.md`
-   item 2). Excluding mode B by chain-selection, as this document does, understates the
-   uncertainty — it holds ~27% of the posterior mass and cannot simply be discarded as the
-   final word. This part is DESI257-specific: it is this system's own mass-model degeneracy
-   that needs the modes to mix.
-3. **Posterior-propagate the SW image-position test.** Push a few hundred draws from the
-   17 dominant-mode chains through `LensSolver`, instead of the single median used here, to
-   turn "0.091 inch away" into "0.091 +/- sigma away," and to test whether a 4-image topology
-   appears anywhere in the posterior rather than only at one point. This needs no new fit.
-4. **Fix `run_fit.py`'s metadata bug.** Pipeline-level; see
-   `claude/pipeline/KNOWN_ISSUES.md` item 1.
+Superseded by the retraction. The ordering below is what it became.
+
+1. **Refit unmasked** (`r3_unmasked`), one variable changed against this run, with the MAP
+   step count raised until it clears the best draw of the sample it seeds
+   (`claude/pipeline/KNOWN_ISSUES.md` item 6). This is the run that matters: it tests the
+   fourth-image reading and is the leading candidate cure for the bimodality.
+2. **Fit the interloper hypothesis properly** (`r3b`), unmasked and with a foreground SIS
+   deflector plus its own light at the SW position, and compare mask-aware `chi2_nu` over the
+   identical pixel set. An interloper deflects whether or not its light is in the likelihood,
+   so this — not masking — is the fair form of the alternative.
+3. **Measure the mode weights, only if step 1 leaves the bimodality open** — Laplace weight
+   per mode from the existing draws, plus a resample with chains deliberately split across
+   both modes. Asserting either mode without this repeats the retracted error.
+4. **Rebuild the PSF.** `claude/pipeline/KNOWN_ISSUES.md` item 5 (the core checkerboard
+   residual, section 6, common to DESI234 and DESI257). Real, but a smaller effect than a
+   missing image, which is why it moved down.
+
+Done since: `run_fit.py`'s metadata bug (`KNOWN_ISSUES.md` item 1) is fixed, and the SW
+image-position test's missing posterior propagation is addressed in section 5.3.
 
 ---
 

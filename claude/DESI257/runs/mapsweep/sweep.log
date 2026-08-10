@@ -1,0 +1,61 @@
++ cd /global/u1/s/seanjx/claude-lensing
++ PY=/global/homes/s/seanjx/.conda/envs/gigajax7.0/bin/python
++ SCRATCH=/tmp/claude-105387/-global-u1-s-seanjx-claude-lensing/6c331f7b-f28d-47a9-974e-6a49ca61ce98/scratchpad
++ for STEPS in 1500 5000 20000
++ CUDA_VISIBLE_DEVICES=0,1
++ /global/homes/s/seanjx/.conda/envs/gigajax7.0/bin/python claude/pipeline/run_fit.py --lens DESI257 --out /tmp/claude-105387/-global-u1-s-seanjx-claude-lensing/6c331f7b-f28d-47a9-974e-6a49ca61ce98/scratchpad/mapsweep_1500 --label mapsweep_1500 --n-source 2 --n-lens-light 2 --stages map --n-samples 4096 --map-steps 1500
++ tail -20
+/global/u1/s/seanjx/claude-lensing/claude/pipeline/priors.py:320: UserWarning: [plausibility] SHEAR[lens mass shear].|shear| <= 0.2: prior mass outside plausible region |shear| <= 0.2: estimated mass 0.136 (probe (K=3000000)) exceeds 0.05 — external-shear magnitude sqrt(gamma1^2+gamma2^2)>0.2 is much larger than realistic line-of-sight shear on galaxy/group scales — physically valid (the kernel is exact) but implausible, so a plausibility prompt, not a hard bound. Physically valid but atypical; check this is intended.
+  return LensModel(
+Lens: DESI257  ->  /tmp/claude-105387/-global-u1-s-seanjx-claude-lensing/6c331f7b-f28d-47a9-974e-6a49ca61ce98/scratchpad/mapsweep_1500
+JAX 0.11.0, devices: [CudaDevice(id=0), CudaDevice(id=1)]
+Model: 36 parameters (n_source=2, n_lens_light=2)
+============================================================
+Starting MAP stage
+============================================================
+MAP: remat_basis effective for 1/1 simulator(s) (MAP-scoped override, ss<3).
+Final Chi-squared: 1.63860   [non-finite chains: 0/2]
+MAP completed in 501.9s
+Best log-posterior: 1.651e+04
+MAP checkpoint saved to /tmp/claude-105387/-global-u1-s-seanjx-claude-lensing/6c331f7b-f28d-47a9-974e-6a49ca61ce98/scratchpad/mapsweep_1500/map.npz
+Traceback (most recent call last):
+  File "/global/u1/s/seanjx/claude-lensing/claude/pipeline/run_fit.py", line 727, in <module>
+    main()
+    ~~~~^^
+  File "/global/u1/s/seanjx/claude-lensing/claude/pipeline/run_fit.py", line 618, in main
+    raise FileNotFoundError(f"SVI checkpoint not found: {svi_npz}")
+FileNotFoundError: SVI checkpoint not found: /tmp/claude-105387/-global-u1-s-seanjx-claude-lensing/6c331f7b-f28d-47a9-974e-6a49ca61ce98/scratchpad/mapsweep_1500/svi.npz
++ for STEPS in 1500 5000 20000
++ CUDA_VISIBLE_DEVICES=0,1
++ tail -20
++ /global/homes/s/seanjx/.conda/envs/gigajax7.0/bin/python claude/pipeline/run_fit.py --lens DESI257 --out /tmp/claude-105387/-global-u1-s-seanjx-claude-lensing/6c331f7b-f28d-47a9-974e-6a49ca61ce98/scratchpad/mapsweep_5000 --label mapsweep_5000 --n-source 2 --n-lens-light 2 --stages map --n-samples 4096 --map-steps 5000
+  return LensModel(
+/global/u1/s/seanjx/claude-lensing/claude/pipeline/priors.py:435: UserWarning: [plausibility] SHEAR[lens mass shear].|shear| <= 0.2: prior mass outside plausible region |shear| <= 0.2: estimated mass 0.136 (probe (K=3000000)) exceeds 0.05 — external-shear magnitude sqrt(gamma1^2+gamma2^2)>0.2 is much larger than realistic line-of-sight shear on galaxy/group scales — physically valid (the kernel is exact) but implausible, so a plausibility prompt, not a hard bound. Physically valid but atypical; check this is intended.
+  return LensModel(
+Lens: DESI257  ->  /tmp/claude-105387/-global-u1-s-seanjx-claude-lensing/6c331f7b-f28d-47a9-974e-6a49ca61ce98/scratchpad/mapsweep_5000
+JAX 0.11.0, devices: [CudaDevice(id=0), CudaDevice(id=1)]
+Model: 36 parameters (n_source=2, n_lens_light=2)
+============================================================
+Starting MAP stage
+============================================================
+MAP: remat_basis effective for 1/1 simulator(s) (MAP-scoped override, ss<3).
+Final Chi-squared: 1.16286   [non-finite chains: 0/2]
+MAP completed in 1640.4s
+Best log-posterior: 1.804e+04
+MAP checkpoint saved to /tmp/claude-105387/-global-u1-s-seanjx-claude-lensing/6c331f7b-f28d-47a9-974e-6a49ca61ce98/scratchpad/mapsweep_5000/map.npz
+Traceback (most recent call last):
+  File "/global/u1/s/seanjx/claude-lensing/claude/pipeline/run_fit.py", line 727, in <module>
+    # algorithm actually produced it.
+  File "/global/u1/s/seanjx/claude-lensing/claude/pipeline/run_fit.py", line 618, in main
+    # inspectable after the raise rather than being thrown away.
+FileNotFoundError: SVI checkpoint not found: /tmp/claude-105387/-global-u1-s-seanjx-claude-lensing/6c331f7b-f28d-47a9-974e-6a49ca61ce98/scratchpad/mapsweep_5000/svi.npz
++ for STEPS in 1500 5000 20000
++ CUDA_VISIBLE_DEVICES=0,1
++ /global/homes/s/seanjx/.conda/envs/gigajax7.0/bin/python claude/pipeline/run_fit.py --lens DESI257 --out /tmp/claude-105387/-global-u1-s-seanjx-claude-lensing/6c331f7b-f28d-47a9-974e-6a49ca61ce98/scratchpad/mapsweep_20000 --label mapsweep_20000 --n-source 2 --n-lens-light 2 --stages map --n-samples 4096 --map-steps 20000
++ tail -20
+
+--- appended 2026-08-09, after the fact ---
+The 20000-step block above has no result after its banner. The run completed (~110 min on
+two A100s) but wrote map.npz and its stdout into a /tmp session scratch directory that the
+node cleared before either was read; best_lp was never recorded. Not re-run -- see
+README.md in this directory.

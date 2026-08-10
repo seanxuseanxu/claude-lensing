@@ -2,21 +2,39 @@
 
 HST WFC3/IR F140W imaging of DESI-257.4348+31.9046. This file records the data and the
 conditioning decisions, so that when a number does appear it is clear what it was
-conditioned on. **For results, see `RESULTS_v2.md`.**
+conditioned on. **For results, see `RESULTS_v3.md`** (round 3); `RESULTS_v2.md` is superseded
+and carries a retraction banner.
 
-**Current result (round 2, `r2_s2l2`): `theta_E = 1.9811 (-0.0041,+0.0042)"` in the dominant
-posterior mode (73.4% of draws, within-mode R-hat 1.0092, unreplicated).** The full 50-chain
-posterior is multimodal and its combined R-hat fails outright (worst 1.461) — see
-`RESULTS_v2.md` section 3 before quoting any number from this system. Round 1 (`r1_s1l1`, one
-source component) did not converge (worst R-hat 1.878) and pinned its single source Sersic
-`n_sersic` at its prior ceiling (6.0, sd exactly 0.0); round 2's second source component
-resolves that pinning entirely.
+> **Current result — round 3 (`r3_unmasked`), unimodal, unmasked, 2026-08-09:**
+>
+> | | |
+> |---|---|
+> | `theta_E` | **1.991 [1.989, 1.994]"** |
+> | `gamma` | 1.986 [1.965, 2.007] |
+> | \|shear\| | 0.044 [0.040, 0.048] |
+> | convergence | R-hat <= 1.001 on **all 36 params, all 50 chains, no chain selection**; min bulk-ESS 70,858 |
+> | `chi2_nu` | 1.154 over all 6400 px |
+>
+> Round 2's masked, bimodal fit is **retracted** — its "dominant" mode's 73.4% draw fraction
+> measured where the chains were seeded, and the mask rested on a physics error. Unmasking the
+> SW object closed the bimodality outright and relaxed `gamma` (2.54 -> 1.99), `|shear|`
+> (0.148 -> 0.044) and `|e_host|` (0.380 -> 0.143) simultaneously.
+>
+> **Two caveats before quoting `theta_E`.** The MAP still finishes 18.1 nats below the best
+> HMC draw, so `diagnose.map_convergence_check` is red (down from round 2's 681.8). And the
+> PSF is unrebuilt: the deflector core is the worst-fitting region in the image
+> (`chi2_nu = 2.16`), which is `KNOWN_ISSUES.md` item 5. This is a result, not yet a
+> publishable number.
 
-**Read "The open question" below before quoting any theta_E from this system.** Its
-counter-image identification is the least secure of the three lenses modelled here, and the
-ambiguity is documented rather than resolved. `RESULTS_v2.md` section 5 reports a blind
-prediction test on the masked SW object — suggestive, not conclusive — that bears on this
-question without resolving it.
+Round 1 (`r1_s1l1`, one source component) did not converge (worst R-hat 1.878) and pinned its
+single source Sersic `n_sersic` at its prior ceiling (6.0, sd exactly 0.0); round 2's second
+source component resolves that pinning entirely. That conclusion stands — it is a measurement
+about the source light, and does not depend on the mask.
+
+**Read "The SW object" below before quoting any theta_E from this system.** Its
+counter-image identification was the least secure of the three lenses modelled here; round 3
+settled it in favour of the fourth-image reading, and that section records both the retracted
+argument and the measurement that retracted it.
 
 Everything below is measured from this system's own files. Nothing is inherited from DESI238
 except the *structure* of `config.py` and two prior widths that are explicitly flagged as
@@ -89,22 +107,32 @@ wings, not a sky pedestal -- true blank sky in this frame is consistent with zer
 Subtracting it would remove real galaxy light and bias the lens-light `R_sersic` and
 `n_sersic` low. The Sersic profile is there to model those wings.
 
-### One masked object, at 2.58", PA 218
+### The SW object at 2.58", PA 218: masked in rounds 1-2, unmasked from round 3
 
 A smooth, centrally-concentrated ellipse at crop (8, 15) peaks at 0.957 e/s -- 131 sigma --
 and dominates the lower-left corner. It is the brightest thing in the field after the
 deflector.
 
-It is masked with a 12 px disc: its residual profile falls through 1 sigma between r = 10 and
-12 px, the disc excludes 403 of 6400 pixels (6.3%), and the nearest catalogued clump (the E
-arc's northern end) is 45 px from the disc edge. Masking takes the lower-left corner from
-0.957 to 0.079 e/s.
+Rounds 1 and 2 masked it with a 12 px disc, excluding 403 of 6400 pixels (6.3%). **That mask
+is removed from round 3 onward**, because the argument that carried it was wrong. The
+retraction and the evidence are below, under "The SW object". Masking a real image discards
+the field's most constraining datum, so this is not a small change: it is the difference
+between asking the model to reproduce an exotic 3-image configuration and asking it to
+reproduce the generic 4-image one.
 
-Leaving it unmasked is not an option under the interloper reading: the source components'
-priors put no constraint on where a component may sit, so a free Sersic will go and sit on a
-131-sigma blob. That is the cheapest way for the model to buy chi-squared.
+The masked rounds stay readable. `run_fit.py` records `mask_circles` and `n_masked_pixels`
+per run and `diagnose.rebuild_model` rebuilds each run's mask from its own record, not from
+today's config (`claude/pipeline/KNOWN_ISSUES.md` item 8), so `r1_s1l1` and `r2_s2l2` are
+still diagnosed against the likelihood they were actually fitted with -- and `diagnose.py`
+prints a `NOTE:` saying so.
 
-**Whether masking it is the right call is the open question below.**
+The hazard that motivated the mask is real: the source components' priors put no constraint
+on where a component may sit, so a free Sersic can go and sit on a 131-sigma blob without
+lensing anything. It is now checked rather than avoided. What distinguishes the two cases is
+whether the SW object is produced by the **same** source components and the **same** mass
+model that produce the E arc and the N blob -- which is what a four-image configuration means
+-- or by a component that has wandered off to sit on it alone. The residual over the
+previously-masked disc, and the fitted source-plane geometry, answer that directly.
 
 ## Lens configuration
 
@@ -137,30 +165,88 @@ should be.
 
 Two images at 1.85" and 1.55" is already a lens. Taking theta_E as the mean gives **1.70"**.
 
-### The open question
+### The SW object: the interloper reading, retracted
 
-Three images invite a fourth, and PA 218 -- where the masked SW object sits -- is close to
-where a quad would put it. I read it as an interloper, on three grounds:
+Three images invite a fourth, and PA 218 -- where the SW object sits -- is close to where a
+quad would put it. Rounds 1 and 2 read it as an interloper on three grounds. Taking them in
+order of how much weight they were carrying:
 
-- **Morphology.** A smooth, centrally-concentrated ellipse with a bright core, which is what
-  an ordinary galaxy looks like and not what a lensed knot looks like.
-- **Brightness ordering.** At 131 sigma it is 2x brighter than the brightest arc pixel while
-  sitting 1.4x farther out. A demagnified fourth image is the *faintest*, not the brightest.
-- **Orientation.** Its major axis is 18 degrees off tangential, where the E arc's is within
-  1-2 degrees.
+- **Brightness ordering — RETRACTED. This is a physics error, not a judgement call.** The
+  argument ran: "at 131 sigma it is 2x brighter than the brightest arc pixel while sitting
+  1.4x farther out; a demagnified fourth image is the *faintest*, not the brightest." A
+  demagnified image requires a **radial** critical curve, and a radially demagnified image
+  forms *near that curve* — close to the deflector centre, not 2.58" out. Round 3 fits
+  `gamma = 1.986 [1.965, 2.007]`, and `LensSolver` does find a radial critical curve, at
+  **0.0278"**. So this lens does have one, and it is buried in the deflector core; nothing
+  at 2.58" can be the demagnified image it produces. All four images of a quad lie near the
+  **tangential** critical curve and are magnified. The brightness ordering does not
+  discriminate between the two readings in either direction.
 
-**None of those is decisive on its own.** If the reading is wrong, theta_E is biased *low*:
-fitting the SW object as an image would demand a critical curve out near 2.1-2.2" rather than
-1.70".
+  *(An earlier form of this retraction argued that `gamma > 2` in both round-2 modes means
+  there is no radial critical curve at all. Round 3's unmasked fit has `gamma < 2` with
+  probability 0.75, so that premise is false for the fit that matters, and the retraction is
+  restated above on the grounds that survive it. See `RESULTS_v3.md` §5.2.)*
+- **Orientation — downgraded.** Its major axis is 18 degrees off tangential, where the E
+  arc's is within 1-2 degrees. But strong tangential elongation is a property of images near
+  a fold *of an extended arc*; a counter-image of a compact knot need not show it. This is
+  weak evidence at best.
+- **Morphology — all that survives.** A smooth, centrally-concentrated ellipse with a bright
+  core. A compact image of a compact source also looks compact, so this discriminates only
+  weakly.
 
-Two things follow, and both are already in `config.py`:
+Against them, four pieces of positive evidence for the fourth-image reading, three of them
+visible in `runs/r2_s2l2/residuals.png`:
 
-1. `theta_E_logsigma = 0.35` -- DESI238's, and wider than DESI234's 0.25 -- putting the 1-99%
-   range at 0.75-3.85" specifically so the prior's support covers both readings and the data
-   is allowed to prefer the other one.
-2. **Round 5 fits the SW object as a fourth image, unmasked, and compares.** That fit has not
-   been run. Until it exists, every theta_E from this system carries the interloper reading as
-   an assumption and must be reported with it.
+1. **The round-2 model predicts flux at the SW position while blind to it.** Those 403 pixels
+   were masked out of the likelihood, and panel 2 still renders a bright SW blob comparable
+   to the N blob. `RESULTS_v2.md` §5.2's component-by-component rendering identifies it as
+   *lensed source light* (plane 1, component 1, peaking at crop (6, 17) at 1.12 e/s), not
+   lens-light wings: the disk component is roughly 30x fainter there.
+2. **Both source components straddle the tangential caustic, so part of the source is
+   quadruply imaged.** Measured, not eyeballed (`analysis/caustic_flux_fraction.py`, 300
+   draws from the dominant mode): **8.1% [7.6, 8.7] of `src0`'s flux and 17.6%
+   [16.8, 18.7] of `src1`'s flux lie inside the tangential caustic**. Both *centroids* lie
+   outside it in 300/300 draws — `src1`'s by only 0.081", `src0`'s by 0.338" — which is
+   why a point-source solve at either centroid returns 2 images. A Sersic is not a point.
+3. **The tangential critical curve passes right by the SW object's position** (panel 1).
+4. **A 3-image tangential configuration is exotic**; 4 is the generic case for a source
+   straddling the caustic, which this one measurably does.
+
+**A fifth piece of evidence, from round 3 itself: the unmasked fit reproduces the object.**
+With those 403 pixels in the likelihood and no component added for them, the model puts
+**0.9688 e/s** where the data has **0.9572 e/s** — 1.2% on the peak of a 131-sigma object —
+with a mean normalised residual of `-0.0014` sigma across the disc, and `chi2_nu` there (2.05)
+indistinguishable from the E arc's (1.96) and better than the deflector core's (2.16).
+`analysis/sw_region_chisq.py`, `RESULTS_v3.md` §5.1.
+
+**`theta_E` was cited here as evidence and is not.** The argument ran: the interloper reading
+predicts `theta_E ~ 1.70"`, the fourth-image reading `~2.1-2.2"`, and the masked fit's
+1.98-2.00" is nearer the latter. Round 3, unmasked, gives **1.991 [1.989, 1.994]"** — it moved
+by 0.008", less than round 2's own interval, and it is not 2.1-2.2" either. `theta_E` is
+robust to the mask, which is good for the number and means it never discriminated between the
+readings. Do not cite it as support. (`RESULTS_v3.md` §5.2.)
+
+This is also the leading explanation for round 2's bimodality. Suppressing an image that
+wants to exist is expensive, and mode B's parameters are what it costs: host mass
+`e1 = -0.591`, `e2 = -0.257` (|e| = 0.645, q ~ 0.22), `gamma = 2.836`, `|shear| = 0.195` --
+three extremes at once, the last sitting exactly on the plausibility flag `priors.py` raises
+at model-build time. The mask is a better candidate for the cause than the PSF.
+
+`MASS_PRIOR`'s `theta_E_logsigma = 0.35` -- DESI238's, wider than DESI234's 0.25 -- puts the
+prior's 1-99% range at 0.75-3.85", so the support covers both readings and the data is
+allowed to choose. That decision was made before any of this and it is what makes the refit
+possible without touching a bound.
+
+**Round 3 refits unmasked**, one variable changed against `r2_s2l2`. Written down before the
+fit, the fourth-image hypothesis predicts: the SW object is reproduced by the *existing*
+source components, with no new component and no new mass, at good chi-squared over the
+newly-unmasked 403 pixels; `gamma`, host ellipticity and `|shear|` relax toward plausible
+values; and the bimodality weakens or closes. If instead the chi-squared over those pixels is
+poor, or the mass parameters go *more* extreme, the object is a foreground galaxy and the
+mask was right. **Round 3b then fits the interloper hypothesis properly** -- unmasked, with a
+foreground SIS deflector and its own light at the SW position -- because an interloper
+deflects whether or not its light is in the likelihood, and masking was never a neutral
+choice between the two readings.
 
 ### Blind-prediction test result (round 2, suggestive, not conclusive)
 
@@ -173,16 +259,20 @@ having been able to influence the fit. `RESULTS_v2.md` section 5 runs this test 
 - The weaker source component's predicted image lands **1.40 px = 0.091"** from the SW
   object's measured flux centroid -- inside one PSF FWHM (~0.15").
 - The stronger source component's predicted image misses by **6.47 px = 0.421"**.
-- **The two source components disagree**, and only a 2-image topology is found at this point
-  estimate, not the 4-image topology the fourth-image hypothesis requires.
-- `theta_E = 1.981 +/- 0.004"` sits *between* the interloper prediction (~1.70") and the
-  fourth-image prediction (~2.1-2.2") and does not cleanly select either reading.
+- **The two source components disagree.**
+- ~~only a 2-image topology is found, not the 4-image topology the fourth-image hypothesis
+  requires~~ — **withdrawn.** That was a point-source solve at each component's *centroid*,
+  and both centroids lie outside the caustic, so 2 images is the correct answer to the wrong
+  question. Integrating each component's own light over the caustic interior gives 8.1% and
+  17.6% of its flux inside, in 300/300 draws: part of the source is quadruply imaged.
+  (`analysis/caustic_flux_fraction.py`, `RESULTS_v2.md` §5.3.)
+- ~~`theta_E = 1.981 +/- 0.004"` sits between the interloper (~1.70") and fourth-image
+  (~2.1-2.2") predictions~~ — **withdrawn.** The unmasked fit gives 1.991", moving 0.008".
+  `theta_E` does not discriminate between the readings. (`RESULTS_v3.md` §5.2.)
 
-**Read together: near-miss on one source component, clear miss on the other, wrong image
-topology, no posterior propagation yet.** This nudges the question open rather than closing
-it -- it is not evidence strong enough to unmask the SW object and call it resolved, but it is
-not nothing either. Next step: posterior-propagate the test (draws, not one median) before
-treating 0.091" as anything more than a point number.
+**Superseded by round 3.** This test was the best available while the object was masked, and
+it was rightly called suggestive rather than conclusive. Round 3 fits those pixels directly
+and answers the question: see the current-result banner at the top of this file.
 
 ## Flux scale
 
@@ -209,13 +299,35 @@ values is coincidence, not a validation of guessing.
 - [ ] `verify.py --lens DESI257` passing -- not (re-)confirmed this round
 - [x] Round 1 fit (`r1_s1l1`, 22 params) -- did not converge (worst R-hat 1.878); single
       source Sersic pinned at its prior ceiling. Quoted only for comparison; see `RESULTS_v2.md`.
-- [x] Round 2 fit (`r2_s2l2`, 36 params) -- **multimodal**; dominant-mode result reported with
-      its convergence caveat prominent. See `RESULTS_v2.md`.
+- [x] Round 2 fit (`r2_s2l2`, 36 params) -- **multimodal, and its headline is retracted.** The
+      "dominant mode" holding 73.4% of draws measures where the chains were seeded, not where
+      the posterior mass is: 48 of 50 chains start inside it, because the SVI surrogate mean
+      does (`analysis/mode_seeding.py`). The deeper mode is the other one. See `RESULTS_v2.md`
+      section 3.4. **Nothing from this run is quotable**; round 3 supersedes it.
 - [ ] Modes mixing honestly -- the 80,000-draw attempt to force this **failed** (every chain
       froze; cause unattributed). See `RESULTS_v2.md` section 4.
-- [ ] Round 5 falsification run on the SW object (fit as a fourth image, unmasked) -- not run.
-      A posterior-based blind-prediction test was run instead, using the existing masked fit;
-      see above and `RESULTS_v2.md` section 5.
+- [x] The MAP step count fixed by measurement rather than inherited -- round 2's MAP finished
+      681.8 nats below the best draw of the chain it seeded, which is what put every chain in
+      one mode. `RESULTS_v3.md` section 3.
+- [x] Round 3 (`r3_unmasked`, 36 params) -- the SW object unmasked and fitted as the fourth
+      image, one variable against `r2_s2l2`, with the predictions recorded in advance in
+      `RESULTS_v3.md` section 5. **Unimodal, R-hat <= 1.001 on all 50 chains with no
+      selection.** The SW object is reproduced by the existing source components to 1.2% on
+      its peak flux, with no component added for it, and `gamma`, `|e_host|` and `|shear|`
+      relax together. `RESULTS_v3.md`.
+- [~] Round 3b (`r3b`) -- **built, tested (`--foreground`, 46 params), deliberately not run.**
+      It was justified by the SW disc's `chi2_nu`; measured against equal discs on the other
+      images that `chi2_nu` is unremarkable, so there is no outcome in doubt for it to
+      resolve. It would still give an upper bound on any foreground deflector's mass, which is
+      worth having but is not a test. `RESULTS_v3.md` section 6.
+- [ ] PSF rebuild (`KNOWN_ISSUES.md` item 5) -- **now the leading defect.** The deflector core
+      is the worst-fitting region in the image (`chi2_nu` 2.16 against the field's 1.15) and
+      shows the characteristic checkerboard. Follow `claude/DESI238/PSF_REPLICATION.md`.
+- [ ] MAP exactly at the mode -- round 3's MAP is 18.1 nats below its best HMC draw
+      (round 2's was 681.8). The 20,000-step sweep point that would have tested whether a
+      longer optimisation closes that gap **completed and was then lost** with the `/tmp`
+      scratch it wrote to, and was not re-run: it is a diagnostic, not a gate, and round 3
+      uses the 5,000-step checkpoint either way. `runs/mapsweep/README.md`.
 
 `verify.py`'s check 6 (the SVI guard) will report itself **skipped** until round 1 gives this
 lens its own known-good and known-diverged runs. A skipped check is honest; it must not be
