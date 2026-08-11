@@ -36,7 +36,6 @@ import numpy as np
 import optax
 
 from gigalens.jax.inference import HMC, MAMS, MAP, MCLMC, SVI
-from gigalens.jax.scene_prob_model import ImageData, ProbModel
 
 import data
 import lenses
@@ -172,11 +171,6 @@ def load_svi_checkpoint(path):
     """Load SVI checkpoint. Returns (mean, scale_tril, loss_hist)."""
     stored = np.load(path, allow_pickle=True)
     return stored["mean"], stored["scale_tril"], stored["loss_hist"]
-
-
-def load_hmc_checkpoint(path):
-    """Load HMC checkpoint. Returns raw samples array."""
-    return np.load(path, allow_pickle=True)["samples"]
 
 
 # Which metadata.json fields belong to which stage -- the mapping merge_prior_metadata
@@ -405,21 +399,11 @@ def main():
     )
     param_names = list(model.z_param_names)
 
-    # ImageData derives sigma = sqrt(background_rms^2 + clip(observed, 0, inf) / exp_time)
-    # ONCE, from the observed image. The pre-port ForwardProbModel recomputed it from the
-    # *simulated* image every step, making the variance parameter-dependent. This is the
-    # old BackwardProbModel convention and the only one the scene API offers; it is a real
-    # change to the likelihood, not a refactor.
+    # data.build_prob_model owns the ImageData/ProbModel construction and the noise
+    # convention behind it -- see its docstring. verify.py and diagnose.rebuild_model
+    # build the same likelihood through the same call.
     mask = data.build_mask(cfg, image.shape)
-    ds = ImageData(
-        image,
-        sim_config,
-        background_rms=cfg.background_rms,
-        exp_time=cfg.exp_time,
-        mask=mask,
-        sees="all",
-    )
-    prob = ProbModel(model, ds, mode="forward")
+    prob = data.build_prob_model(cfg, model, image, sim_config, mask)
 
     config = {
         # The port marker. diagnose.rebuild_model refuses a run without it rather than

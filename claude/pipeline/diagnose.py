@@ -63,7 +63,6 @@ from gigalens.jax.analysis import (
     diagnose_convergence,
     image_border_in_source_plane,
 )
-from gigalens.jax.scene_prob_model import ImageData, ProbModel
 
 import data
 import lenses
@@ -262,15 +261,7 @@ def rebuild_model(run_dir, lens=None, theta_e_center=1.5, theta_e_width=0.35, qu
             f"from mask_circles={mask_circles} keeps {n_kept} pixels. The reconstructed "
             f"mask does not match what this run was fitted with."
         )
-    ds = ImageData(
-        image,
-        sim_config,
-        background_rms=cfg.background_rms,
-        exp_time=cfg.exp_time,
-        mask=mask,
-        sees="all",
-    )
-    prob = ProbModel(model, ds, mode="forward")
+    prob = data.build_prob_model(cfg, model, image, sim_config, mask)
 
     n_recorded = run_cfg.get("n_free_params")
     if n_recorded is not None and int(n_recorded) != model.num_free_params:

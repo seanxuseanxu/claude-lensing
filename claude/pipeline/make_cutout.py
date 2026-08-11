@@ -44,6 +44,20 @@ from astropy.wcs import WCS
 
 import lenses
 
+
+def first_image_hdu(hdul):
+    """Index of the first HDU carrying 2-D data.
+
+    HDU 1 (``SCI``) for these drizzle products, HDU 0 for a plain image. ``make_psf.py``
+    imports this rather than repeating it: a cutout and a PSF cut from *different*
+    extensions of the same frame would be silently mismatched, and both CLIs default
+    ``--ext`` to this. It lives here rather than in ``data.py`` because these two are the
+    data-preparation scripts and neither imports gigalens or JAX; ``data.py`` does.
+    """
+    return next(i for i, h in enumerate(hdul)
+                if h.data is not None and np.ndim(h.data) == 2)
+
+
 # Default half-width, in pixels, of the box the centroid is measured in. 12 px at
 # 0.065"/pix is 0.78", which comfortably contains a deflector's bright core without
 # reaching the arcs -- large enough to be stable against a single hot pixel, small enough
@@ -141,10 +155,7 @@ def make(frame_path, ra, dec, size=120, box=CENTROID_BOX, ext=None):
     frame_path = Path(frame_path)
     with fits.open(frame_path) as hdul:
         if ext is None:
-            ext = next(
-                i for i, h in enumerate(hdul)
-                if h.data is not None and np.ndim(h.data) == 2
-            )
+            ext = first_image_hdu(hdul)
         hdu = hdul[ext]
         image = np.asarray(hdu.data, dtype=np.float64)
         header = hdu.header

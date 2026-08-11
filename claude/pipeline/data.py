@@ -17,6 +17,7 @@ pipeline rather than in a config.
 import numpy as np
 from astropy.io import fits
 
+from gigalens.jax.scene_prob_model import ImageData, ProbModel
 from gigalens.simulator import SimulatorConfig
 
 
@@ -118,3 +119,31 @@ def load(cfg):
         likelihood_precision="float32",
     )
     return image, psf, sim_config
+
+
+def build_prob_model(cfg, model, image, sim_config, mask):
+    """Wrap ``image`` and ``model`` into the ``ProbModel`` the fit actually optimises.
+
+    The one place this construction happens. ``run_fit.py`` (which fits), ``verify.py``
+    (which pre-flights) and ``diagnose.rebuild_model`` (which reconstructs a finished run)
+    each arrive here by a different route -- argparse, fixed defaults, and a run's recorded
+    ``metadata.json`` respectively -- but the likelihood they build must be the same one,
+    or a pre-flight check passes a model that is not the one fitted and a diagnosis reads a
+    finished run against a likelihood it never saw. The three differ in what feeds ``model``
+    and ``mask``, and that is the whole of the intended difference.
+
+    ``ImageData`` derives ``sigma = sqrt(background_rms^2 + clip(observed, 0, inf)/exp_time)``
+    ONCE, from the observed image. The pre-port ``ForwardProbModel`` recomputed it from the
+    *simulated* image every step, making the variance parameter-dependent. This is the old
+    ``BackwardProbModel`` convention and the only one the scene API offers; it is a real
+    change to the likelihood, not a refactor.
+    """
+    ds = ImageData(
+        image,
+        sim_config,
+        background_rms=cfg.background_rms,
+        exp_time=cfg.exp_time,
+        mask=mask,
+        sees="all",
+    )
+    return ProbModel(model, ds, mode="forward")

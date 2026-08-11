@@ -38,7 +38,6 @@ import jax.numpy as jnp
 import optax
 
 from gigalens.jax.inference import HMC, MAP, SVI
-from gigalens.jax.scene_prob_model import ImageData, ProbModel
 
 import data
 import lenses
@@ -84,15 +83,9 @@ def build(cfg, n_source, n_lens_light):
         cfg, n_source=n_source, n_lens_light=n_lens_light
     )
     mask = data.build_mask(cfg, image.shape)
-    ds = ImageData(
-        image,
-        sim_config,
-        background_rms=cfg.background_rms,
-        exp_time=cfg.exp_time,
-        mask=mask,
-        sees="all",
+    return image, sim_config, model, data.build_prob_model(
+        cfg, model, image, sim_config, mask
     )
-    return image, sim_config, model, ProbModel(model, ds, mode="forward")
 
 
 def corner_report(image, num_pix, companion_max, mask):

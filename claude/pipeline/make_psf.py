@@ -51,6 +51,7 @@ from pathlib import Path
 import numpy as np
 
 import lenses
+from make_cutout import first_image_hdu
 
 # ------------------------------------------------------------------------------------
 # Selection defaults
@@ -595,8 +596,7 @@ def read_frame(frame_path, ext=None, wht_ext=None):
 
     with fits.open(frame_path) as hdul:
         if ext is None:
-            ext = next(i for i, h in enumerate(hdul)
-                       if h.data is not None and np.ndim(h.data) == 2)
+            ext = first_image_hdu(hdul)
         sci = np.asarray(hdul[ext].data, dtype=np.float64)
         header = hdul[ext].header
         wht = None
