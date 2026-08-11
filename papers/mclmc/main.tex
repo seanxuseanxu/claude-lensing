@@ -1,0 +1,646 @@
+ % use the "wcp" class option for workshop and conference
+ % proceedings
+ %\documentclass[gray]{jmlr} % test grayscale version
+ %\documentclass[tablecaption=bottom]{jmlr}% journal article
+ \documentclass[tablecaption=bottom,wcp]{jmlr} % W&CP article
+
+ % The following packages will be automatically loaded:
+ % amsmath, amssymb, natbib, graphicx, url, algorithm2e
+
+ %\usepackage{rotating}% for sideways figures and tables
+ %\usepackage{longtable}% for long tables
+
+ % The booktabs package is used by this sample document
+ % (it provides \toprule, \midrule and \bottomrule).
+ % Remove the next line if you don't require it.
+\usepackage{booktabs}
+ % The siunitx package is used by this sample document
+ % to align numbers in a column by their decimal point.
+ % Remove the next line if you don't require it.
+\usepackage[load-configurations=version-1]{siunitx} % newer version
+ %\usepackage{siunitx}
+
+
+\newcommand{\p}{\boldsymbol{\Pi}}
+\newcommand{\x}{\boldsymbol{x}}
+\newcommand{\U}{\boldsymbol{u}}
+\newcommand{\Z}{\boldsymbol{z}}
+\newcommand{\Th}{\boldsymbol{\vartheta}}
+\newcommand{\changefont}[1]{{\fontfamily{qcr}\selectfont#1}}
+
+
+ % Define an unnumbered theorem just for this sample document for
+ % illustrative purposes:
+\theorembodyfont{\upshape}
+\theoremheaderfont{\scshape}
+\theorempostheader{:}
+\theoremsep{\newline}
+\newtheorem*{note}{Note}
+
+\jmlrproceedings{AABI 2024}{Proceedings of the 6th Symposium on Advances in Approximate Bayesian Inference, 2024}
+
+ % The optional argument of \title is used in the header
+\title[Microcanonical Langevin Monte Carlo]{Fluctuation without dissipation: Microcanonical Langevin Monte Carlo}
+
+ % Anything in the title that should appear in the main title but 
+ % not in the article's header or the volume's table of
+ % contents should be placed inside \titletag{}
+
+ %\title{Title of the Article\titletag{\thanks{Some footnote}}}
+
+\author{
+\Name{Jakob Robnik} \Email{jakob\_robnik@berkeley.edu} \\
+\addr Department of Physics, University of California, Berkeley, CA 94720, USA
+\AND
+\Name{Uro\v{s} Seljak} \Email{useljak@berkeley.edu} \\
+\addr Department of Physics, University of California, Berkeley, CA 94720, USA \\
+Lawrence Berkeley National Laboratory, 1 Cyclotron Road, Berkeley, CA 93720, USA
+}
+ % Use \Name{Author Name} to specify the name.
+ % If the surname contains spaces, enclose the surname
+ % in braces, e.g. \Name{John {Smith Jones}} similarly
+ % if the name has a "von" part, e.g \Name{Jane {de Winter}}.
+ % If the first letter in the forenames is a diacritic
+ % enclose the diacritic in braces, e.g. \Name{{\'E}louise Smith}
+
+ % \thanks must come after \Name{...} not inside the argument for
+ % example \Name{John Smith}\nametag{\thanks{A note}} NOT \Name{John
+ % Smith\thanks{A note}}
+
+% Two authors with the same address
+% \author{\Name{Author Name1\nametag{\thanks{A note}}} \Email{abc@sample.com}\and
+%  \Name{Author Name2} \Email{xyz@sample.com}\\
+%  \addr Address}
+
+ % Authors with different addresses:
+ % \author{\Name{Author Name1} \Email{abc@sample.com}\\
+ % \addr Address 1
+ % \AND
+ % \Name{Author Name2} \Email{xyz@sample.com}\\
+ % \addr Address 2
+ %}
+
+
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+Stochastic sampling algorithms such as Langevin Monte Carlo are inspired by physical systems in a heat bath. Their equilibrium distribution is the canonical ensemble given by a prescribed target distribution, so they must balance fluctuation and dissipation as dictated by the fluctuation-dissipation theorem. We show that the fluctuation-dissipation theorem is not required because only the configuration space distribution, and not the full phase space distribution, needs to be canonical. We propose a continuous-time Microcanonical Langevin Monte Carlo (MCLMC) as a dissipation-free system of stochastic differential equations (SDE). We derive the corresponding Fokker-Planck equation and show that the stationary distribution is the microcanonical ensemble with the desired canonical distribution on configuration space. We prove that MCLMC is ergodic for any nonzero amount of stochasticity, and for smooth, convex potentials, the expectation values converge exponentially fast. Furthermore, the deterministic drift and the stochastic diffusion separately preserve the stationary distribution. This uncommon property is attractive for practical implementations as it implies that the drift-diffusion discretization schemes are bias-free, so the only source of bias is the discretization of the deterministic dynamics. We apply MCLMC to a $\phi^4$ model on a 2d lattice, where Hamiltonian Monte Carlo (HMC) is currently the state-of-the-art integrator. MCLMC converges 12 to 32 times faster than HMC on an $8\times8$ to $64\times64$ lattice, and we expect even higher improvements for larger lattice sizes, such as in large scale lattice quantum chromodynamics.
+\end{abstract}
+
+% Keywords may be removed
+%\begin{keywords}
+%List of keywords
+%\end{keywords}
+
+
+\section{Introduction}
+
+Sampling from a known probability distribution $e^{-S(\x)} / Z$ with a possibly unknown normalization constant $Z$ is an important problem in many scientific disciplines, ranging from Bayesian statistics to statistical physics and quantum field theory. If $\x$ is high-dimensional, methods that use the gradient $\nabla S(\x)$ are vastly more efficient than gradient-free MCMC, such as random walk Metropolis-Hastings \citep{Metropolis}. 
+
+Golden standard gradient-based methods are Hamiltonian Monte Carlo (HMC) \citep{HMCDuane} and (underdamped) Langevin Monte Carlo (LMC) (see e.g. \citep{MolecularDynamics}). Both are based on the physics of a particle with position $\x(t)$, momentum $\p(t)$, moving in an external potential $S(\x)$.
+The dynamics is encoded in the Hamiltonian function $H(\x, \, \p) = \frac{1}{2} \vert \p \vert^2 + S(\x)$ which gives rise to the Hamiltonian equations, a deterministic system of ordinary differential equations (ODE) for the phase space variables $\Z=(\x, \p)$. 
+HMC adds on top of that the occasional momentum resampling. Langevin dynamics on the other hand, additionally models microscopic collisions with a heat bath by introducing damping and the diffusion process, giving rise to a set of Stochastic Differential Equations (SDE). Damping and diffusion are tied together by the fluctuation-dissipation theorem, ensuring that the probability distribution $\rho_{t}(\Z)$ of finding the particle at location $\Z$ in the phase space converges to $\exp[-H(\Z)]$, which is known as the canonical ensemble. The marginal configuration space distribution is then $\rho(\x) \propto \exp[- S(\x)]$, i.e. the distribution that we wanted to sample from.
+
+% The time evolution of the density is governed by the Liouville equation for Hamiltonian dynamics and by the Fokker-Planck equation for Langevin dynamics, both of which are deterministic partial differential equations (PDE).
+
+% Metropolis-Hastings adjustment is however 
+% used for acceptance or rejection 
+% of HMC trajectory and related 
+% procedures exist for LMC as well \citep{MALT}. 
+
+An interesting question is
+what is the complete framework of possible ODE/SDE
+whose equilibrium solution corresponds to the
+target density $\rho(\x) \propto \exp[-S(\x)]$. 
+It has been argued \citep{Ma15} that the complete framework is 
+given by a general form of the drift term $B(\Z)=[D(\Z)+Q(\Z)]\nabla H(\Z)+\Gamma(\Z)$, where $H(\Z)$
+is the Hamiltonian, $D(\Z)$ is 
+positive definite diffusion matrix and $Q(\Z)$ is skew-symmetric matrix. 
+$\Gamma(\Z)$ is specified by derivatives
+of $D(\Z)$ and $Q(\Z)$. 
+This framework implicitly assumes 
+that the equilibrium 
+distribution is canonical on the phase space, $\rho(\Z) \propto \exp[-H(\Z)]$.
+In general, however, 
+we only need to require the marginal $\x$ distribution
+to be canonical, $\rho(\x) \propto \exp[-S(\x)]$, giving
+rise to the possibility of additional formulations for which the
+stationary distribution matches the target distribution, but without the phase space distribution
+being canonical.
+One such general class of models is the 
+Microcanonical Hamiltonian Monte Carlo \citep{MCHMC} (MCHMC), 
+where the 
+energy is conserved throughout 
+the process, and a suitable choice of the Hamiltonian enforces the correct marginal configuration space distribution.
+MCHMC extends the deterministic
+dynamics \citep{ESH} by adding
+momentum resampling, which
+is necessary for ergodicity. 
+In this work, we will study the variable-mass MCHMC dynamics, which after rescaling time (coinciding with the inverse Sundman transformation \citep{whatMakesMDwork,SimulatingHamiltonianDynamics})
+is the same dynamics as the isokinetic sampler \citep{isokineticOld, isokinetic0}. In this paper, we explore the continuous-time limit, with
+and without diffusion. In Section \ref{sec: deterministic} we derive the Liouville equation for continuous deterministic
+dynamics directly from the ODE, and show
+that its stationary solution is the target distribution. 
+However, the deterministic dynamics of \cite{isokinetic0,ESH} is not generically ergodic, even if additional variables are introduced as in \cite{isokinetic1, isokinetic2}, and even if it were, the convergence to equilibrium can be slow \citep{MCHMC}.
+A possible solution is stochastic isokinetic dynamics \citep{isokineticLangevin}, where the original phase space variables are coupled with $2d$ additional variables whose dynamics is stochastic, such that ergodicity can be rigorously established. However, the deterministic limit of this model no longer equals the deterministic isokinetic sampler and the variable mass MCHMC. In fact, it lives on a 3d-dimensional manifold, not 2d-1 dimensional manifold. With this approach, three additional hyperparameters are introduced, two masses and a damping parameter.
+
+In section \ref{sec: stochastic}, we instead propose Microcanonical Langevin Monte Carlo (MCLMC), which directly adds stochasticity to the acceleration of the deterministic dynamics. This is a continuous-time analog of partially stochastically reorienting the velocity direction after every step of the deterministic dynamics, and is easy to integrate. MCLMC introduces one additional free parameter, the strength of the stochastic perturbation, whose optimal value can be determined by a short prerun \citep{MCHMC} and is anologus to the bounce rate in MCHMC.
+In contrast to the standard Langevin dynamics and stochastic isokinetic dynamics, the energy 
+conservation in MCLMC leads to dynamics that
+does not have a velocity 
+damping term associated with 
+the stochastic term, such that 
+the noise is energy conserving. 
+We derive the 
+associated Fokker-Planck 
+equation and show its stationary solution is the same as for the
+Liouville equation. 
+In section \ref{sec: ergodicity} we prove that SDE is ergodic and in section \ref{sec: geometric ergodicity} we demonstrate that it is also geometrically ergodic for smooth, log-convex target distributions.
+In section \ref{phi4} we apply MCLMC to study the statistical $\phi^4$ field theory and compare it with Hamiltonian Monte Carlo.
+
+
+\section{Deterministic dynamics} \label{sec: deterministic}
+We will study the ODE
+\begin{equation} \label{eq: ODE}
+    \dot{\x} = \U \qquad \qquad
+    \dot{\U} = P(\U) \boldsymbol{f}(\x),
+\end{equation}
+where $\x$ is the position of a particle in the configuration space and $\U$ is its velocity.
+$P(\U) \equiv I - \U \U^T$ is the projector to the direction perpendicular to the velocity and $\boldsymbol{f}(\x) \equiv - \nabla S(\x) / (d-1)$ is the force\footnote{The force in \cite{MCHMC,ESH} was defined with a factor of $d$ rather than $d-1$, which required weights, proportional to $e^{-S(\x) / d}$, meaning that the sampler without the weights converged to $e^{-S} / e^{-S/d}$. If we replace 
+$S \xrightarrow[]{} S d / (d-1)$ this distribution becomes $e^{-S}$ and the weights are not required. This is equivalent to redefining the force as done here. In $d = 1$ this reweighting does not work and the original Hamiltonian formulation should be used.}.
+One can arrive at this equation from at least two perspectives: 
+(i) particle in external potential, being constrained to unit velocity, also known as the isokinetic ensemble
+(ii) energy-conserving dynamics of a particle with non-standard kinetic energy and external potential in natural time parameterization \citep{MCHMC,ESH}, also known as the microcanonical ensemble.
+
+The dynamics preserves the norm of $\U$ if we start with $\U \cdot \U = 1$,
+\begin{equation} 
+    \frac{d}{dt}(\U \cdot \U) = 2 \U \cdot \dot{\U} = \U \cdot P(\U) \boldsymbol{f}= (1 - \U \cdot \U) (\U \cdot \boldsymbol{f}) = 0,
+\end{equation}
+so the particle is confined to the $2d -1$ dimensional manifold $\mathcal{M} = \mathbb{R}^d \times S^{d -1}$, i.e. the velocity 
+is defined on a sphere of unit radius. We will denote the points on $\mathcal{M}$ by $\Z$. 
+
+In this section we will briefly introduce the differential geometry formalism and show that $\exp\{-S(\x)\}$ is the stationary distribution of Equation \eqref{eq: ODE}.
+In language of differential geometry, the dynamics of Equation \eqref{eq: ODE} induces a flow on the manifold, which is a 1-parametrical family of maps from the manifold onto itself $\varphi_t : \mathcal{M} \xrightarrow[]{} \mathcal{M}$, such that $\varphi_t(\Z)$ is the solution of Equation \eqref{eq: ODE} with the initial condition $\Z$. The flow induces the drift vector field $B(\boldsymbol{z})$, which maps scalar observables on the manifold $\mathcal{O}(\Z)$ to their time derivatives under the flow,
+\begin{equation} 
+    B(\Z)(\mathcal{O}) = \frac{d}{d t} \mathcal{O} \big( \varphi_t (\Z) \big) \vert_{t = 0}.
+\end{equation}
+We will be interested in the evolution of the probability density distribution of the particle under the flow. In differential geometry, the density is described by a volume form, which is a differential $(2d-1)$-form,
+\begin{equation}
+    \widehat{\rho}(\Z) = \rho(\Z) \, d z^1 \wedge d z^2 \wedge...\, dz^{2d -1}.
+\end{equation}
+Volume form $\widehat{\rho}_t$ at time $t$ can be formally translated in time by the push-forward map $\varphi_{s *}$, $\widehat{\rho}_{t+s} = \varphi_{s *} \widehat{\rho}_t$. The infinitesimal form of the above equation gives us the differential equation for the density:
+\begin{equation} \label{eq: Liouville}
+    \frac{d}{dt} \widehat{\rho}_t = \frac{d}{ds} \big( \varphi_{s *} \widehat{\rho}_t \big) \vert_{s = 0} = \frac{d}{ds} \big( \varphi_{-s}^* \widehat{\rho}_t \big) \vert_{s = 0} \equiv - \mathcal{L}_{B} \widehat{\rho}_t  = - \big( \mathrm{div}_{\widehat{\rho}_t} B \big) \widehat{\rho}_t,
+\end{equation}
+which is also known as the Liouville equation. Here, $\varphi^*_{-s} = \varphi_{s *}$ is the pull-back map, $\mathcal{L}_{B}$ is the Lie derivative along the drift vector field $B$ and $\mathrm{div}$ is the divergence. This is the continuity equation for the probability in the language of differential geometry. 
+The Liouville equation in coordinates is
+\begin{equation} \label{eq: Liouville coordinates}
+    \dot{\rho}(\Z) = -\nabla \cdot \big(\rho B \big) \equiv - \sum_{i = 1}^{2d - 1} \frac{\partial}{\partial z^{i}} \big( \rho(\Z) B^{i}(\Z) \big)
+\end{equation}
+We will work in the Euclidean coordinates $\{ x^i\}_{i = 1}^{d}$ on the configuration space and spherical coordinates $\{ \vartheta^{\mu}\}_{\mu = 1}^{d-1}$  for the velocities on the sphere, such that the manifold is parametrized by $\Z = (\x, \boldsymbol{\vartheta})$. We will adopt the Einstein summation convention and use the Latin letters ($i$, $j$, ...) to indicate the sum over the Euclidean coordinates and the Greek letters ($\mu$, $\nu$, ...) for the sum over the spherical coordinates. The spherical coordinates are defined by the inverse transformation,
+\begin{equation} 
+(u_1, u_2, \ldots u_{d}) =  (\cos \vartheta^1,\,
+\sin \vartheta^1 \cos \vartheta^2,\,
+\ldots ,\,
+\sin \vartheta^1 \cdots \sin \vartheta^{d-2} \cos \vartheta^{d-1},\,
+\sin \vartheta^1 \cdots \sin \vartheta^{d-2} \sin \vartheta^{d-1})
+\end{equation}
+which automatically ensures $\U \cdot \U = 1$. The metric on the sphere in the spherical coordinates is
+\begin{equation} 
+    g_{\mu \nu} = \frac{\partial u_k}{\partial \vartheta^{\mu}} \frac{\partial u_k}{\partial \vartheta^{{\nu}}} = \mathrm{Diag}[1,\, \sin^2(\vartheta^1),\, \sin^2(\vartheta^1) \sin^2(\vartheta^2),\, ...]_{i j},
+\end{equation}
+and the volume element is $\sqrt{g} = \mathrm{det} g_{\mu \nu}^{1/2} = \Pi_{k=1}^{d-2}(\sin \vartheta^k)^{d-1-k}$.
+The drift vector field is
+\begin{equation} \label{eq: drift}
+    B = u_i(\Th) \frac{\partial}{\partial x^i} + \partial^{\mu}(\U \cdot 
+    \boldsymbol{f}(\x)) \frac{\partial}{\partial \vartheta^{\mu}},
+    %old expression: u_i(\Th) \frac{\partial}{\partial x^i} + g^{\mu \nu}(\Th) \frac{\partial u_i}{\partial \vartheta^{\nu}}(\Th) P_{ij}(\Th) f_j(\x) \frac{\partial}{\partial \vartheta^{\mu}} =
+\end{equation}
+where the second term results from
+$B_{\nu} = \frac{\partial u_i}{\partial \vartheta^{\nu}} P_{ij} f_j = \frac{\partial u_i}{\partial \vartheta^{\nu}} f_i$.
+
+
+\begin{theorem}
+The stationary solution of Liouville equation \eqref{eq: Liouville coordinates} is 
+\begin{equation} \label{eq: stationary distribution}
+    \rho_{\infty} \propto e^{-S(\x)} \sqrt{g(\Th)} . 
+\end{equation}
+\end{theorem}
+
+\begin{proof}
+Inserting $\rho_{\infty}$ in the Liouville equation \eqref{eq: Liouville coordinates} gives
+\begin{equation*}
+    \dot{\rho}_{\infty} = - \frac{\partial}{\partial x_i} (\rho_{\infty} B^i) - \frac{\partial}{\partial \vartheta^{\mu}} ( \rho_{\infty} B^{\mu}) = - \U \cdot \partial_{\x} \rho_{\infty} - \frac{1}{\sqrt{g}} \partial_{\mu} \big( \sqrt{g} B^{\mu} \big) \rho_{\infty} .
+\end{equation*}
+The first term is $\U \cdot \partial_{\x} \rho_{\infty} = (d -1) \U \cdot \boldsymbol{f} \rho_{\infty}$. 
+In the second term we recognize Laplacian of $\U \cdot \boldsymbol{f}$, so it transforms as a scalar under the transformations of the spherical coordinates. We can use this to simplify the calculation: at each fixed $\x$ we will pick differently oriented spherical coordinates, such that $\vartheta^1 = 0$ always corresponds to the direction of $\boldsymbol{f}(\x)$ and $f_i = \delta_{1 i} \vert \boldsymbol{f} \vert$. We then compute
+$B_{\mu} = (\partial_{\mu} u_1) \vert \boldsymbol{f} \vert = - \sin \vartheta^1 \delta_{1 \mu} \vert \boldsymbol{f} \vert$,
+so
+\begin{equation*}
+    \frac{1}{\sqrt{g}} \partial_{\mu} \big( \sqrt{g} B^{\mu} \big) = \frac{- \vert \boldsymbol{f} \vert}{\sin^{d-2} \vartheta^1} \frac{\partial}{\partial \vartheta^1 }\sin^{d-1} \vartheta^1
+    = - (d - 1) \vert \boldsymbol{f} \vert \cos \vartheta^1 = - (d-1) \U \cdot \boldsymbol{f}.
+\end{equation*}
+The last expression transforms as a scalar with respect to transformations on the sphere and is therefore valid in all coordinate systems, in particular, in the original one. 
+Combining the two terms gives $\dot{\rho}_{\infty} = 0$, completing the proof.
+\end{proof}
+
+
+
+\section{Stochastic dynamics} \label{sec: stochastic}
+In \cite{MCHMC} it was proposed that adding a random perturbation to the momentum direction after each step of the discretized deterministic dynamics boosts ergodicity, but the continuous-time version was not explored. Here, we consider a continuous-time analog and show this leads 
+to Microcanonical Langevin SDE for 
+the particle evolution and to Fokker-Planck equation for the probability density evolution. We promote the deterministic ODE of Equation \eqref{eq: ODE} to the following Microcanonical 
+Langevin SDE:
+\begin{align} \label{eq:SDE}
+    d \x &= \U dt \\ \nonumber
+    d \U &= P(\U) \boldsymbol{f}(\x) dt + \eta P(\U) d \boldsymbol{W}. 
+\end{align}
+Here, $\boldsymbol{W}$ is the Wiener process, i.e. a vector of random noise variables drawn from a Gaussian distribution with 
+zero mean and unit variance, and $\eta$ is a free parameter. The last term is the standard Brownian motion increment on the sphere, constructed by an orthogonal projection from the Euclidean $\mathbb{R}^d$, as in \cite{elworthyShort}.
+
+More formally, we may write Equation \eqref{eq:SDE} as a Stratonovich degenerate diffusion on the manifold \citep{elworthy, statequilibrium, DegenerateDiffusion},
+\begin{equation} \label{eq: stratonovich}
+    d \Z = B(\Z) dt + \sum_{i = 1}^d \sigma_i(\Z) \circ d W_i,
+\end{equation}
+where $W_i$ are independent $\mathbb{R}$-valued Wiener processes and $\sigma_i$ are vector fields, in coordinates expressed as
+\begin{equation}
+    \sigma_i(\Th) = g^{\mu \nu}(\Th) \frac{\partial u_i}{\partial \vartheta^{\nu}}(\Th) \frac{\partial}{\partial \vartheta^{\mu}}(\Th).
+\end{equation}
+
+
+
+With the addition of the diffusion term, the Liouville equation \eqref{eq: Liouville coordinates} is now promoted to the Fokker-Planck equation \citep{elworthyShort},
+\begin{equation} \label{eq: fokker-planck}
+    \dot{\rho} = - \nabla \cdot (\rho B) + \frac{\eta^2}{2} \widehat{\nabla}^{2}\rho ,
+\end{equation}
+where $\widehat{\nabla}^{2} = \nabla^{\mu} \nabla_{\mu}$ is the Laplace-Beltrami operator on the sphere and $\nabla_{\mu}$ is the covariant derivative on the sphere. In coordinates, the Laplacian can be computed as $\frac{1}{\sqrt{g}} \partial_{\mu} \big( \sqrt{g} \partial^{\mu} \rho \big)$.
+
+
+
+\begin{theorem}
+The distribution $\rho_{\infty}$ of Equation \eqref{eq: stationary distribution} is a stationary solution of the Fokker-Planck equation \eqref{eq: fokker-planck}
+for any value of $\eta$.
+\end{theorem}
+
+
+\begin{proof}
+Upon inserting $\rho_{\infty}$ into the right-hand-side of the Fokker-Planck equation, the first term vanishes by Theorem 1. The second term also vanishes,
+\begin{equation*}
+    \widehat{\nabla}^{2} \rho_{\infty} \propto \nabla^{\mu} \nabla_{\mu} \sqrt{g} e^{- S(\x)} = e^{- S(\x)} \nabla^{\mu} \nabla_{\mu} \sqrt{g} = 0,
+\end{equation*}
+since the covariant derivative of the metric determinant is zero. 
+\end{proof}
+
+
+\section{Discretization}
+Consider for a moment Equation \eqref{eq:SDE} with only the diffusion term on the right-hand-side. This SDE describes the Brownian motion on the sphere and the identity flow on the $\x$-space \citep{elworthyShort}. Realizations from the Brownian motion on the sphere can be generated exactly \citep{BrownianSphere}. Let us denote by $\psi^{\eta}_s$ the corresponding density flow map, such that $\psi^{\eta}_s[\rho_t] = \rho_{t+s}$.  
+The flow of the full SDE \eqref{eq:SDE} can then be approximated at discrete times $\{ n \epsilon\}_{n = 0}^{\infty}$ by the Euler-Maruyama scheme \citep{SDEbook}:
+\begin{equation} \label{eq: euler}
+    \rho_{(n+1) \epsilon} = \psi^{\eta}_{\epsilon}[\varphi_{\epsilon *} \,\rho_{n \epsilon}].
+\end{equation}
+For a generic SDE, this approximation leads to bias in the stationary distribution. This is however not the case in MCLMC:
+
+\begin{theorem}
+The distribution $\rho_{\infty}$ of Equation \eqref{eq: stationary distribution} is preserved by the Euler-Maruyama scheme \eqref{eq: euler} for any value of $\eta$.
+\end{theorem}
+
+\begin{proof}
+The deterministic push forward map preserves $\rho_{\infty}$ by the Theorem 1. The Fokker-Planck equation for the stochastic-only term is $\dot{\rho} = \frac{\eta^2}{2} \widehat{\nabla} \rho$ which preserves $\rho_{\infty}$ by the Theorem 2.
+\end{proof}
+
+In the standard Langevin equation, 
+the fluctuation term is accompanied by a dissipation term, and the strength of both is controlled by damping coefficient. The deterministic and stochastic parts do not preserve the stationary distribution separately. In contrast, for MCLMC an 
+exact deterministic ODE integrator would remain exact with SDE, so the integration scheme for the deterministic dynamics is the only bias source.
+
+Furthermore, in the discrete scheme \eqref{eq: euler} it is not necessary to have the Brownian motion on the sphere as a stochastic update in order to have $\rho_{\infty}$ as a stationary distribution. In fact, any discrete stochastic process on the sphere, which has the uniform distribution as the stationary distribution will do, for example the one used in \cite{MCHMC}.
+
+
+\section{Ergodicity} \label{sec: ergodicity}
+
+We have established that $\rho_{\infty}$ is the stationary distribution of the MCLMC SDE. Here we demonstrate the uniqueness of the stationary distribution. 
+
+Let's define $\mathcal{S}(\Z) = \{B(\Z), \sigma_{1}(\Z), \sigma_{2}(\Z), \ldots \sigma_{d}(\Z) \}$.
+The H\"ormander's condition \citep{MolecularDynamics} is satisfied at $\Z \in \mathcal{M}$ if the smallest Lie algebra containing $\mathcal{S}(\Z)$ and closed under
+$v \mapsto [B, v]$ is the entire tangent space $T_{\Z}(\mathcal{M})$.
+Here $[\cdot, \cdot]$ is the Lie bracket, in coordinates $[X, Y] = X^i \partial_{i} Y^k \partial_k - Y^i \partial_{i} X^k \partial_k$.
+
+
+\begin{lemma} \label{hormander} (H\"ormander's property)
+MCLMC SDE satisfies the H\"ormander's condition for all $\Z \in \mathcal{M}$.
+\end{lemma}
+
+\begin{proof}
+    Fix some $\Z = (\x, \U)$. The tangent space at $\Z$ is a direct sum $T_{\Z}(\mathcal{M}) = T_{\x}(\mathbb{R}^d) \oplus T_{\U}(S^{d-1})$.
+    $\sigma_i$ span $T_{\U}(S^{d-1})$ by construction: they were obtained by passing the basis of $\mathbb{R}^{d}$ through the orthogonal projection, $P(\U)$, which has rank $d-1$.
+    For convenience we may further decompose $T_{\x}(\mathbb{R}^d) = U \oplus U^{\perp}$, where $U = \{ \lambda \U \vert \lambda \in \mathbb{R}\} $ is the space spanned by $\U$ and $U^{\perp}$ is its orthogonal complement. We can write $B = B_{x} + B_{u}$, such that $B_x \in T_{\x}(\mathbb{R}^d)$ and $B_u \in T_{\U}(S^{d-1})$, see also Equation \eqref{eq: drift}.
+    $B_x = u_i \partial_{x^i}$ spans $U$, so we are left with covering $U^{\perp}$.
+    $[B_{u}, \sigma_{i}] \in T_{\U}(S^{d-1})$, so it does not interest us anymore. However,
+    \begin{equation*}
+        [B_x,\, \sigma_i] =  - \sigma_i(B_x) = g^{\mu \nu} \frac{\partial u_i}{\partial \vartheta^{\mu}} \frac{\partial u_j}{\partial \vartheta^{\nu}} \partial_j,
+    \end{equation*}
+    so $[B_x,\, \sigma_i]$ span $U^{\perp}$, completing the proof.
+\end{proof}
+
+\begin{lemma} \label{path accessibility} (Path accessibility of points):
+For every two points $\Z_i, \Z_f \in \mathcal{M}$ there exists a continuous path 
+$\gamma: [0, T] \rightarrow \mathcal{M}$,
+$\gamma(0) = \Z_i$, 
+$\gamma(T) = \Z_f$ 
+and values $0 = t_0 < t_1 < \cdots < t_N = T$ with a corresponding sequence of vectors $v_{n} \in \mathcal{S}$, such that for each $0\leq n <N$,
+$\dot{\gamma}(t) = v_n(\gamma(t))$ for $t_n < t < t_{n+1}$.
+\end{lemma}
+\begin{proof}
+    Starting at $\Z_i$, we will reach $\Z_f$ in three stages. In stage I, we will use $\sigma_i$ to reorient $\U_{i}$ to the desired direction $\bar{\U}$ (as determined by the stage II). In stage II we will then follow $B$ to reach the final destination $\x_f$ in the configuration space. In stage III, we will reorient the velocity from the end of stage II to the desired $\U_f$.
+
+    \underline{Stage I}: First we note that $\sigma_{k} = - \sin \vartheta^k \frac{\partial}{\partial \vartheta^k}$ if $\vartheta^i = \pi / 2$ for all $i < k$. In this case, $\dot{\gamma} = \sigma_k$ has a solution $t = t_0 + \log \frac{\tan \vartheta^l(t)/2}{\tan \vartheta^l(t_0)/2 }$ and keeps $\vartheta^{l}(t) = \vartheta^{l}(t_0)$ for $l \neq k$.
+    This means that we can first recursively set $\vartheta^n$ to $\pi/2$ by selecting $t_{n+1} = t_n + \log \frac{\tan \pi / 4}{\tan \vartheta_i^n / 2 } $ and $v_n = \sigma_n$ for $n = 1, \, 2, \, \ldots d-1$. 
+    Then we go back and set all $\theta^n$ to their desired final value, by selecting $t_{n+1} = t_n + \frac{\tan \bar{\vartheta}^{2d - 1 - n} / 2}{\tan \pi / 4 }$ for $n = d, \, d+1,\, \ldots 2(d-1)$.
+        
+    
+    \underline{Stage II}: As shown in \cite{MCHMC}, up to time rescaling, the trajectories of \eqref{eq: ODE} (flows under $B$) are the trajectories of the Hamiltonain $H = \vert \Pi^2 \vert / m(S(\x))$ and are in turn also the geodesics on a conformally flat manifold \citep{MCHMC}. Any two points can be connected by a geodesic and therefore $B$ connects any two points $\x_i$ and $\x_f$. 
+
+    \underline{Stage III}: use the program from stage I.
+    
+\end{proof}
+
+\begin{lemma} (Smooth, nonzero density) \label{density}
+    The law of $\boldsymbol{z}(t)$ admits a smooth density. For every $\Z_i \in \mathcal{M}$ and every Lebesgue-positive measure Borel set $\mathcal{U}_f \in B(\mathcal{M})$, there exists $T(\Z_i,\mathcal{U}_f) \geq 0$, such that $P(\boldsymbol{z}(T) \in \mathcal{U}_f \vert \Z(0) = \Z_i) > 0$.
+\end{lemma}
+\begin{proof}
+    Fix $\Z_f \in \mathcal{M}$, such that every neighborhood of $\Z_f$ has a positive-measure intersection with $\mathcal{U}_f$. By the H\"ormander's theorem, Lemma \ref{hormander} implies that there exist $t_1 > 0$, $m> 0$ and a non-empty open subset $\mathcal{U}_i$ of a chart on $\mathcal{M}$, such that the law of $\Z(t_1)$ has a Lebesgue density of at least $m$ on $\mathcal{U}_i$. Now let $t_2$ be the time $T$ from Lemma \ref{path accessibility}, when applied to $\Z_f$ and any point in $\mathcal{U}_i$. $T$ from this theorem will be $t_1 + t_2$. 
+    For k = 1, 2 let $(I_k, \mathcal{I}_k, \mu_k)$ be the Wiener space defined over $[0,t_k]$ and $\Phi_k$ be the time-$t_k$ mappings of the SDE. Since $\mathcal{U}_i$ is open, applying the "support theorem" (Theorem 3.3.1(b) of \cite{MallivianCalculus}) to the reverse-time SDE gives that $\mu_2(\Z_f \in \Phi_2(\mathcal{U}_i)) > 0$. Hence the Lemma \ref{Newman lemma} gives the desired result.
+\end{proof}
+
+\begin{theorem} (ergodicity)
+    MCLMC SDE \eqref{eq:SDE} admits a unique stationary distribution.
+\end{theorem}
+\begin{proof}
+    This follows immediately from Lemma \ref{density} and Theorem 6 in \cite{NoseHooverProof}.
+\end{proof}
+
+\section{Geometric ergodicity} \label{sec: geometric ergodicity}
+
+Geometric ergodicity is a statement that the convergence to the stationary distribution is exponentially fast. 
+In this section we will assume that the target $S(\x)$ is $M$-smooth and $m$-convex meaning that $m I < \partial_{ij} S(\x) < M I$.
+As in \cite{MolecularDynamics} we will also assume periodic boundary conditions at large $\x$, implying that the gradient is bounded, $\nabla S(\x) < g_{\mathrm{max}}$.
+
+
+Let $\mathcal{L}$ be the infinitesimal generator of the MCLMC SDE:
+\begin{equation}
+    \mathcal{L} \phi = B (\phi) + \frac{\eta^2}{2} \widehat{\nabla}^2 \phi .
+\end{equation}
+
+
+\begin{lemma} (Lyapunov function) \label{Lyapunov}
+$\phi(\x, \U) = \U \cdot \nabla S(\x) + g_{\mathrm{max}}$ is a Lyapunov function:
+    \begin{itemize}
+        \item $\phi(\Z) > 0$ 
+        \item $\phi(\Z) \xrightarrow[]{} \infty$ as $\vert \Z \vert \xrightarrow[]{} \infty$.
+        \item $\mathcal{L} \phi < - a \phi + b$ for some $a$, $b > 0$.
+    \end{itemize}   
+\end{lemma}
+
+
+\begin{proof}
+    The first property follows by 
+    \begin{equation*}
+        \U \cdot \nabla S > - \vert \U \vert \vert \nabla S \vert > -g_{\mathrm{max}}.
+    \end{equation*}
+    The second property is trivially satisfied because the phase space is bounded. 
+    
+    For the third property, let's compute terms one by one:
+    \begin{itemize}
+        \item The $\x$-part of the drift gives $\U \cdot \partial_{\x} \phi = u_i u_j \partial_{i j} S(\x) < M \vert \U \vert^2 = M$.
+            
+        \item The $\U$-part of the drift gives
+            $\partial^{\mu}( \U \cdot \boldsymbol{f}(\x) ) \partial_{\mu}( \U \cdot \nabla S(\x))  =  - \frac{1}{d-1}  \vert \partial_{\nu} (\U \cdot \nabla S) \vert^2_g \leq 0$
+            where $\vert v \vert_g^2 = g^{\mu \nu} v_{\mu} v_{\nu}$ is the metric induced norm.
+
+        \item The Laplacian of $u_1 = \cos \vartheta$ is
+            \[ 
+            \widehat{\nabla}^2 u_{1} = \frac{1}{\sqrt{g}} \partial_{\mu} (\sqrt{g} \partial^{\mu} u_1)  = \frac{1}{(\sin \theta)^{\frac{d}{2} - 1}} \big(  (\sin \theta)^{\frac{d}{2} - 1} (\cos \theta)' \big) ' = - \frac{d}{2} \cos \vartheta = - \frac{d}{2} u_1
+            \]
+            so by symmetry $\widehat{\nabla}^2 \U = - \frac{d}{2} \U$ and $\widehat{\nabla}^2 \phi = - \frac{d}{2} \U \cdot \nabla S$.
+    \end{itemize}
+    
+    Combining everything together, we get:
+    \begin{equation*}
+        \mathcal{L} \phi < M - \frac{\eta^2 d}{4} \U \cdot \nabla S = - a \phi + b
+    \end{equation*}
+    for $a = \eta^2 d / 4$ and $b = M + a g_{\mathrm{max}}$. 
+\end{proof}
+
+With Lyapunov function in hand the result is immediate:
+
+\begin{theorem} (Geometric ergodicity) \label{geometric ergodicity}
+    There exist constants $C > 0$ and $\lambda > 0$, such that for all observables $\mathcal{O}(\boldsymbol{z})$ for which $\vert \mathcal{O}(\Z) \vert < \phi(\Z)$ the expected values $\langle \mathcal{O} \rangle_{\rho} = \int \mathcal{O}(\Z) \rho(\Z) d \Z$ under the MCLMC SDE \eqref{eq:SDE} converge at least exponentially fast:
+    \begin{equation}
+        \vert \langle \mathcal{O} \rangle_{\rho(t)} - \langle \mathcal{O} \rangle_{\rho_{\infty}} \vert < C e^{- \lambda t} \phi(\Z_0).
+    \end{equation}
+\end{theorem}
+
+\begin{proof}
+    This follows directly from theorem 6.2 in \cite{MolecularDynamics}, given the Lyapunov function from Lemma \ref{Lyapunov} and smooth positive density from Lemma \ref{density}.
+\end{proof}
+
+
+\section{Applications} \label{phi4}
+To show the promise of MCLMC as a 
+general purpose MCMC tool, we apply it to 
+the scalar $\phi^4$ field theory in two Euclidean dimensions
+and to benchmark hierarchical Bayesian inference problems.
+
+
+In the discrete scheme \eqref{eq: euler} it is not necessary to have the Brownian motion on the sphere as a stochastic update in order to have $\rho_{\infty}$ as a stationary distribution. In fact, any discrete stochastic process on the sphere, which has the uniform distribution as the stationary distribution and acts as an identity on the $\x$-space will do. In the practical algorithm, we therefore avoid generating the complicated Brownian motion on the sphere and instead use the generative process $\U_{(n+1) \epsilon} = (\U_{n \epsilon} + \nu \boldsymbol{r}) / \vert \U_{n \epsilon} + \nu \boldsymbol{r} \vert $, where $\boldsymbol{r}$ is a random draw from the standard normal distribution and $\nu$ is a parameter with the same role as $\eta$. We tune the parameter $\eta$ by estimating the effective sample size (ESS) \citep{MCHMC}. 
+We approximate the deterministic flow $\varphi_t$ with the Minimal Norm integrator \citep{MinimalNorm, MCHMC} and tune the step size by targeting a predefined energy error variance per dimension, as in \citep{MCHMC}. 
+For $\phi^4$ field theory, the tuning of the step size and $\eta$ is done at each $\lambda$ level separately and is included in the sampling cost. It amounts to around $10 \%$ of the sampling time.
+%0.02$
+
+
+
+\subsection{Lattice $\phi^4$ field theory}
+This is one of the simplest 
+non-trivial lattice field theory 
+examples.
+The scalar field in a continuum is a scalar function $\phi(x, y)$ on the plane with the area $V$. The probability density on the field configuration space is proportional to $e^{-S[\phi]}$, where the action is
+\begin{equation} 
+    S[\phi(x, y)] = \int \big( -\phi \, \partial^2 \phi + m^2 \phi^2 + \lambda \phi^4 \big) d x d y .
+\end{equation}
+The squared mass $m^2 < 0$ and the quartic coupling $\lambda > 0$ are the parameters of the theory. The system is interesting as it exhibits spontaneous symmetry breaking, and belongs 
+to the same universality class
+as the Ising model. The action is symmetric to the global field flip symmetry $\phi \xrightarrow[]{} -\phi$. However, at small $\lambda$, the typical set of field configurations splits in two symmetric components, each with non-zero order parameter $\langle \bar{\phi} \rangle$, where $\bar{\phi} = \frac{1}{V} \int \phi(x, y)  dx dy$ is the spatially averaged field. The mixing between the two components is highly unlikely, and so even a small perturbation can cause the system to acquire non-zero order parameter. One such perturbation is a small external field $h$, which amounts to the additional term $- h \int \phi(x, y) dx dy$ in the action. The susceptibility of the order parameter to an external field is defined as
+\begin{equation} 
+    \chi = V \frac{\partial \bar{\phi}}{\partial h} \vert_{h = 0} = \lim_{h \to 0^+} V \langle\big(\bar{\phi} - \langle \bar{\phi} \rangle \big)^2\rangle,
+\end{equation}
+which 
+diverges at the critical point, where the second order phase transition occurs.
+
+
+\begin{figure}[t]
+    \hspace{-1.1cm}\includegraphics[scale = 0.67]{phi4Reshaped.pdf}
+    \caption{Top left: susceptibility in the vicinity of the phase transition. We follow \cite{gerdes} and rescale the susceptibility and the quartic coupling by the Ising model critical exponents $\nu = 1$, $\gamma = 7/4$ and the critical coupling $\lambda_C = 4.25$ from \cite{phi4masterthesis}. The rescaling removes most of the lattice size dependence \citep{FiniteLatticeSize}. MCLMC agrees with the truth (obtained by a very long NUTS run). %The errors in the ESS estimations are negligible and therefore not displayed. 
+    Top right: effective sample size (ESS) per action gradient evaluation for MCLMC. Higher is better. MCLMC tuning cost is included. 
+    Bottom: same for NUTS and HMC. The dotted lines are the corresponding results if the tuning cost of 500 warm-up samples is taken into account. 
+    }
+    \label{fig}
+\end{figure}
+
+
+The $\phi^4$ theory does not admit analytic solutions due to the quartic interaction term. A standard approach is to discretize the field on a lattice and make the lattice spacing as fine as possible \citep{LQCDGattringer}. The field is then specified by a vector of field values on a lattice $\phi_{i j}$ for $i, j = 1, 2, \ldots L$. The dimensionality of the configuration space is $d = L^2$. We will impose periodic boundary conditions, such that $\phi_{i, L+1} = \phi_{i 1}$ and $\phi_{L+1, j} = \phi_{1 j}$. The $h = 0$ lattice action is \citep{phi4masterthesis}
+\begin{equation} 
+    S_{\mathrm{lat}}[\phi] = \sum_{i, j= 1}^L 2 \phi_{ij} \big(2 \phi_{i j} - \phi_{i+1, j} - \phi_{i, j+1}\big) + m^2 \phi_{i j}^2  + \lambda \phi_{i j}^4.
+\end{equation}
+As common in the literature \citep{rezende, phi4notebook, gerdes}, we will fix $m^2 = -4$ (which removes the diagonal terms $\phi_{ij}^2$ in the action) and study the susceptibility as a function of $\lambda$.
+The susceptibility estimator is 
+%\begin{equation} 
+ $   \chi = L^2 \langle \big( \bar{\phi} - \langle \bar{\phi} \rangle\big)^2\rangle$, where
+ $ \bar{\phi} = \frac{1}{L^2} \sum_{i j} \phi_{i j}$,
+%\end{equation}
+and the expectation $\langle \cdot \rangle$ is over the samples \citep{gerdes}.
+
+
+A measure of the efficiency of sampling performance is the number of action gradient calls needed to 
+have an independent sample. Often we wish to achieve some accuracy of expected second moments \citep{MCHMC}. We define the squared bias $b_2^2$ as the relative error of the expected second moments in the Fourier basis,
+%\begin{equation} 
+ $   b_2^2 = \frac{1}{L^2} \sum_{k, l = 1}^L \big( 1-\frac{\langle \vert \widetilde{\phi}_{k l} \vert^2 \rangle_{\text{sampler}}}{\langle \vert \widetilde{\phi}_{k l} \vert^2 \rangle_{\text{truth}}}\big)^2$,
+%\end{equation}
+where $\widetilde{\phi}$ is the scalar field in the Fourier basis,
+%\begin{equation} 
+ $   \widetilde{\phi}_{k l}= \frac{1}{\sqrt{L^2}}\sum_{n m = 1}^L \phi_{n m} e^{-2 \pi i (k n + l m) / L}$.
+%\end{equation} 
+In analogy with Gaussian statistics, we define the effective sample size to be $2/b_2^2$. Here, we report the effective sample size per action gradient evaluation at the instant when $b_2 = 0.1$, which corresponds to 200 effective samples. The number we report is ESS per action gradient evaluation, such that its inverse gives the number of gradients needed to achieve one independent sample. 
+
+
+In Figure \ref{fig} we compare MCLMC to standard HMC \citep{HMCDuane} and to a self-tuned HMC variant NUTS \citep{NUTS}, both implemented in NumPyro \citep{NummPyro}.
+For HMC, we find that the optimal number of 
+gradient calls between momentum 
+resamplings to be 20, 30, 40 and 50 for lattice sizes $L = \,$ 8, 16, 32 and 64.
+The step size is determined with the dual averaging algorithm, targeting acceptance rate of 0.8 (NumPyro default), which adds considerably to the overall cost (Figure \ref{fig}).
+
+For all samplers, we use an annealing scheme, starting at high $\lambda$ and using the final state of the sampler as an initial condition at the next lowest $\lambda$ level. The initial condition at the highest $\lambda$ level is a random draw from the standard normal distribution on each lattice site.
+There is
+a near perfect agreement between a very long NUTS run (denoted as truth) and 
+MCLMC in terms of susceptibility.
+Above the phase transition ($\bar{\lambda} \gtrsim 1$), ESS for MCLMC and HMC
+is relatively constant with 
+$\bar{\lambda}$. ESS for NUTS and HMC 
+scales with $L$ as $d^{-1/4}=L^{-1/2}$, as 
+expected from adjusted HMC \citep{NealHandbook}. At the 
+phase transition, NUTS and HMC 
+suffer from the critical slowing 
+down, resulting in lower ESS. 
+In contrast, ESS for
+MCLMC is almost independent of $\bar{\lambda}$ and $L$. 
+Overall, MCLMC outperforms HMC and NUTS by 10-100 at $L=64$ if HMC and NUTS tuning is not included, and by at least 40 if tuning is included (MCLMC auto-tuning is cheap and included in the cost, and we use the recommended 500 warm up samples for tuning of NUTS and HMC). 
+We thus expect that for $d=10^8$, typical of state-of-the-art lattice quantum chromodynamics calculations, the advantage of MCLMC over HMC and NUTS will be 2–3 orders of magnitude due to $d^{1/4}$ scaling.
+MCLMC also significantly outperforms recently proposed Normalizing Flow (NF) based samplers \citep{rezende,gerdes}. NFs scale poorly with dimensionality, and the training time increases by about one order of magnitude for each doubling of $L$, e.g. of order 10 hours for $L=32$ to reach 90\% acceptance, and 
+60 hours to reach 60\% acceptance
+at $L=64$ \citep{gerdes}. In contrast, 
+the wall-clock time of MCLMC at $L=64$ on a GPU is a fraction of a second, while even at $L=8096$ (completely out of reach of current NF based samplers) it is only 15 seconds. 
+
+\subsection{Hierarchical Bayesian inference}
+
+We here test MCLMC on two Bayesian inference problems, taken from the Inference gym \citep{inferencegym}.
+%\begin{itemize}
+Brownian Motion %(inference gym name: \changefont{BrownianMotionUnknownScalesMissingMiddleObservations}) 
+is a 32 dimensional problem, where Brownian motion with unknown innovation noise is fitted to the noisy and partially missing data. 
+Item Response theory 
+%(inference gym name: \changefont{SyntheticItemResponseTheory}) 
+is a 501 dimensional hierarchical problem where students' ability is inferred, given their test results.
+%\end{itemize}
+We follow \cite{meads} and define the error of the expectation value of $f(\x)$ as
+$b^2_{f}= (\langle f \rangle_{\mathrm{sampler}} - \langle f \rangle)^2 / \mathrm{Var}[f]$,
+where ground truth expectation values $\langle f \rangle$ and $\mathrm{Var}[f] = \langle (f - \langle f \rangle)^2\rangle$ are computed by very long NUTS runs. 
+We will measure samplers' efficiency as the number of gradient evaluations needed to achieve low average second moment error $b^2 \equiv \sum_{i = 1}^{d} b^2_{x_i^2} / d < 0.01$, where averaging was performed over parameters of the model and we also average over 128 independent chains. The results are shown in Table \ref{table}.
+
+
+\begin{table}[hbtp]
+\floatconts 
+  {tab:example-booktabs}
+  {\caption{Number of gradient evaluations to low bias, lower value is better. MCLMC outperforms NUTS by more than a factor of three in both examples.}}
+  {\begin{tabular}{lll} 
+  \toprule
+  \bfseries problem & \bfseries MCLMC & \bfseries NUTS \\
+  \midrule
+  Brownian Motion & {\bf 2032} & 6369\\
+  Item response theory & {\bf 3312} & 11140\\
+  \bottomrule
+  \end{tabular}} \label{table}
+\end{table}
+
+
+
+
+\section{Conclusions}
+We introduced an energy conserving 
+stochastic Langevin process in the continuous time limit that 
+has no damping, derived the 
+corresponding Fokker-Planck equation. Its equilibrium solution is microcanonical in the total energy, yet its space distribution equals the desired target 
+distribution given by the action, showing that 
+the framework of \cite{Ma15} is not 
+a complete recipe of all SDEs whose equilibrium solution is the target density. We have also proven ergodicity 
+demonstrating that the stationary solution 
+is unique, and geometric ergodicity,  
+demonstrating that the convergence to the stationary distribution is exponentially 
+fast. 
+
+MCLMC is also of 
+practical significance: we show
+it vastly outperforms the state-of-the-art HMC on 
+a lattice $\phi^4$ model. In lattice quantum chromodynamics \citep{LQCDGattringer, LQCDDegrand} the
+computational demands are 
+particularly intensive, and numerical results presented here 
+suggest that MCLMC could offer 
+significant improvements over 
+HMC in the setting of high dimensional
+models. 
+We have also demonstrated that MCLMC offers significant (factor of three) improvements over the state-of-the-art algorithm NUTS (a variant of HMC) on hierarchical Bayesian inference problems,
+suggesting MCLMC outperforms HMC/NUTS 
+over a wide range of problems. 
+
+
+
+
+%\appendix
+
+\acks{
+We thank Julian Newman for proving lemmas \ref{density} and \ref{Newman lemma} and Qijia Jiang for useful discussions.
+This material is based upon work supported in part by the Heising-Simons Foundation grant 2021-3282 and by the U.S. Department of Energy, Office of Science, Office of Advanced Scientific Computing Research under Contract No. DE-AC02-05CH11231 at Lawrence Berkeley National Laboratory to enable research for Data-intensive Machine Learning and Analysis.
+}
+
+\bibliography{citations,citationsErgodicity,citationsLQCD}
+
+\appendix
+
+
+\section{}
+
+We here include a supplementary lemma, needed in the proof of lemma \ref{density}:
+
+\begin{lemma} \label{Newman lemma}
+    Let $M$ be a $C^1$ manifold. Let $(I, \mathcal{I}, \mu)$ and $(J, \mathcal{J}, \nu)$ be probability spaces, and over these probability spaces respectively, let $(\Phi_\alpha)_{\alpha\in I}$ and $(\Psi_\beta)_{\beta\in J}$ be random $C^1$ self-embeddings of $M$. Fix $x_1, x_2 \in M$, let $p$ be the law over $\mu$ of $\alpha \mapsto \Phi_\alpha(x_1)$, and let $\tilde{p}$ be the law over $\mu \otimes \nu$ of $(\alpha, \beta) \mapsto \Psi_\beta(\Phi_\alpha(x_1))$. Suppose there exists $m > 0$ and an open subset $U$ of a chart on $M$ such that
+\begin{itemize}
+    \item for every $A\in\mathcal{B}(U)$, $p(A) \geq m \operatorname{Leb}(A)$;
+    \item $\nu(\beta\in J \vert x_2 \in \Psi_\beta(U)) > 0$.
+\end{itemize}
+Then there exists $\tilde{m} > 0$ and a neighborhood $\tilde{U}$ of $x_2$ contained in a chart on $M$ such that for every $A\in\mathcal{B}(\tilde{U})$, $\tilde{p}(A) \geq \tilde{m} \operatorname{Leb}(A)$.
+\end{lemma}
+\begin{proof}
+One can find a $\nu$-positive measure set $J' \subset J$, a neighborhood $\tilde{U}$ of $x_2$ contained in a chart on $M$, and a value $r > 0$, such that for all $\beta\in J'$ and $x\in\tilde{U}$, we have $\Psi^{-1}_\beta(x)\in U$ and $|\operatorname{det}(D(\Psi^{-1}_\beta)(x))|\geq r$. Now take any $A\in\mathcal{B}(\tilde{U})$ and let
+\begin{equation*}
+    E=\{(\alpha, \beta)\in I\times J' \vert \Psi_\beta(\Phi_\alpha(x_1))\in A\}    
+\end{equation*}
+then
+\begin{align*}
+\tilde{p}(A) &\geq (\mu\otimes\nu)(E) = \int_{J'}\mu(\alpha\in I \vert \Psi_\beta(\Phi_\alpha(x_1))\in A)\,\nu(d\beta) 
+= \int_{J'}p(\Psi^{-1}_\beta(A))\,\nu(d\beta)  \\
+&\geq m\int_{J'}\operatorname{Leb}(\Psi^{-1}_\beta(A))\,\nu(d\beta) 
+\geq m\nu(J')r = \tilde{m}\operatorname{Leb}(A).
+\end{align*}
+Therefore, $\tilde{p}(A) \geq \tilde{m} \operatorname{Leb}(A). \quad \blacksquare$
+\end{proof}
+
+\end{document}

@@ -1,0 +1,259 @@
+\begin{thebibliography}{39}
+\providecommand{\natexlab}[1]{#1}
+\providecommand{\url}[1]{\texttt{#1}}
+\expandafter\ifx\csname urlstyle\endcsname\relax
+  \providecommand{\doi}[1]{doi: #1}\else
+  \providecommand{\doi}{doi: \begingroup \urlstyle{rm}\Url}\fi
+
+\bibitem[Betancourt(2017)]{betancourt2017conceptual}
+Michael Betancourt.
+\newblock A conceptual introduction to {Hamiltonian Monte Carlo}.
+\newblock \emph{arXiv preprint arXiv:1701.02434}, 2017.
+
+\bibitem[Betancourt and Girolami(2019)]{Betancourt+Girolami:2019}
+Michael Betancourt and Mark Girolami.
+\newblock {Hamiltonian} {Monte} {Carlo} for hierarchical models.
+\newblock In \emph{Current Trends in Bayesian Methodology with Applications},
+  pages 79--101. Chapman and Hall/CRC, 2019.
+
+\bibitem[Blom(1958)]{Blom:1958}
+Gunnar Blom.
+\newblock \emph{Statistical Estimates and Transformed Beta-Variables}.
+\newblock Wiley; New York, 1958.
+
+\bibitem[Brooks and Gelman(1998)]{Brooks+Gelman:1998}
+Stephen~P. Brooks and Andrew Gelman.
+\newblock General methods for monitoring convergence of iterative simulations.
+\newblock \emph{Journal of Computational and Graphical Statistics}, 7\penalty0
+  (4):\penalty0 434--455, 1998.
+
+\bibitem[Carpenter et~al.(2017)Carpenter, Gelman, Hoffman, Lee, Goodrich,
+  Betancourt, Brubaker, Guo, Li, and Riddell]{Stan:JSS:2017}
+Bob Carpenter, Andrew Gelman, Matthew Hoffman, Daniel Lee, Ben Goodrich,
+  Michael Betancourt, Marcus Brubaker, Jiqiang Guo, Peter Li, and Allen
+  Riddell.
+\newblock Stan: A probabilistic programming language.
+\newblock \emph{Journal of Statistical Software, Articles}, 76\penalty0
+  (1):\penalty0 1--32, 2017.
+\newblock \doi{10.18637/jss.v076.i01}.
+
+\bibitem[Chernoff and Savage(1958)]{Chernoff+Savage:1958}
+Herman Chernoff and I.~Richard Savage.
+\newblock Asymptotic normality and efficiency of certain nonparametric test
+  statistics.
+\newblock \emph{Annals of Mathematical Statistics}, 29\penalty0 (4):\penalty0
+  972--994, 1958.
+
+\bibitem[Cowles and Carlin(1996)]{Cowles+Carlin:1996}
+Mary~Kathryn Cowles and Bradley~P. Carlin.
+\newblock {Markov} chain {Monte} {Carlo} convergence diagnostics: A comparative
+  review.
+\newblock \emph{Journal of the American Statistical Association}, 91\penalty0
+  (434):\penalty0 883--904, 1996.
+
+\bibitem[de~Valpine et~al.(2017)de~Valpine, Turek, Paciorek, Anderson-Bergman,
+  Lang, and Bodik]{nimble}
+Perry de~Valpine, Daniel Turek, Christopher~J. Paciorek, Clifford
+  Anderson-Bergman, Duncan~Temple Lang, and Rastislav Bodik.
+\newblock Programming with models: Writing statistical algorithms for general
+  model structures with {NIMBLE}.
+\newblock \emph{Journal of Computational and Graphical Statistics}, 26\penalty0
+  (2):\penalty0 403--413, 2017.
+
+\bibitem[Doss et~al.(2014)Doss, Flegal, Jones, and
+  Neath]{Doss+etal:2014:MCMC-quantiles}
+Charles~R. Doss, James~M. Flegal, Galin~L. Jones, and Ronald~C. Neath.
+\newblock {Markov} chain {Monte} {Carlo} estimation of quantiles.
+\newblock \emph{Electronic Journal of Statistics}, 8\penalty0 (2):\penalty0
+  2448--2478, 2014.
+
+\bibitem[Fisher and Yates(1938)]{Fisher+Yates:1938}
+Ronald~A. Fisher and Frank Yates.
+\newblock \emph{Statistical Tables for Biological, Agricultural, and Medical
+  Research}.
+\newblock Oliver \& Boyd; Edinburgh, 1938.
+
+\bibitem[Flegal and Jones(2010)]{Flegal+Jones:2010}
+James~M. Flegal and Galin~L. Jones.
+\newblock Batch means and spectral variance estimators in {Markov} chain
+  {Monte} {Carlo}.
+\newblock \emph{Annals of Statistics}, 38\penalty0 (2):\penalty0 1034--1070,
+  2010.
+
+\bibitem[Friedman(1937)]{Friedman:1937}
+Milton Friedman.
+\newblock The use of ranks to avoid the assumption of normality implicit in the
+  analysis of variance.
+\newblock \emph{Journal of the American Statistical Association}, 32\penalty0
+  (200):\penalty0 675--701, 1937.
+
+\bibitem[Gelman and Rubin(1992)]{Gelman+Rubin:1992}
+Andrew Gelman and Donald~B. Rubin.
+\newblock Inference from iterative simulation using multiple sequences (with
+  discussion).
+\newblock \emph{Statistical Science}, 7\penalty0 (4):\penalty0 457--511, 1992.
+
+\bibitem[Gelman et~al.(2003)Gelman, Carlin, Stern, and Rubin]{BDA2}
+Andrew Gelman, John~B. Carlin, Hal~S. Stern, and Donald~R. Rubin.
+\newblock \emph{Bayesian Data Analysis, second edition}.
+\newblock Chapman \& Hall, 2003.
+
+\bibitem[Gelman et~al.(2008)Gelman, Huang, van Dyk, and
+  Boscardin]{Gelman+Huang+vanDyk+Boscardin:2008}
+Andrew Gelman, Zaiying Huang, David van Dyk, and W.~John Boscardin.
+\newblock Using redundant parameters to fit hierarchical models.
+\newblock \emph{Journal of Computational and Graphical Statistics},
+  17:\penalty0 95--122, 2008.
+
+\bibitem[Gelman et~al.(2013)Gelman, Carlin, Stern, Dunson, Vehtari, and
+  Rubin]{BDA3}
+Andrew Gelman, John~B. Carlin, Hal~S. Stern, David~B. Dunson, Aki Vehtari, and
+  Donald~B. Rubin.
+\newblock \emph{Bayesian Data Analysis, third edition}.
+\newblock CRC Press, 2013.
+
+\bibitem[Geyer(1992)]{Geyer:1992}
+Charles~J. Geyer.
+\newblock Practical {Markov} chain {Monte} {Carlo}.
+\newblock \emph{Statistical Science}, 7:\penalty0 473--483, 1992.
+
+\bibitem[Geyer(2011)]{Geyer:2011}
+Charles~J. Geyer.
+\newblock Introduction to {Markov} chain {Monte} {Carlo}.
+\newblock In S.~Brooks, A.~Gelman, G.~L. Jones, and X.~L. Meng, editors,
+  \emph{Handbook of Markov Chain Monte Carlo}. CRC Press, 2011.
+
+\bibitem[Hastings(1970)]{Hastings:1970}
+W.~K. Hastings.
+\newblock {Monte} {Carlo} sampling methods using {Markov} chains and their
+  applications.
+\newblock \emph{Biometrika}, 57\penalty0 (1):\penalty0 97--109, 1970.
+
+\bibitem[Hoffman and Gelman(2014)]{Hoffman+Gelman:2014}
+Matthew~D. Hoffman and Andrew Gelman.
+\newblock The {No-U-Turn} {Sampler}: Adaptively setting path lengths in
+  {Hamiltonian} {Monte} {Carlo}.
+\newblock \emph{Journal of Machine Learning Research}, 15:\penalty0 1593--1623,
+  2014.
+\newblock URL \url{http://jmlr.org/papers/v15/hoffman14a.html}.
+
+\bibitem[Jacob et~al.(2017)Jacob, O'Leary, and Atchad{\'e}]{jacob2017unbiased}
+Pierre~E. Jacob, John O'Leary, and Yves~F. Atchad{\'e}.
+\newblock Unbiased {Markov} chain {Monte} {Carlo} with couplings.
+\newblock \emph{arXiv preprint arXiv:1708.03625}, 2017.
+
+\bibitem[Julier and Uhlmann(1997)]{Julier+Uhlman:1997:unscented}
+Simon~J Julier and Jeffrey~K Uhlmann.
+\newblock New extension of the kalman filter to nonlinear systems.
+\newblock In \emph{Proc. SPIE 3068, Signal processing, sensor fusion, and
+  target recognition VI}, pages 182--193. SPIE, 1997.
+
+\bibitem[Kong et~al.(1994)Kong, Liu, and Wong]{Kong+Liu+Wong:1994}
+Augustine Kong, Jun~S. Liu, and Wing~Hung Wong.
+\newblock Sequential imputations and {Bayesian} missing data problems.
+\newblock \emph{Journal of the American Statistical Association}, 89\penalty0
+  (425):\penalty0 278--288, 1994.
+
+\bibitem[Laurmann and Gates(1977)]{Laurmann+Gates:1977}
+John~A. Laurmann and W.~Lawrence Gates.
+\newblock Statistical considerations in the evaluation of climatic experiments
+  with atmospheric general circulation models.
+\newblock \emph{Journal of the Atmospheric Sciences}, 34\penalty0 (8):\penalty0
+  1187--1199, 1977.
+
+\bibitem[Liu et~al.(2016)Liu, Nordman, and
+  Meeker]{Liu+etal:2016:MCMC-quantiles}
+Jia Liu, Daniel~J. Nordman, and William~Q. Meeker.
+\newblock The number of {MCMC} draws needed to compute {Bayesian} credible
+  bounds.
+\newblock \emph{The American Statistician}, 70\penalty0 (3):\penalty0 275--284,
+  2016.
+
+\bibitem[Lunn et~al.(2009)Lunn, Spiegelhalter, Thomas, and
+  Best]{BUGSproject:2009}
+David Lunn, David Spiegelhalter, Andrew Thomas, and Nicky Best.
+\newblock The {BUGS} project: Evolution, critique and future directions.
+\newblock \emph{Statistics in Medicine}, 28\penalty0 (25):\penalty0 3049--3067,
+  2009.
+
+\bibitem[Lunn et~al.(2000)Lunn, Thomas, Best, and Spiegelhalter]{WinBUGS:2000}
+David~J Lunn, Andrew Thomas, Nicky Best, and David Spiegelhalter.
+\newblock {WinBUGS}---a {Bayesian} modelling framework: Concepts, structure,
+  and extensibility.
+\newblock \emph{Statistics and Computing}, 10\penalty0 (4):\penalty0 325--337,
+  2000.
+
+\bibitem[Mengersen et~al.(1999)Mengersen, Robert, and
+  Guihenneuc-Jouyaux]{Mengersen+etal:1999}
+Kerrie~L. Mengersen, Christian~P. Robert, and Chantal Guihenneuc-Jouyaux.
+\newblock {MCMC} convergence diagnostics: A review.
+\newblock In Jose~M. Bernardo, James~O. Berger, and A.~P. Dawid, editors,
+  \emph{Bayesian Statistics 6}, pages 415--440. Oxford University Press, 1999.
+
+\bibitem[Neal(2003)]{Neal:2003}
+Radford~M. Neal.
+\newblock Slice sampling.
+\newblock \emph{Annals of Statistics}, 31\penalty0 (3):\penalty0 705--767,
+  2003.
+
+\bibitem[Plummer(2003)]{plummer2003jags}
+Martyn Plummer.
+\newblock {JAGS}: A program for analysis of {Bayesian} graphical models using
+  {Gibbs} sampling.
+\newblock In \emph{Proceedings of the 3rd International Workshop on Distributed
+  Statistical Computing}, volume 124, 2003.
+
+\bibitem[Plummer et~al.(2006)Plummer, Best, Cowles, and Vines]{coda2006}
+Martyn Plummer, Nicky Best, Kate Cowles, and Karen Vines.
+\newblock {CODA}: Convergence diagnosis and output analysis for {MCMC}.
+\newblock \emph{R News}, 6\penalty0 (1):\penalty0 7--11, 2006.
+\newblock URL \url{https://journal.r-project.org/archive/}.
+
+\bibitem[Raftery and Lewis(1992)]{Raftery+Lewis:1992a}
+Adrian~E. Raftery and Steven~M. Lewis.
+\newblock How many iterations in the {Gibbs} sampler?
+\newblock In J.~M. Bernardo, J.~O. Berger, A.~P. Dawid, and A.~F.~M. Smith,
+  editors, \emph{Bayesian Statistics 4}, pages 763--773. Oxford University
+  Press, 1992.
+
+\bibitem[Robert and Casella(2004)]{Robert+Casella:2004}
+Christian~P. Robert and George Casella.
+\newblock \emph{Monte Carlo Statistical Methods}.
+\newblock Springer, second edition, 2004.
+
+\bibitem[Salvatier et~al.(2016)Salvatier, Wiecki, and Fonnesbeck]{pymc3}
+John Salvatier, Thomas~V. Wiecki, and Christopher Fonnesbeck.
+\newblock Probabilistic programming in {Python} using {PyMC3}.
+\newblock \emph{PeerJ Computer Science}, 2:\penalty0 e55, 2016.
+
+\bibitem[Sorensen et~al.(1995)Sorensen, Andersen, Gianola, and
+  Korsgaard]{Sorensen+etal:1995}
+D.~A. Sorensen, S.~Andersen, D.~Gianola, and I.~Korsgaard.
+\newblock Bayesian inference in threshold models using {Gibbs} sampling.
+\newblock \emph{Genetics Selection Evolution}, 27\penalty0 (3):\penalty0 229,
+  1995.
+
+\bibitem[{Stan Development Team}(2018{\natexlab{a}})]{RStanARM.2.17}
+{Stan Development Team}.
+\newblock {RStanArm}: {Bayesian} applied regression modeling via {Stan}. {R}
+  package version 2.17.4, 2018{\natexlab{a}}.
+\newblock URL \url{http://mc-stan.org}.
+
+\bibitem[{Stan Development Team}(2018{\natexlab{b}})]{StanManual.2.18.0}
+{Stan Development Team}.
+\newblock {Stan Modeling Language Users Guide and Reference Manual}. version
+  2.18.0, 2018{\natexlab{b}}.
+\newblock URL \url{http://mc-stan.org}.
+
+\bibitem[Vats and Knudson(2018)]{vats2018revisiting}
+Dootika Vats and Christina Knudson.
+\newblock Revisiting the {Gelman}-{Rubin} diagnostic.
+\newblock \emph{arXiv preprint arXiv:1812.09384}, 2018.
+
+\bibitem[Wellek(2010)]{Wellek:2010:testing}
+Stefan Wellek.
+\newblock \emph{Testing Statistical Hypotheses of Equivalence and
+  Noninferiority}.
+\newblock Chapman and Hall/CRC, 2010.
+
+\end{thebibliography}

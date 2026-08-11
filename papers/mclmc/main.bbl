@@ -1,0 +1,223 @@
+\begin{thebibliography}{34}
+\providecommand{\natexlab}[1]{#1}
+\providecommand{\url}[1]{\texttt{#1}}
+\expandafter\ifx\csname urlstyle\endcsname\relax
+  \providecommand{\doi}[1]{doi: #1}\else
+  \providecommand{\doi}{doi: \begingroup \urlstyle{rm}\Url}\fi
+
+\bibitem[Albergo et~al.(2019)Albergo, Kanwar, and Shanahan]{rezende}
+Michael~S Albergo, Gurtej Kanwar, and Phiala~E Shanahan.
+\newblock Flow-based generative models for markov chain monte carlo in lattice
+  field theory.
+\newblock \emph{Physical Review D}, 100\penalty0 (3):\penalty0 034515, 2019.
+
+\bibitem[Albergo et~al.(2021)Albergo, Boyda, Hackett, Kanwar, Cranmer,
+  Racaniere, Rezende, and Shanahan]{phi4notebook}
+Michael~S Albergo, Denis Boyda, Daniel~C Hackett, Gurtej Kanwar, Kyle Cranmer,
+  S{\'e}bastien Racaniere, Danilo~Jimenez Rezende, and Phiala~E Shanahan.
+\newblock Introduction to normalizing flows for lattice field theory.
+\newblock \emph{arXiv preprint arXiv:2101.08176}, 2021.
+
+\bibitem[Baras et~al.(1990)Baras, Mirelli, et~al.]{MallivianCalculus}
+John~S Baras, Vincent Mirelli, et~al.
+\newblock Recent advances in stochastic calculus.
+\newblock \emph{(No Title)}, 1990.
+
+\bibitem[Baxendale(1991)]{statequilibrium}
+Peter~H Baxendale.
+\newblock Statistical equilibrium and two-point motion for a stochastic flow of
+  diffeomorphisms.
+\newblock \emph{Spatial Stochastic Processes: A Festschrift in Honor of Ted
+  Harris on his Seventieth Birthday}, pages 189--218, 1991.
+
+\bibitem[Degrand and DeTar(2006)]{LQCDDegrand}
+Thomas~A Degrand and Carleton DeTar.
+\newblock \emph{Lattice methods for quantum chromodynamics}.
+\newblock World Scientific, 2006.
+
+\bibitem[Duane et~al.(1987)Duane, Kennedy, Pendleton, and Roweth]{HMCDuane}
+Simon Duane, Anthony~D Kennedy, Brian~J Pendleton, and Duncan Roweth.
+\newblock Hybrid monte carlo.
+\newblock \emph{Physics letters B}, 195\penalty0 (2):\penalty0 216--222, 1987.
+
+\bibitem[Elworthy(1998{\natexlab{a}})]{elworthyShort}
+KD~Elworthy.
+\newblock Stochastic differential equations on manifolds.
+\newblock \emph{Probability towards 2000}, pages 165--178, 1998{\natexlab{a}}.
+
+\bibitem[Elworthy(1998{\natexlab{b}})]{elworthy}
+Kenneth~David Elworthy.
+\newblock \emph{Stochastic differential equations on manifolds}.
+\newblock Springer, 1998{\natexlab{b}}.
+
+\bibitem[Evans et~al.(1983)Evans, Hoover, Failor, Moran, and
+  Ladd]{isokineticOld}
+Denis~J Evans, William~G Hoover, Bruce~H Failor, Bill Moran, and Anthony~JC
+  Ladd.
+\newblock Nonequilibrium molecular dynamics via gauss's principle of least
+  constraint.
+\newblock \emph{Physical Review A}, 28\penalty0 (2):\penalty0 1016, 1983.
+
+\bibitem[Gattringer and Lang(2009)]{LQCDGattringer}
+Christof Gattringer and Christian Lang.
+\newblock \emph{Quantum chromodynamics on the lattice: an introductory
+  presentation}, volume 788.
+\newblock Springer Science \& Business Media, 2009.
+
+\bibitem[Gerdes et~al.(2022)Gerdes, de~Haan, Rainone, Bondesan, and
+  Cheng]{gerdes}
+Mathis Gerdes, Pim de~Haan, Corrado Rainone, Roberto Bondesan, and Miranda~CN
+  Cheng.
+\newblock Learning lattice quantum field theories with equivariant continuous
+  flows.
+\newblock \emph{arXiv preprint arXiv:2207.00283}, 2022.
+
+\bibitem[Goldenfeld(2018)]{FiniteLatticeSize}
+Nigel Goldenfeld.
+\newblock \emph{Lectures on phase transitions and the renormalization group}.
+\newblock CRC Press, 2018.
+
+\bibitem[Hoffman and Sountsov(2022)]{meads}
+Matthew~D Hoffman and Pavel Sountsov.
+\newblock Tuning-free generalized hamiltonian monte carlo.
+\newblock In \emph{International Conference on Artificial Intelligence and
+  Statistics}, pages 7799--7813. PMLR, 2022.
+
+\bibitem[Hoffman et~al.(2014)Hoffman, Gelman, et~al.]{NUTS}
+Matthew~D Hoffman, Andrew Gelman, et~al.
+\newblock The no-u-turn sampler: adaptively setting path lengths in hamiltonian
+  monte carlo.
+\newblock \emph{J. Mach. Learn. Res.}, 15\penalty0 (1):\penalty0 1593--1623,
+  2014.
+
+\bibitem[Kliemann(1987)]{DegenerateDiffusion}
+Wolfgang Kliemann.
+\newblock Recurrence and invariant measures for degenerate diffusions.
+\newblock \emph{The annals of probability}, pages 690--707, 1987.
+
+\bibitem[Leimkuhler and Matthews(2015)]{MolecularDynamics}
+Ben Leimkuhler and Charles Matthews.
+\newblock Molecular dynamics.
+\newblock \emph{Interdisciplinary applied mathematics}, 36, 2015.
+
+\bibitem[Leimkuhler et~al.(2013)Leimkuhler, Margul, and
+  Tuckerman]{isokineticLangevin}
+Ben Leimkuhler, Daniel~T Margul, and Mark~E Tuckerman.
+\newblock Stochastic, resonance-free multiple time-step algorithm for molecular
+  dynamics with very large time steps.
+\newblock \emph{Molecular Physics}, 111\penalty0 (22-23):\penalty0 3579--3594,
+  2013.
+
+\bibitem[Leimkuhler and Reich(2004)]{SimulatingHamiltonianDynamics}
+Benedict Leimkuhler and Sebastian Reich.
+\newblock \emph{Simulating hamiltonian dynamics}.
+\newblock Number~14. Cambridge university press, 2004.
+
+\bibitem[Li and Erdogdu(2020)]{BrownianSphere}
+Mufan~Bill Li and Murat~A Erdogdu.
+\newblock Riemannian langevin algorithm for solving semidefinite programs.
+\newblock \emph{arXiv preprint arXiv:2010.11176}, 2020.
+
+\bibitem[Ma et~al.(2015)Ma, Chen, and Fox]{Ma15}
+Yi{-}An Ma, Tianqi Chen, and Emily~B. Fox.
+\newblock A complete recipe for stochastic gradient {MCMC}.
+\newblock In Corinna Cortes, Neil~D. Lawrence, Daniel~D. Lee, Masashi Sugiyama,
+  and Roman Garnett, editors, \emph{Advances in Neural Information Processing
+  Systems 28: Annual Conference on Neural Information Processing Systems 2015,
+  December 7-12, 2015, Montreal, Quebec, Canada}, pages 2917--2925, 2015.
+
+\bibitem[Metropolis et~al.(2004)Metropolis, Rosenbluth, Rosenbluth, Teller, and
+  Teller]{Metropolis}
+Nicholas Metropolis, Arianna~W. Rosenbluth, Marshall~N. Rosenbluth, Augusta~H.
+  Teller, and Edward Teller.
+\newblock {Equation of State Calculations by Fast Computing Machines}.
+\newblock \emph{The Journal of Chemical Physics}, 21\penalty0 (6):\penalty0
+  1087--1092, 12 2004.
+\newblock ISSN 0021-9606.
+\newblock \doi{10.1063/1.1699114}.
+\newblock URL \url{https://doi.org/10.1063/1.1699114}.
+
+\bibitem[Minary et~al.(2003{\natexlab{a}})Minary, Martyna, and
+  Tuckerman]{isokinetic1}
+Peter Minary, Glenn~J Martyna, and Mark~E Tuckerman.
+\newblock Algorithms and novel applications based on the isokinetic ensemble.
+  i. biophysical and path integral molecular dynamics.
+\newblock \emph{The Journal of chemical physics}, 118\penalty0 (6):\penalty0
+  2510--2526, 2003{\natexlab{a}}.
+
+\bibitem[Minary et~al.(2003{\natexlab{b}})Minary, Martyna, and
+  Tuckerman]{isokinetic2}
+Peter Minary, Glenn~J Martyna, and Mark~E Tuckerman.
+\newblock Algorithms and novel applications based on the isokinetic ensemble.
+  ii. ab initio molecular dynamics.
+\newblock \emph{The Journal of chemical physics}, 118\penalty0 (6):\penalty0
+  2527--2538, 2003{\natexlab{b}}.
+
+\bibitem[Neal et~al.(2011)]{NealHandbook}
+Radford~M Neal et~al.
+\newblock Mcmc using hamiltonian dynamics.
+\newblock \emph{Handbook of markov chain monte carlo}, 2\penalty0
+  (11):\penalty0 2, 2011.
+
+\bibitem[Noorizadeh(2010)]{NoseHooverProof}
+Emad Noorizadeh.
+\newblock Highly degenerate diffusions for sampling molecular systems.
+\newblock 2010.
+
+\bibitem[{\O}ksendal and {\O}ksendal(2003)]{SDEbook}
+Bernt {\O}ksendal and Bernt {\O}ksendal.
+\newblock \emph{Stochastic differential equations}.
+\newblock Springer, 2003.
+
+\bibitem[Omelyan et~al.(2003)Omelyan, Mryglod, and Folk]{MinimalNorm}
+IP~Omelyan, IM~Mryglod, and R~Folk.
+\newblock Symplectic analytically integrable decomposition algorithms:
+  classification, derivation, and application to molecular dynamics, quantum
+  and celestial mechanics simulations.
+\newblock \emph{Computer Physics Communications}, 151\penalty0 (3):\penalty0
+  272--314, 2003.
+
+\bibitem[Phan et~al.(2019)Phan, Pradhan, and Jankowiak]{NummPyro}
+Du~Phan, Neeraj Pradhan, and Martin Jankowiak.
+\newblock Composable effects for flexible and accelerated probabilistic
+  programming in numpyro.
+\newblock \emph{arXiv preprint arXiv:1912.11554}, 2019.
+
+\bibitem[Robnik et~al.(2022)Robnik, De~Luca, Silverstein, and Seljak]{MCHMC}
+Jakob Robnik, G~Bruno De~Luca, Eva Silverstein, and Uro{\v{s}} Seljak.
+\newblock Microcanonical hamiltonian monte carlo.
+\newblock \emph{arXiv preprint arXiv:2212.08549}, 2022.
+
+\bibitem[Skeel(2009)]{whatMakesMDwork}
+Robert~D Skeel.
+\newblock What makes molecular dynamics work?
+\newblock \emph{SIAM Journal on Scientific Computing}, 31\penalty0
+  (2):\penalty0 1363--1378, 2009.
+
+\bibitem[Sountsov et~al.(2020)Sountsov, Radul, and contributors]{inferencegym}
+Pavel Sountsov, Alexey Radul, and contributors.
+\newblock Inference gym, 2020.
+\newblock URL \url{https://pypi.org/project/inference_gym}.
+
+\bibitem[Tuckerman et~al.(2001)Tuckerman, Liu, Ciccotti, and
+  Martyna]{isokinetic0}
+Mark~E Tuckerman, Yi~Liu, Giovanni Ciccotti, and Glenn~J Martyna.
+\newblock Non-hamiltonian molecular dynamics: Generalizing hamiltonian phase
+  space principles to non-hamiltonian systems.
+\newblock \emph{The Journal of Chemical Physics}, 115\penalty0 (4):\penalty0
+  1678--1702, 2001.
+
+\bibitem[Ver~Steeg and Galstyan(2021)]{ESH}
+Greg Ver~Steeg and Aram Galstyan.
+\newblock Hamiltonian dynamics with non-newtonian momentum for rapid sampling.
+\newblock \emph{Advances in Neural Information Processing Systems},
+  34:\penalty0 11012--11025, 2021.
+
+\bibitem[Vierhaus(2010)]{phi4masterthesis}
+Ingmar Vierhaus.
+\newblock Simulation of phi 4 theory in the strong coupling expansion beyond
+  the ising limit.
+\newblock Master's thesis, Humboldt-Universit{\"a}t zu Berlin,
+  Mathematisch-Naturwissenschaftliche Fakult{\"a}t I, 2010.
+
+\end{thebibliography}
