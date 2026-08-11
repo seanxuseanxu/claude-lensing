@@ -309,7 +309,7 @@ path it disabled now works. The one piece that survived was never a shim: the SV
 conditioning guard, now `claude/pipeline/svi_health.py`. The library still inverts that
 covariance in float32 without checking it.
 
-The lesson, recorded in `LENS_MODELING_GUIDE.md` §7: check for a newer upstream release
+The lesson, recorded in `claude/guide/07-tools-and-provenance.md` §7: check for a newer upstream release
 *before* writing a compatibility shim.
 
 **Sampler output layouts differ, and getting one wrong is silent.** `HMC` returns

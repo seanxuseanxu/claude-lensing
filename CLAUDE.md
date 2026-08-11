@@ -6,8 +6,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Two unrelated top-level directories, tracked in one git repo:
 
-- `papers/` — LaTeX sources for two papers: `gigalens_paper/` (the GIGA-Lens method paper, arXiv:2202.07663; entry point `ms_SL-model.tex`) and `strong_lens_foundry_I/` (entry point `main.tex`). Both use the AASTeX 6.31 class, which is vendored alongside.
-- `claude/` — the lens-modelling work. `claude/pipeline/` is a lens-independent MAP→SVI→HMC fitting pipeline; `claude/<LENS>/` holds one system's data, its `config.py`, its `runs/`, and its own README. `LENS_MODELING_GUIDE.md` and `WORKING_WITH_AGENTS.md` are lessons learned, using DESI238 as the worked case.
+- `papers/` — LaTeX sources for five papers. **`papers/INDEX.md` is the map**: what each one is, which question it answers, and a list of the places they bear on decisions made in this repo. Every paper has a `NOTES.md` beside it — a reading note with section and equation numbers cited, so a claim can be checked against the source rather than trusted. Read the note before the `.tex`. The two AASTeX papers are `gigalens_paper/` (the GIGA-Lens method paper, arXiv:2202.07663; entry point `ms_SL-model.tex`) and `strong_lens_foundry_I/` (entry point `main.tex`), which is the survey our three lenses come from; the other three are Narayan & Bartelmann's lensing lectures, the MCLMC paper, and Vehtari et al.'s improved R̂.
+- `claude/` — the lens-modelling work. `claude/pipeline/` is a lens-independent MAP→SVI→HMC fitting pipeline; `claude/<LENS>/` holds one system's data, its `config.py`, its `runs/`, and its own README. `claude/guide/` and `WORKING_WITH_AGENTS.md` are lessons learned, using DESI238 as the worked case — **`claude/guide/INDEX.md` is the map**, ten chapters numbered to match the `§N` citations scattered through the results files; read `09-the-short-version.md` if you read only one.
 
 There used to be a third, `gigalens/` — a vendored copy of the package, which was the code you modified. It is gone from the working copy (still reachable in git history). gigalens is now a pip-installed dependency, developed elsewhere.
 

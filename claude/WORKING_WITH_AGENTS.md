@@ -1,6 +1,6 @@
 # Working with agents: a short guide for humans
 
-Companion to `LENS_MODELING_GUIDE.md`, which is written for the agent. This one is written
+Companion to `claude/guide/` (start at its `INDEX.md`), which is written for the agent. This one is written
 for you. It is drawn from the DESI238 modeling work, where nearly every real error was
 caught by a human doing one of the things below.
 
@@ -66,6 +66,19 @@ unnecessary work. It was worth more than ten rounds of narrow questions, for thr
 Close with an invitation to push back — *let me know if you disagree with any of this.*
 Agents comply readily, including with instructions that are mistaken. Explicitly opening
 the door to disagreement is how you get told when you are wrong, and it costs one sentence.
+
+## 4b. Move a correction you have made twice out of prose
+
+A correction you give once is a correction. A correction you give twice is a missing check.
+`.claude/` now holds the subset of `claude/guide/` that could be made to fire on its
+own — four skills for the decision points (preflight, diagnose, elevated R̂, write-up), three
+read-only subagents, and two hooks. `.claude/README.md` is the map, and its last section lists
+what is deliberately left as prose, which is the part worth your review: anything reduced to a
+threshold stops being a conversation, and a gate set at the wrong place would have rejected a
+refereed measurement.
+
+The distinction that decides where something goes: a hook can hold a rule that is already
+known and stated. It cannot notice that a number is wrong.
 
 ## 5. Give the agent a way to be checkable
 
@@ -139,6 +152,8 @@ Say which these are up front. An agent given a clear boundary will stop at it an
 2. Ask how a number was determined. Measured, documented, and inferred look identical.
 3. State your experience even when unsure of it. It is scarcer than the agent's reading.
 4. Review in one pass, section by section. Say what is fine, not only what is wrong.
+4b. A correction given twice is a missing check. See `.claude/README.md` for what was moved
+   out of prose, and for what was left in it deliberately.
 5. Ask for verifiable output and loud diagnostics; set it once as a standing instruction.
 6. Write down the real environment. Check upstream before authorizing workarounds.
 7. Delegate breadth to subagents; treat their reports as claims, not measurements.

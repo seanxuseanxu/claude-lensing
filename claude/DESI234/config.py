@@ -77,7 +77,7 @@ CROP = (slice(20, 100), slice(20, 100))
 #
 # **No square crop can remove it without clipping the arc.** For a box of half-width h
 # centred on the deflector, the interloper is inside whenever h > 25.5 px, while the arc
-# runs out to h = 26.5 px. The two requirements do not overlap. Per LENS_MODELING_GUIDE.md
+# runs out to h = 26.5 px. The two requirements do not overlap. Per claude/guide/01-the-data.md
 # the options are then mask or model, and cropping is not among them.
 #
 # Rounds 1-2 mask it. Radius 12 px: its residual profile falls through 1 sigma between
