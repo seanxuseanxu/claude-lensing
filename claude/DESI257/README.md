@@ -328,9 +328,14 @@ values is coincidence, not a validation of guessing.
       images that `chi2_nu` is unremarkable, so there is no outcome in doubt for it to
       resolve. It would still give an upper bound on any foreground deflector's mass, which is
       worth having but is not a test. `RESULTS_v3.md` section 6.
-- [ ] PSF rebuild (`KNOWN_ISSUES.md` item 5) -- **now the leading defect.** The deflector core
-      is the worst-fitting region in the image (`chi2_nu` 2.16 against the field's 1.15) and
-      shows the characteristic checkerboard. Follow `claude/DESI238/PSF_REPLICATION.md`.
+- [x] PSF rebuild (`KNOWN_ISSUES.md` item 5) -- **withdrawn, not done.** The deflector core is
+      the worst-fitting region in the image (`chi2_nu` 2.16 against the field's 1.15) and shows
+      the characteristic checkerboard, which was read here as the leading defect. It is not:
+      a pixel-scale core residual is an ordinary artifact of Sersic deflector modelling, and
+      the field's convention is to mask the centre when *reporting* chi-squared and not when
+      modelling. DESI234 rebuilt its PSF and the checkerboard survived it. What is owed instead
+      is a centre-masked `chi2_nu` alongside the current one -- `KNOWN_ISSUES.md` item 5 and
+      its next-step 1.
 - [ ] MAP exactly at the mode -- round 3's MAP is 18.1 nats below its best HMC draw
       (round 2's was 681.8). The 20,000-step sweep point that would have tested whether a
       longer optimisation closes that gap **completed and was then lost** with the `/tmp`

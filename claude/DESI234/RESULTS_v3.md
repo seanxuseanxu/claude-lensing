@@ -1,5 +1,46 @@
 # DESI234, round 3: the interloper, on a converged MAP
 
+> ## CORRECTION, 2026-08-10 — this round's positive conclusions are withdrawn
+>
+> **`r3_fg`'s mass model is unphysical, and every claim below that rests on it falls with it.**
+> Its main deflector has axis ratio `q = 0.143` — a 7:1 needle — and `gamma = 2.951 ± 0.005`,
+> nearly singular, sitting 3.95 sigma out on a `TruncatedNormal(2.0, 0.25, 1, 3)` prior with a
+> posterior 50x narrower than that prior. Galaxy-scale deflectors are round and near-isothermal.
+> Every other run on this system is sane: `q = 0.736 / 0.900 / 0.943` and
+> `gamma = 2.677 / 2.199 / 2.130` for `r1_s1l1` / `r2_s2l2` / `r3_unmasked`. `r3_fg` is the
+> outlier, and adding the foreground component is what broke it.
+>
+> Specifically withdrawn:
+>
+> - **"The interloper is a foreground mass, and modelling it matters"** (§5.2, §5.4). The SIS
+>   at `theta_E = 0.370"`, 12.2 sd from zero, is what a needle-shaped deflector requires nearby
+>   to stay consistent with the arc. The statistic was computed correctly — the prior is a
+>   `HalfNormal` with mode at zero, so zero was available and was excluded — but a sound
+>   statistic on a rejected model measures nothing.
+> - **The 0.066" shift in the main `theta_E`** (§5.2). That is the gap between a sane mass model
+>   and a broken one, not the interloper's effect on the deflector.
+> - **"The model without it is rejected by Δchi² ≈ 3700"** (§5.2, §5.4). The comparison is not
+>   between two competitive models; it is between a physical model and an unphysical one that
+>   fits better. `chi2_nu = 1.082`, the best on this system, was bought with `q = 0.143`.
+> - **"Neither is a model problem"** and **"the fix is sampling, not modelling"** (§5.4, header).
+>   True for `r3_unmasked`, whose chains are frozen with a sane mass model. False for `r3_fg`.
+>
+> **What survives.** §1's residual anatomy, §2's MAP-convergence work and §3's preflight are
+> independent of `r3_fg`'s posterior and stand. So does `r3_unmasked`'s `theta_E = 1.5386`,
+> which reproduces round 2 to 0.0007" — support for round 2, not a replacement for it, since
+> its chains are frozen.
+>
+> **How it was missed, and how it is caught now.** The deflector's `e1`/`e2` priors are
+> unbounded `Normal(0, 0.15)`, which `boundary_pinning_check` excludes by construction, so no
+> check in the pipeline looked at them. The fitted values are `e1 = -0.689`, `|e| = 0.749` — a
+> 7:1 needle where galaxy-scale deflectors are round. `diagnose.prior_posterior_tension` was
+> added on 2026-08-10 and flags all three: `e1` at **4.59 sigma**, `src0/center_x` at **4.05**,
+> `gamma` at **3.95**, the last with a posterior 50x narrower than its prior. See
+> `claude/guide/05-diagnostics.md` §5 on why `chi2_nu` did not and could not catch this.
+>
+> The body below is left as written, per this project's habit of banner-then-keep rather than
+> rewriting a finished run's record. Read it as the round-3 report plus this correction.
+
 **Status: complete. Round 3 produces no `theta_E`, and it settles the interloper anyway.**
 
 Both fits ran and **neither converged** (§5.1). §5.4 says why, and the two runs failed for two
@@ -358,8 +399,11 @@ result is the second guard.
 differently. See `KNOWN_ISSUES.md` item 9: raising `supersample` 2 -> 4 costs memory as ss², and
 the MAP/SVI batch buffer is allocated *per device*, so the ceiling is one card (~61 GiB) no
 matter how many GPUs the fit has. The first launch died at
-`RESOURCE_EXHAUSTED ... 178.02GiB [jit_run_map]`; a second attempt at 1536 asked 67 GiB and
-failed too, which is what identified the per-device ceiling. At ss=4's measured 43.6 MiB/sample,
+`RESOURCE_EXHAUSTED ... 178.02GiB [jit_run_map]`; a second attempt at 1536 asked 67.07 GiB and
+failed too, which is what identified the per-device ceiling — 67 GiB is comfortably under
+2 x 80 GB, so the allocation is not being sharded. The per-sample cost is 10.9 MiB at ss=2 and
+**43.6 MiB at ss=4** (read off both failures, 178 GiB at 4096 and 67.07 GiB at 1536, which
+agree). At ss=4's measured 43.6 MiB/sample,
 1024 samples is **43.6 GiB — the same footprint round 2 ran at** (4096 x ss=2 = 44.6 GiB). The
 smaller batch is paid for with `--map-steps` 1500 -> 5000, which is what §2's 86.5-nat deficit
 called for anyway.

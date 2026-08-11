@@ -4,10 +4,12 @@ Lens-independent code. Nothing in this directory may name a specific system: eve
 that distinguishes one lens from another lives in `claude/<LENS>/config.py`.
 
 **`KNOWN_ISSUES.md`** in this directory tracks pipeline-level bugs, failure modes and
-cross-lens findings — a metadata provenance bug in `run_fit.py`, an unattributed MCLMC
-frozen-chain failure mode, and a PSF-mismatch checkerboard appearing independently in two
-lenses' residuals. Per-lens results stay in `claude/<LENS>/README.md` / `RESULTS_*.md`; read
-`KNOWN_ISSUES.md` for anything that follows the tooling or the dataset rather than one fit.
+cross-lens findings — nine numbered items, of which four are still open. Per-lens results and
+the measurements behind each item stay in `claude/<LENS>/README.md` / `RESULTS_*.md`; read
+`KNOWN_ISSUES.md` for the cross-cutting inference and for anything that follows the tooling or
+the dataset rather than one fit. **Its item numbers are permanent** — roughly thirty places in
+`claude/` cite them as "item N", so an item is condensed when it closes, never renumbered or
+deleted.
 
 It fits through the GIGA-Lens **scene API** -- `LensModel` / `ImageData` / `ProbModel` and
 the free functions `MAP` / `SVI` / `HMC`. gigalens is a pip-installed (editable) package,
@@ -70,14 +72,14 @@ attribute the difference.
 |---|---|
 | `lenses.py` | `LensConfig` / `SersicPrior` / `MassPrior`, and `load(name)`. The seam. |
 | `config.py` (per lens) | Every number specific to one system. Not in this directory. |
-| `data.py` | `load(cfg)` -> `(image, psf, sim_config)`. Endian cast, PSF normalisation, precision. `build_mask(cfg, shape)` -> keep-mask from `cfg.mask_circles`, or `None`. |
+| `data.py` | `load(cfg)` -> `(image, psf, sim_config)`. Endian cast, PSF normalisation, precision. `build_mask(cfg, shape)` -> keep-mask from `cfg.mask_circles`, or `None`. `build_prob_model(...)` -> the `ImageData`/`ProbModel` pair, built in one place so the fit, the pre-flight and the diagnosis cannot drift apart in what likelihood they mean. |
 | `priors.py` | `build_model(cfg, ...)` -> `LensModel`. Owns all supports. |
 | `run_fit.py` | MAP -> SVI -> sampling stage (`--sampler {hmc,mams,mclmc}`). The only writer. |
 | `verify.py` | Five pre-flight checks, each pinned to a way the fit fails silently. Runs against one model variant (`--n-source`/`--n-lens-light`) by default; `--all-variants` sweeps all four. |
-| `diagnose.py` | Convergence, residuals, pinning, label switching. Owns `rebuild_model`. Prints a per-stage timing line; on a 2M-draw run, ArviZ's rank-R̂/ESS is ~60% of the wall time -- see its module docstring. |
+| `diagnose.py` | Convergence, residuals, pinning, label switching, the ESS floor, and four figures (`residuals`, `svi_loss`, `corner`, plus `ess_vs_draws` and `rank_plots`). Owns `rebuild_model`. Prints a per-stage timing line; on a 2M-draw run, ArviZ's rank-R̂/ESS is ~46% of the wall time -- see its module docstring. |
 | `svi_health.py` | The SVI-covariance conditioning guard. The one thing the library lacks. |
 | `dump_params.py`, `plot_*.py`, `clumps.py` | Read-only analysis of a finished run. |
-| `tests/` | Standalone regression tests (no pytest in this env) -- Sersic `b_n`, `data.build_mask`, `verify.corner_report`, the masked-chi-squared formula, `make_cutout.py`/`make_psf.py`. See `tests/README.md`. |
+| `tests/` | Standalone regression tests (no pytest in this env) -- Sersic `b_n`, `data.build_mask`, `verify.corner_report`, the masked-chi-squared formula, `make_cutout.py`/`make_psf.py`, the ESS floor and the two convergence plots. See `tests/README.md`. |
 
 ## The config seam
 

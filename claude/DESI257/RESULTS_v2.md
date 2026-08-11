@@ -56,11 +56,37 @@ the central section of this document.
 Round 1 (`r1_s1l1`) is the same pipeline with `--n-source 1 --n-lens-light 1`, 22 parameters.
 
 Staging: MAP (1500 steps, batch 4096, 504.4 s) -> SVI (12000 steps, peak LR 1e-3, 1954.0 s)
--> MCLMC (145.5 s) (`runs/r2_s2l2.log`, `runs/r2_long.log`). **`metadata.json` currently
-misreports `svi_peak_lr` as `0.002`** — the log line above is the ground truth for what was
-actually run. This is an instance of a pipeline bug (`run_fit.py` overwrites prior stages'
-metadata with argparse defaults on a stages-only re-run); see
-`claude/pipeline/KNOWN_ISSUES.md` item 1 for the general bug and its fix.
+-> MCLMC (145.5 s) (`runs/r2_s2l2.log`, `runs/r2_long.log`). This is an instance of a pipeline
+bug (`run_fit.py` overwrote prior stages' metadata with argparse defaults on a stages-only
+re-run); see `claude/pipeline/KNOWN_ISSUES.md` item 1 for the general bug and its fix.
+
+**`runs/r2_s2l2/metadata.json` misreports five fields**, not the one originally recorded.
+Ground truth is `runs/r2_s2l2.log`'s own printed lines and §9's reproduce command:
+
+| field | metadata.json | actually used |
+|---|---|---|
+| `n_samples` | 1024 | 4096 |
+| `map_steps` | 350 | 1500 |
+| `n_vi` | 1000 | 2048 |
+| `svi_steps` | 1500 | 12000 |
+| `svi_peak_lr` | 0.002 | 1e-3 |
+
+`n_devices: 2` is **correct** and is not part of this bug: `metadata.json` is byte-identical
+to `metadata_10k.json.bak` (md5 `7e720b80…`), i.e. it describes the 10,000-draw run, which
+`r2_long.log` confirms ran on two devices. The single-device run was the 80,000-draw one (§4),
+whose metadata was replaced when the good checkpoint was restored.
+
+**What this does *not* break**, so the blast radius is known rather than feared:
+`diagnose.rebuild_model` reads only `api`, `lens`, `n_source`, `n_lens_light`,
+`lens_light_n_max`, the two prior versions, `theta_e_center`/`theta_e_width`,
+`mask_circles`/`n_masked_pixels`, and guards on `n_free_params` — all correct in that file. The
+physical decoding of `r2_s2l2` was never in question; what was corrupted is the record of *how
+the surrogate was optimised*, which is exactly what one needs to reproduce it or to diagnose a
+bad seed (§3).
+
+**The file is left as it stands**, wrong fields and all. Rewriting a finished run's provenance
+record by hand is a worse habit than carrying a documented error, and this table is the
+correction.
 
 ---
 
@@ -230,11 +256,26 @@ this check would likely pass for either.
 
 An 80,000-draw, 10,000-burnin MCLMC re-sample was attempted from the same MAP+SVI checkpoint,
 hoping the longer run would let the modes mix. **It failed and is recorded here as a negative
-result, not omitted.** Every chain froze (within-chain sd collapsed 135x while between-chain
-sd stayed at the real posterior's scale; R-hat 7.86e15). This is a general MCLMC failure mode,
-not specific to this lens's science — the full numbers, the frozen checkpoint's location, and
-the unattributed cause are recorded in `claude/pipeline/KNOWN_ISSUES.md` item 2, along with the
-one-variable test needed to isolate it.
+result, not omitted.** Every chain froze:
+
+| | good 10,000-draw run | frozen 80,000-draw run |
+|---|---|---|
+| burn-in / devices | 2,000 / 2 | 10,000 / **1** |
+| mean within-chain sd | 0.08155 | **0.0006021** (135x smaller) |
+| between-chain sd of chain means | — | 0.09816 (unchanged in scale) |
+| all values finite | yes | yes |
+| R-hat | — | **7.86e15** |
+| bulk-ESS | — | 50 (= chain count; one effective sample per chain) |
+
+All values finite, and the between-chain spread stayed at the real posterior's scale — the
+signature of 50 independent point-samples with no internal exploration, not 50 chains
+converging to a point. The frozen checkpoint is preserved, not deleted:
+`runs/r2_s2l2/hmc_80k_FROZEN_do_not_use.npz`.
+
+This is a general MCLMC failure mode, not specific to this lens's science, and its cause is
+still unattributed — see `claude/pipeline/KNOWN_ISSUES.md` item 2, which also records that
+DESI234's `r3_unmasked` later froze at burn-in 5,000 on two devices, ruling out both variables
+this run changed.
 
 The good 10,000-draw chains were restored to `hmc.npz` from `hmc_10k.npz.bak`, which is what
 every number in this document (outside this paragraph) is computed from.
@@ -357,7 +398,8 @@ are recorded in `claude/pipeline/KNOWN_ISSUES.md` item 3.
 `claude/pipeline/KNOWN_ISSUES.md` item 4: observed + critical curve, model + critical curve,
 unlensed source + caustics, mask-aware normalised residual.
 
-**The residual shows a pixel-scale alternating +/- checkerboard at the deflector core.** The
+**The residual shows a pixel-scale alternating +/- checkerboard at the deflector core**,
+reaching roughly +/-5 sigma. The
 same pattern appears independently in DESI234's fit (`claude/DESI234/RESULTS_v2.md`, section
 5a). The cross-cutting inference — that this is a PSF error common to the dataset, not a
 per-lens light-profile failure — and the recommended remedy (rebuild the PSF, following
