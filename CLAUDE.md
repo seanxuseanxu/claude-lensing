@@ -61,6 +61,16 @@ Each has its own README with the dataset, the conditioning decisions, and the re
 - `claude/DESI238/` — HST WFC3/IR F140W. Five rounds, converged at R̂ ≤ 1.003 (`RESULTS_v5.md`), the first fit under the scene API. It reproduces the four pre-port rounds' `1.480 ± 0.003"` to within 0.002" across the changed likelihood normalisation, parameter ordering, sampler and codebase — so the port is validated, but pre-port checkpoints are still unreadable and `diagnose.rebuild_model` refuses them. See `claude/DESI238/README.md`.
 - `claude/DESI257/`, `claude/DESI234/` — in progress, see their respective `claude/<LENS>/README.md`.
 
+## Automation
+
+`.claude/README.md` lists the four skills, three subagents and two hooks condensed out of
+`claude/guide/`, and — the more important half — the guide's lessons that are
+deliberately *not* automated, with the reason for each. Read it before adding a check.
+
+Invoke `lens-preflight` before a system's first fit, `diagnose-run` after every fit and
+before quoting a number from it, `elevated-rhat` when R̂ misses the gate, `report-round`
+when a result is about to be written down.
+
 ## Working notes
 
 - `nanolens/demos/simple_demo.ipynb` (rendered as `docs/tutorials/first-fit.ipynb`) is the best worked example of a full model → MAP → SVI → HMC run. Note that optax schedules use *negative* learning rates composed with `scale_by_adam` (i.e. descent by scaling), which is easy to misread.
