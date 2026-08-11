@@ -1,8 +1,53 @@
 # DESI234
 
-HST WFC3/IR F140W imaging of DESI-234.4783+14.7232. **No fit has been run yet.** This file
-records the data and the conditioning decisions, so that when a number does appear it is
-clear what it was conditioned on.
+HST WFC3/IR F140W imaging of DESI-234.4783+14.7232. This file records the data and the
+conditioning decisions, so that when a number does appear it is clear what it was
+conditioned on. **For results, see `RESULTS_v3.md`** (round 3); `RESULTS_v2.md` is superseded
+and carries a retraction banner.
+
+> **Current status — round 3, revised 2026-08-10: `r3_fg` is rejected as unphysical, and
+> round 2's `theta_E` stands.**
+>
+> | round | run | params | converged | `chi2_nu` | mass model `q` | `gamma` |
+> |---|---|---|---|---|---|---|
+> | 1 | `r1_s1l1` | — | — | — | 0.736 | 2.677 |
+> | 2 | `r2_s2l2` | 36 | yes, R-hat <= 1.008 | 1.300 | 0.900 | 2.199 |
+> | 3 | `r3_unmasked` | 36 | **no** — chains frozen, max R-hat **13.94** | 1.662 | 0.943 | 2.130 |
+> | 3 | `r3_fg` | 46 | **no** — under-mixed, max R-hat **1.92** | **1.082** | **0.143** | **2.951** |
+>
+> **`r3_fg`'s deflector is a 7:1 needle with a near-singular slope.** Axis ratio
+> `q = 0.143` (16/84: 0.134–0.153) and `gamma = 2.951 ± 0.005`, against a prior
+> `TruncatedNormal(2.0, 0.25, 1, 3)` — 3.95 prior sigma out, with a posterior 50x narrower
+> than the prior. Galaxy-scale deflectors are round and near-isothermal. Every other run on
+> this system is physically sane; `r3_fg` alone is not, and adding the foreground component
+> is what broke it. Its `chi2_nu = 1.082`, the best on the system, bought that fit with an
+> unphysical mass distribution. Found by `diagnose.prior_posterior_tension`, added
+> 2026-08-10 after none of the existing checks caught it — the `e1`/`e2` priors are
+> unbounded `Normal(0, 0.15)`, so `boundary_pinning_check` cannot see them by construction.
+>
+> **RETRACTED — the previous version of this banner.** It claimed round 3 had settled, "on
+> grounds non-convergence cannot overturn", that the interloper carries mass (foreground SIS
+> `theta_E = 0.370"`, 12.2 sd from zero) and that modelling it moves the main `theta_E` by
+> 0.066". Both numbers come from `r3_fg` and neither survives. The 0.066" shift is the
+> difference between a sane mass model and a broken one, not a measurement of the
+> interloper's effect; the SIS detection is what a needle-shaped deflector needs nearby to
+> stay consistent with the arc. The statistic itself was sound — the prior is a `HalfNormal`
+> with mode at zero (`pipeline/priors.py:190-212`), so zero was available and was excluded —
+> but a sound statistic computed on a rejected model measures nothing.
+>
+> **Round 2's `theta_E = 1.539 +0.003/-0.002"` is the system's current number**, with the
+> interloper masked and its mass therefore unmodelled — a known and still-unquantified
+> systematic. Supporting it: `r3_unmasked` has a sane mass model (`q = 0.943`,
+> `gamma = 2.130`) and lands at `theta_E = 1.5386`, reproducing round 2 to **0.0007"**
+> despite its frozen chains. Two independent conditionings agreeing to under a milliarcsecond
+> is worth more than one converged fit alone.
+>
+> **Round 4 is a re-run of the foreground model, not a sampling fix.** The earlier reading —
+> that round 3's failures were sampling, not modelling — was made before `r3_fg`'s mass model
+> was examined and is wrong for `r3_fg`. Constrain the deflector's ellipticity to a physical
+> range, refit, and see whether the foreground component survives. `r3_unmasked`'s frozen
+> chains remain a genuine sampler problem; float64 is the first thing to vary there
+> (`pipeline/data.py:118` pins float32).
 
 Everything below is measured from this system's own files. Nothing is inherited from
 DESI238 except the *structure* of `config.py` and two prior widths that are explicitly
@@ -76,7 +121,7 @@ deflector light -- and is the brightest thing in the field after the deflector.
 
 **No square crop removes it without clipping the arc.** For a box of half-width h centred on
 the deflector, the interloper is inside whenever h > 25.5 px, while the arc runs out to
-h = 26.5 px. The two requirements do not overlap, so per `LENS_MODELING_GUIDE.md` the options
+h = 26.5 px. The two requirements do not overlap, so per `claude/guide/01-the-data.md` the options
 are mask or model, and cropping is not among them.
 
 Rounds 1-2 mask it, radius 12 px: its residual profile falls through 1 sigma between r = 11
@@ -85,9 +130,14 @@ more importantly, declines to use the interloper's own light. **Round 3 replaces
 with a modelled Sersic and compares.** Until then the fit carries an unmodelled interloper as
 an accepted systematic and must be reported as carrying one.
 
-Leaving it unmasked is not an option: the source components' priors put no constraint on
-where a component may sit, so a free Sersic will go and sit on a 110-sigma blob. That is the
-cheapest way for the model to buy chi-squared.
+**JUDGEMENT (unmeasured):** leaving it unmasked is not an option, because the source
+components' priors put no constraint on where a component may sit, so a free Sersic will go and
+sit on a 110-sigma blob — the cheapest way for the model to buy chi-squared. *Falsified by:*
+an unmasked fit with no component at the interloper's position, checking whether a source
+component's fitted centroid lands on it. Round 3's `r3_unmasked` is that configuration, but its
+chains froze (`RESULTS_v3.md` §5.4), so it does not answer the question. DESI257 ran the same
+check successfully and found the hazard did *not* materialise there
+(`claude/DESI257/README.md`), which is reason to doubt this as stated.
 
 ## Lens configuration
 
@@ -106,8 +156,14 @@ markers on empty sky. This is the single most misreadable field in `config.py`.
 
 The southern structure is continuous from PA 125 to PA 235 -- 110 degrees -- at a radius that
 stays within 1.66-1.82" the whole way, with three local maxima and no gap between them, each
-elongated to within 4 degrees of tangential. A chance alignment of three galaxies does not
-produce a constant-radius, tangentially-elongated, unbroken ridge over 110 degrees.
+elongated to within 4 degrees of tangential.
+
+**JUDGEMENT (unmeasured):** a chance alignment of three galaxies does not produce a
+constant-radius, tangentially-elongated, unbroken ridge over 110 degrees, so the southern
+structure is lensed. *Falsified by:* a measured rate — the frequency of three-object alignments
+at fixed radius and tangential orientation in blank-field imaging of this depth. No such rate
+has been computed here; the radius range and the orientations above are measured, the
+inference from them to "not a chance alignment" is not.
 
 Three merging images along one arc with a fourth opposite is a cusp configuration, and the
 fourth is where a cusp quad puts it: the N clump at PA 358, opposite the arc's midpoint to
@@ -124,8 +180,20 @@ The interloper at 2.30" is deliberately **not** in the clump list, and that is a
 Against it being a fifth image: it is round (|e| = 0.036) with its major axis 66 degrees from
 tangential; at 3.5x the counter-image's brightness where a fifth image should be faintest;
 and at PA 314 it sits 44 degrees from the counter-image on the same side, which no standard
-quad geometry produces. If that is wrong, theta_E is biased low. **Round 5 is the
-falsification run.**
+quad geometry produces. If that is wrong, theta_E is biased low.
+
+**Settled, 2026-08-10, by the repository owner's reading:** the object is almost certainly not a
+fifth image. It is much brighter than the other images and completely out of position for one.
+That is the same evidence the paragraph above lists, read by someone with the modelling
+experience to weigh it, and it is accepted here as the answer.
+
+**The fifth-image run is therefore retired, not deferred.** It was named as the falsifier in
+round 1 and stayed unrun through three rounds; it is closed by judgement rather than left as a
+forward reference that never resolves. Note what does *not* follow: round 3's foreground SIS
+(`theta_E = 0.370"`, 12.2 sd from zero) has been withdrawn along with the rest of `r3_fg`'s
+posterior — see the correction banner at the top of `RESULTS_v3.md`. So the object is foreground
+rather than lensed, and whether it carries enough mass to matter for `theta_E` is **unestablished**
+and is round 4's question.
 
 ## Flux scale
 
@@ -160,11 +228,21 @@ values is coincidence, not a validation of guessing.
       **Its `theta_E` is superseded as a measurement by round 3** — see the banner on
       `RESULTS_v2.md`.
 - [x] Round 3 fits (`r3_unmasked` 36 params, `r3_fg` 46 params; both unmasked, `supersample = 4`)
-      — **neither converged**, max R-hat 13.94 and 1.92. No `theta_E` from this round.
-      What it did settle: the interloper carries **0.370" of SIS mass, 12.2 sd from zero**,
-      and modelling it moves the main `theta_E` by **0.066"**. `RESULTS_v3.md`.
-- [ ] Round 4: a converged `r3_fg`-class run. `RESULTS_v3.md` §5.4 shows the fix is sampling,
-      not modelling — `r3_fg` is under-mixed along a `theta_E` ridge, `r3_unmasked` is frozen.
+      — **neither converged**, max R-hat 13.94 and 1.92, and **`r3_fg` is additionally rejected
+      as unphysical**: `q = 0.143`, `gamma = 2.951`. Its positive conclusions are withdrawn; see
+      the correction banner on `RESULTS_v3.md`. What survives is `r3_unmasked`'s
+      `theta_E = 1.5386` on a sane mass model, reproducing round 2 to 0.0007" despite frozen
+      chains — support for round 2, not a replacement.
+- [ ] Round 4: refit the foreground model with the deflector's ellipticity constrained to a
+      physical range, and ask whether a foreground mass component survives when the deflector
+      is required to be round. This replaces "a converged `r3_fg`-class run" — `RESULTS_v3.md`
+      §5.4's reading that the fix is sampling and not modelling was made before `r3_fg`'s mass
+      model was examined, and is wrong for that run. It remains right for `r3_unmasked`, whose
+      chains are frozen on a sane model; try float64 there first (`pipeline/data.py:118`).
+- [x] ~~The fifth-image falsification run~~ — **retired 2026-08-10, not run.** Closed by the
+      repository owner's reading: the 2.30" object is much brighter than the other images and
+      out of position for a fifth image. The object is foreground. Whether it carries mass that
+      matters for `theta_E` is a separate question, now unestablished and owned by round 4.
 
 `verify.py`'s check 6 (the SVI guard) will report itself **skipped** until round 1 gives this
 lens its own known-good and known-diverged runs. A skipped check is honest; it must not be

@@ -36,6 +36,14 @@ counter-image identification was the least secure of the three lenses modelled h
 settled it in favour of the fourth-image reading, and that section records both the retracted
 argument and the measurement that retracted it.
 
+**Independently confirmed, 2026-08-10, by the repository owner:** the SW object is a
+counter-image — it is at the expected position for one, is about the same brightness as the
+other images, and the model predicts it. That is three lines of agreement with round 3's
+measurement, arrived at without reference to it. This identification is no longer the weak
+point of this system and should not be re-litigated: the standing advice is *don't fight a good
+model*. Where a model reproduces an object it was not fitted to, that is the model earning
+trust, not a coincidence to be explained away.
+
 Everything below is measured from this system's own files. Nothing is inherited from DESI238
 except the *structure* of `config.py` and two prior widths that are explicitly flagged as
 unmeasured (`SOURCE_PRIOR`'s scales, and the bulge/disk split).

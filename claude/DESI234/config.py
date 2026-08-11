@@ -160,8 +160,11 @@ SOURCE_IE = 21.0
 # radius that stays within 1.66-1.82" the whole way, with three local maxima at PA 145
 # (83 sigma), PA 183 (55 sigma) and PA 215 (55 sigma) and no gap between them. The measured
 # major axis at each of the three lies within 4 degrees of the tangential direction there.
-# That is what lensing does; a chance alignment of three galaxies does not produce a
-# constant-radius, tangentially-elongated, unbroken ridge over 110 degrees.
+#
+# JUDGEMENT (unmeasured): that is what lensing does; a chance alignment of three galaxies does
+# not produce a constant-radius, tangentially-elongated, unbroken ridge over 110 degrees.
+# Falsified by a measured alignment rate in blank-field imaging of this depth, which has not
+# been computed. The radii and orientations above ARE measured; the inference from them is not.
 #
 # Three merging images along one arc with a fourth on the opposite side is a **cusp
 # configuration**, and the fourth is where a cusp quad puts it: the northern clump at
@@ -181,7 +184,14 @@ SOURCE_IE = 21.0
 # where a fifth image should be the faintest; and at PA 314 it is 44 degrees from the
 # counter-image on the same side of the lens, which no standard quad geometry produces.
 # If this is wrong, the consequence is a theta_E biased low, since fitting it would demand
-# images at both 1.11" and 2.30". Round 5's falsification run is where that gets tested.
+# images at both 1.11" and 2.30".
+#
+# SETTLED 2026-08-10 by the repository owner: the object is almost certainly not a fifth image,
+# being much brighter than the other images and out of position for one. The fifth-image run
+# named here since round 1 is retired rather than deferred. Note the separate question this does
+# NOT answer: whether the object carries enough mass to bias theta_E. Round 3's foreground SIS
+# was withdrawn with the rest of r3_fg's posterior (RESULTS_v3.md correction banner), so that
+# is open and belongs to round 4.
 CLUMPS = {
     "S arc E": (1.81, 145.0),
     "S arc mid": (1.71, 184.0),

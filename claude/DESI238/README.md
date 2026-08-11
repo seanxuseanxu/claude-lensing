@@ -234,7 +234,9 @@ Round 4's pre-port `bn_rational_long` gave 1.4795 ± 0.0026" at R̂ < 1.1, and r
   parameters sit at Rhat ≤ 1.002. Round 4 clears R̂ < 1.1 outright.
 - **Round 2's 1.484 ± 0.002" was not usable** — 29/29 parameters failed Rhat (worst 7.17)
   because its SVI stage diverged and HMC ran on the resulting ill-conditioned
-  preconditioner. Label switching, a dead component, and multimodality were each ruled out;
+  preconditioner. Label switching, a dead component, and multimodality were each ruled out
+  (`RESULTS_v2.md`, "Convergence got worse", items 1-3 — measured, not assumed: 0 label
+  crossings in 50 chains, components separated by 24.4 sigma);
   the "slow mixing" conclusion drawn from that was wrong. The SVI fix took conditioning
   8.8e+11 → 3.4e+07, ELBO tail sd 7,384 → 6.6, worst Rhat 7.17 → 1.544, and reproduced
   `theta_E` at 1.4837 ± 0.0024 — confirming the point estimate was never affected, only the
@@ -255,9 +257,13 @@ Four clumps, all read as counter-images of one source (the repository owner's de
 crop — *not* sky PA. Converting them through the image's WCS the standard way (North
 through East) places every marker on empty sky.
 
-Requiring one source to produce images at both 1.06" and 2.11" is a strong demand on a
-single elliptical deflector, and it is what widens the `theta_E`, ellipticity and shear
-priors relative to the gigalens demo.
+**JUDGEMENT (unmeasured):** requiring one source to produce images at both 1.06" and 2.11" is
+a strong demand on a single elliptical deflector, and that is what widens the `theta_E`,
+ellipticity and shear priors relative to the gigalens demo. *Falsified by:* fitting the
+four-clump reading against a reading that drops the E blob, and comparing chi-squared — the
+one-source assignment of all four clumps is the repository owner's decision (above) and has
+never been tested against its alternative. The radii are measured; "strong demand" is not
+quantified anywhere, and the prior widths it justifies are therefore justified by argument.
 
 ### A recurring pinning problem
 
