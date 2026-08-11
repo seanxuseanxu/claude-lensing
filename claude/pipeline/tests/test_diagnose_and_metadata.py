@@ -113,6 +113,84 @@ def test_pinning_silent_when_truncated_normal_not_pinned():
     assert "pinned parameter is set by its prior" not in out
 
 
+# -- prior_posterior_tension ---------------------------------------------------------------
+
+def test_tension_calibrates_against_a_known_gaussian():
+    """A standard Normal prior with the posterior median at 3.0 must report 3.00 sigma.
+
+    This is the calibration case: the answer is known in closed form, so it tests the
+    instrument rather than agreeing with it.
+    """
+    prior_dict = {"x": tfd.Normal(0.0, 1.0)}
+    pnames = ["x"]
+    model = FakeModel(prior=FakePrior(prior_dict), z_labels=pnames)
+    con_flat = np.full((500, 1), 3.0)
+
+    buf = io.StringIO()
+    with redirect_stdout(buf):
+        rows = diagnose.prior_posterior_tension(model, con_flat, pnames, threshold=2.0)
+
+    assert len(rows) == 1
+    assert abs(rows[0][2] - 3.0) < 0.01, f"expected 3.00 sigma, got {rows[0][2]}"
+    assert "above prior centre" in buf.getvalue()
+
+
+def test_tension_reports_the_low_side_and_scales_with_prior_width():
+    """Same displacement, a prior 10x wider: 3 sigma must become 0.3 sigma, and the side
+    must be reported as below rather than above."""
+    model = FakeModel(prior=FakePrior({"x": tfd.Normal(0.0, 10.0)}), z_labels=["x"])
+    rows = diagnose.prior_posterior_tension(model, np.full((500, 1), -3.0), ["x"], threshold=0.1)
+    assert len(rows) == 1
+    assert abs(rows[0][2] - 0.3) < 0.01
+    assert rows[0][4] is True, "median below the prior centre must report the low side"
+
+
+def test_tension_finds_desi234_r3_fg_gamma_where_pinning_cannot():
+    """The case the check was built for: gamma = 2.9514 under TruncatedNormal(2, 0.25, 1, 3).
+
+    ``boundary_pinning_check`` must stay silent -- 97.6% of range is under its 98% threshold,
+    and correctly so, since the posterior sits ~10 sd from the bound. The tension check must
+    speak. Both assertions matter: the point is that they answer different questions.
+    """
+    prior_dict = {"gamma": tfd.TruncatedNormal(2.0, 0.25, 1.0, 3.0)}
+    pnames = ["gamma"]
+    model = FakeModel(prior=FakePrior(prior_dict), z_labels=pnames)
+    rng = np.random.default_rng(0)
+    con_flat = rng.normal(2.9514, 0.0049, size=(2000, 1))
+
+    buf = io.StringIO()
+    with redirect_stdout(buf):
+        diagnose.boundary_pinning_check(model, con_flat, pnames)
+    assert "PINNED" not in buf.getvalue(), "gamma is ~10 sd from the bound; not pinned"
+
+    rows = diagnose.prior_posterior_tension(model, con_flat, pnames)
+    assert len(rows) == 1 and rows[0][0] == "gamma"
+    assert rows[0][2] > 3.0, f"expected >3 sigma of prior tension, got {rows[0][2]}"
+    assert rows[0][3] < 0.05, "posterior should be >20x narrower than the prior"
+
+
+def test_tension_silent_on_a_healthy_parameter():
+    """DESI234 r2_s2l2's gamma = 2.199 on the same prior: 0.8 prior sigma, no report."""
+    model = FakeModel(prior=FakePrior({"gamma": tfd.TruncatedNormal(2.0, 0.25, 1.0, 3.0)}),
+                      z_labels=["gamma"])
+    buf = io.StringIO()
+    with redirect_stdout(buf):
+        rows = diagnose.prior_posterior_tension(model, np.full((500, 1), 2.199), ["gamma"])
+    assert rows == []
+    assert buf.getvalue() == "", "a healthy parameter must produce no output at all"
+
+
+def test_tension_handles_a_skewed_prior_in_quantile_space():
+    """LogNormal is why the measure is a quantile and not (x - mu) / sigma: the median of a
+    LogNormal(log 1.43, 0.25) is exp(log 1.43) = 1.43 by construction, so a posterior sitting
+    there is 0 sigma of tension however asymmetric the distribution's moments are."""
+    model = FakeModel(prior=FakePrior({"theta_E": tfd.LogNormal(np.log(1.43), 0.25)}),
+                      z_labels=["theta_E"])
+    rows = diagnose.prior_posterior_tension(model, np.full((500, 1), 1.43), ["theta_E"],
+                                            threshold=0.05)
+    assert rows == [], "the prior's own median must register as zero tension"
+
+
 # -- run_fit.merge_prior_metadata ---------------------------------------------------------
 
 def _base_config(**overrides):
@@ -197,6 +275,11 @@ def main():
         test_map_hmc_verdict_equal_scores_pass,
         test_pinning_flags_truncated_normal_at_upper_bound,
         test_pinning_silent_when_truncated_normal_not_pinned,
+        test_tension_calibrates_against_a_known_gaussian,
+        test_tension_reports_the_low_side_and_scales_with_prior_width,
+        test_tension_finds_desi234_r3_fg_gamma_where_pinning_cannot,
+        test_tension_silent_on_a_healthy_parameter,
+        test_tension_handles_a_skewed_prior_in_quantile_space,
         test_merge_carries_forward_unrun_stage_fields,
         test_merge_keeps_this_invocations_ran_stage_fields,
         test_merge_does_not_fabricate_missing_prior_fields,

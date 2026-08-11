@@ -27,15 +27,20 @@ Runs predating the scene-API port are refused, not guessed at: the port changed 
 z-column order and the noise convention, so their stored samples mean something else here.
 Read them at the pre-port commit, or re-fit.
 
-``main()`` prints a ``[timing]`` line per stage. Measured on the largest run to date
-(``claude/DESI234/runs/r2_s2l2``, 50 chains x 40000 steps x 36 params = 2M draws, A100):
-32s importing JAX/gigalens, 63s in ``convergence_table`` (of which ArviZ's rank-R-hat is
-~30s and bulk+tail-ESS ~25s -- exact, and living in the read-only ``nanolens`` package, so
-not reduced here), and ~17s in the corner plot before it was thinned. Everything else --
-simulate, critical curves/caustics, the source render, label switching -- is under 2s
-combined. If a run's total grows well past what its draw count would predict from these
-numbers, suspect the redundant work this file used to do (loading ``hmc.npz`` or computing
-``to_constrained`` more than once), not ArviZ.
+``main()`` prints a ``[timing]`` line per stage. Measured 2026-08-11 on the largest run to
+date (``claude/DESI234/runs/r2_s2l2``, 50 chains x 40000 steps x 36 params = 2M draws),
+CPU, 172s total: 79s in the ArviZ rank-R-hat/ESS pass, 25s in ``ess_vs_draws_plot``, 6s in
+``convergence_table`` once the report is handed to it, 6s in the rank plots, 4s in the
+corner plot after thinning, 2s in ``to_constrained``. Everything else -- simulate, critical
+curves/caustics, the source render, label switching -- is under 2s combined.
+
+The ArviZ pass is exact and lives in the read-only ``nanolens`` package, so its cost is not
+reduced here, only made attributable: it is computed **once** in ``main()`` and threaded
+into the three stages that need it. ``ess_vs_draws_plot`` costs a further ~0.3x of it by
+carrying only the six worst-R-hat columns through its prefixes rather than all 36. If a
+run's total grows well past what its draw count would predict from these numbers, suspect
+the redundant work this file used to do (loading ``hmc.npz``, computing ``to_constrained``,
+or re-running ``diagnose_convergence`` more than once), not ArviZ.
 """
 
 import argparse
@@ -66,6 +71,20 @@ import priors
 import svi_health
 
 RHAT_THRESHOLD = 1.01
+
+# ESS floor, from Vehtari et al. 2021 (papers/r-hat_convergence/NOTES.md sec. 4). These are
+# not a quality target -- they are the condition under which R-hat is *estimable at all*.
+# R-hat is itself computed from the chains, and below these counts its sampling error swamps
+# the 0.01 margin the gate is testing. The consequence that is easy to get backwards: below
+# the floor a **passing** R-hat is uninformative too, so 1.002 on 200 effective draws is not
+# evidence of convergence, it is an absence of evidence in either direction.
+#
+# The per-split-half number is the binding one. Split-R-hat halves every chain, so n_chains
+# chains give 2*n_chains halves, and each needs its own >= 50 for the between/within variance
+# estimate to mean anything -- an aggregate 400 concentrated in two good chains does not pass.
+ESS_FLOOR_TOTAL = 400.0
+ESS_FLOOR_PER_SPLIT_HALF = 50.0
+MIN_CHAINS = 4
 
 
 def load_checkpoint(run_dir, name):
@@ -884,7 +903,182 @@ def boundary_pinning_check(model, con_flat, pnames):
               "bound rather than a measurement.")
 
 
-def convergence_table(run_dir, rm, hmc_samples=None, con=None):
+# Report a parameter when its posterior median sits beyond this many equivalent Gaussian
+# sigma of its own prior. 3.0 is loose on purpose: with ~40 free parameters, a couple of
+# 3-sigma displacements are expected by chance, and this is a prompt to look, not a verdict.
+TENSION_SIGMA = 3.0
+
+
+def prior_posterior_tension(model, con_flat, pnames, threshold=TENSION_SIGMA):
+    """Report parameters whose posterior has moved far from the prior that generated it.
+
+    This exists because ``boundary_pinning_check`` above answers a *different* question and
+    the difference cost a wrong diagnosis. DESI234's ``r3_fg`` fitted
+    ``gamma = 2.951 +/- 0.005`` under a ``TruncatedNormal(2.0, 0.25, 1.0, 3.0)`` prior. That
+    is **not** pinned -- it sits 9.9 posterior sd below the 3.0 truncation with zero draws
+    above 2.99, and the pinning check correctly stayed silent at 97.6% of range. It is
+    nonetheless 3.8 prior sigma from the prior centre, with a posterior 50x narrower than
+    the prior scale: the *likelihood* is confidently choosing a near-singular mass slope
+    where galaxy-scale lenses sit near 2.0-2.2. Nothing in this file reported that.
+
+    Pinning means the prior set the value. Tension means the data set it, against the
+    prior's advice. The second is the more common signature of model misspecification --
+    something else in the model is wrong and this parameter is absorbing it -- and it is
+    invisible to every aggregate statistic, including ``chi2_nu``, which was 1.08 here.
+
+    The measure is the prior quantile of the posterior median, converted to the equivalent
+    Gaussian sigma. Working in quantiles rather than ``(x - mu) / sigma`` keeps it
+    meaningful for the skewed and bounded priors this pipeline uses -- ``LogNormal`` for
+    every Einstein radius, ``HalfNormal`` for the foreground mass, ``Uniform`` for Sersic
+    indices -- where a moment-based z-score would be misleading.
+
+    Reported, never raised. A prior is a statement about what is typical, and an atypical
+    system is a thing that exists; see ``priors.py``'s plausibility warnings, which are
+    flexible by the same reasoning. What this buys is that the atypical case has to be
+    noticed and argued for rather than passing silently into a results table.
+    """
+    from tensorflow_probability.substrates.jax import distributions as tfd
+    from scipy.special import ndtri
+
+    med = np.median(con_flat, axis=0)
+    sd = np.std(con_flat, axis=0)
+    labels = list(model.z_labels or pnames)
+    rows = []
+    for key, dist in (model.prior.model or {}).items():
+        if key not in pnames:
+            continue
+        idx = pnames.index(key)
+        try:
+            sf = float(dist.survival_function(med[idx]))
+            cdf = float(dist.cdf(med[idx]))
+        except Exception:
+            continue
+        if not np.isfinite(sf) or not np.isfinite(cdf):
+            continue
+        # Use whichever tail is small: cdf saturates to 1.0 in float long before the
+        # survival function underflows, so reading sigma off the far tail of cdf alone
+        # would silently cap the reported tension at ~8 sigma.
+        tail = min(max(sf, 0.0), max(cdf, 0.0))
+        tail = max(tail, 1e-300)
+        sigma = abs(float(ndtri(tail)))
+        if not np.isfinite(sigma):
+            continue
+        try:
+            prior_sd = float(dist.stddev())
+        except Exception:
+            prior_sd = float("nan")
+        ratio = sd[idx] / prior_sd if prior_sd and np.isfinite(prior_sd) else float("nan")
+        if sigma >= threshold:
+            rows.append((labels[idx], med[idx], sigma, ratio, cdf < sf))
+
+    if not rows:
+        return []
+
+    rows.sort(key=lambda r: -r[2])
+    width = max(len(r[0]) for r in rows)
+    print(f"\n=== Prior-posterior tension (> {threshold:g} sigma of the prior) ===")
+    print(f"{'parameter':<{width}}{'median':>10}{'prior sig':>11}{'post/prior sd':>15}  side")
+    for name, v, sigma, ratio, low_side in rows:
+        rs = f"{ratio:.3f}" if np.isfinite(ratio) else "n/a"
+        print(f"{name:<{width}}{v:>10.4f}{sigma:>11.2f}{rs:>15}  "
+              f"{'below' if low_side else 'above'} prior centre")
+    print("\nThe data, not the prior, put these here. A narrow posterior far from its prior "
+          "is the usual signature of a parameter absorbing someone else's error -- check it "
+          "against what is physically typical before quoting anything that depends on it.")
+    return rows
+
+
+def hmc_and_constrained(run_dir, rm, hmc_samples=None, con=None, need_con=True):
+    """Return ``(samples_z, con)``, both ``(n_chains, n_draws, n_params)``, or ``(None, None)``.
+
+    The HMC-consuming stages below each need the same arrays and each used to load and
+    transform them itself. ``main()`` computes both once and threads them in, so in the
+    normal path this function only reshapes; the fallback exists so every stage stays
+    callable on its own from a notebook or a test.
+
+    ``need_con=False`` for the stages that work purely in z (the rank and ESS-vs-draws
+    plots): they get ``con=None`` back rather than paying for a transform they discard.
+
+    The shape check lives here rather than in ``convergence_table`` alone, so a transposed
+    ``(n_steps, n_chains, n_params)`` array raises for *every* caller. That layout is the
+    one silent hazard in this file's inputs -- it yields plausible, wrong split-R-hat rather
+    than an error (see the module docstring, and ``diagnose_convergence``'s own warning).
+    """
+    if hmc_samples is None:
+        hmc = load_checkpoint(run_dir, "hmc")
+        if hmc is None:
+            return None, None
+        hmc_samples = hmc["samples"]
+    samples = np.asarray(hmc_samples)
+    if samples.ndim != 3 or samples.shape[-1] != rm.model.num_free_params:
+        raise ValueError(
+            f"hmc.npz holds {samples.shape}; expected (n_chains, n_steps, "
+            f"{rm.model.num_free_params})."
+        )
+    n_chains, n_draws, n_params = samples.shape
+    if not need_con:
+        return samples, None
+    if con is None:
+        con = to_constrained(rm.model, samples.reshape(-1, n_params))
+    return samples, np.asarray(con).reshape(n_chains, n_draws, n_params)
+
+
+def worst_rhat_columns(report, n):
+    """Indices of the ``n`` columns with the highest R-hat, worst first.
+
+    The plots below diagnose *why* a fit is not mixing, so they show the parameters that are
+    not mixing. A parameter at R-hat 1.000 contributes a flat line and a uniform histogram
+    and crowds out the one that would have shown the problem.
+    """
+    order = np.argsort(np.asarray(report.rhat, dtype=float))[::-1]
+    return [int(i) for i in order[:min(n, len(order))]]
+
+
+def ess_floor_report(report, n_chains, labels=None):
+    """Check bulk/tail ESS against the Vehtari floor. Returns True if the floor is met.
+
+    Printed *before* the R-hat verdict it qualifies, because it decides whether that verdict
+    carries information. See the ``ESS_FLOOR_*`` constants for why a failing floor
+    invalidates a passing R-hat as much as a failing one.
+
+    Both bulk- and tail-ESS are checked. Tail-ESS is usually the smaller and is the one that
+    catches heavy-tail mixing failures, which is exactly the regime a prior bound induces in
+    z space -- checking bulk alone would let the common failure through.
+
+    ``labels`` names the offending parameter in the same vocabulary as the table above
+    (``rm.labels``); without it the report falls back to the z-path names, which are correct
+    but read as a different parameter to anyone skimming.
+    """
+    ess = np.minimum(np.asarray(report.ess_bulk, dtype=float),
+                     np.asarray(report.ess_tail, dtype=float))
+    worst = int(np.argmin(ess))
+    min_ess = float(ess[worst])
+    per_half = min_ess / (2 * n_chains)
+
+    ok_total = min_ess >= ESS_FLOOR_TOTAL
+    ok_half = per_half >= ESS_FLOOR_PER_SPLIT_HALF
+    ok_chains = n_chains >= MIN_CHAINS
+    ok = ok_total and ok_half and ok_chains
+
+    print(f"\n=== ESS floor (Vehtari et al. 2021) ===")
+    names = report.names if labels is None else labels
+    print(f"min ESS over all parameters (bulk and tail) {min_ess:.0f}  "
+          f"[{names[worst]}]")
+    print(f"  total       >= {ESS_FLOOR_TOTAL:.0f}          "
+          f"{min_ess:>8.0f}   {'ok' if ok_total else 'FAIL'}")
+    print(f"  per split half >= {ESS_FLOOR_PER_SPLIT_HALF:.0f}      "
+          f"{per_half:>8.1f}   {'ok' if ok_half else 'FAIL'}   "
+          f"({n_chains} chains -> {2 * n_chains} split halves)")
+    print(f"  chains      >= {MIN_CHAINS}            "
+          f"{n_chains:>8d}   {'ok' if ok_chains else 'FAIL'}")
+    if not ok:
+        print("R-hat is NOT INTERPRETABLE below this floor -- and that cuts both ways: a "
+              "passing R-hat here is an absence of evidence, not evidence of convergence. "
+              "Draw more before reading anything from the table below.")
+    return ok
+
+
+def convergence_table(run_dir, rm, hmc_samples=None, con=None, report=None):
     """Print the posterior summary with R-hat and ESS. Returns the max R-hat, or None.
 
     R-hat and ESS come from ``gigalens.jax.analysis.diagnose_convergence``: ArviZ's
@@ -911,32 +1105,22 @@ def convergence_table(run_dir, rm, hmc_samples=None, con=None):
     the boundary-pinning check. The R-hat reported is the raw one unless switching was
     actually detected, in which case both raw and relabelled are shown.
 
-    ``hmc_samples`` / ``con`` let a caller that already loaded ``hmc.npz`` and computed
-    ``to_constrained`` (``main()`` does both once, for four call sites that used to do it
-    each) pass them in rather than pay for either again; ``None`` reproduces the original
-    behaviour exactly.
+    ``hmc_samples`` / ``con`` / ``report`` let a caller that already loaded ``hmc.npz``,
+    computed ``to_constrained`` and ran ``diagnose_convergence`` (``main()`` does all three
+    once, for the several stages that used to do them each) pass them in rather than pay
+    again; ``None`` for any of them reproduces the original behaviour exactly. The
+    ``report`` is the expensive one -- see the timing note above.
     """
-    if hmc_samples is None:
-        hmc = load_checkpoint(run_dir, "hmc")
-        if hmc is None:
-            print("\nNo HMC samples; convergence diagnostics unavailable.")
-            return None
-        hmc_samples = np.asarray(hmc["samples"])
-    samples = np.asarray(hmc_samples)  # (n_chains, n_steps, n_params)
-    if samples.ndim != 3 or samples.shape[-1] != rm.model.num_free_params:
-        raise ValueError(
-            f"hmc.npz holds {samples.shape}; expected (n_chains, n_steps, "
-            f"{rm.model.num_free_params})."
-        )
+    samples, con = hmc_and_constrained(run_dir, rm, hmc_samples, con)
+    if samples is None:
+        print("\nNo HMC samples; convergence diagnostics unavailable.")
+        return None
     n_chains, n_draws, n_params = samples.shape
-
-    if con is None:
-        con = to_constrained(rm.model, samples.reshape(-1, n_params))
-    con = np.asarray(con).reshape(n_chains, n_draws, n_params)
 
     switched, con_re = label_switching_check(con, rm.spans, rm.pnames)
 
-    report = diagnose_convergence(samples, model=rm.model)
+    if report is None:
+        report = diagnose_convergence(samples, model=rm.model)
     rhat, ess_bulk, ess_tail = report.rhat, report.ess_bulk, report.ess_tail
 
     if switched and con_re is not None:
@@ -957,6 +1141,7 @@ def convergence_table(run_dir, rm, hmc_samples=None, con=None):
 
     flat = con.reshape(-1, n_params)
     boundary_pinning_check(rm.model, flat, rm.pnames)
+    prior_posterior_tension(rm.model, flat, rm.pnames)
 
     lo, med, hi = np.percentile(flat, [16, 50, 84], axis=0)
 
@@ -972,6 +1157,9 @@ def convergence_table(run_dir, rm, hmc_samples=None, con=None):
             f"{rhat[i]:>8.3f}{ess_bulk[i]:>9.0f}{ess_tail[i]:>9.0f}{flag}"
         )
 
+    # Read this before the R-hat verdict: it says whether that verdict means anything.
+    floor_ok = ess_floor_report(report, n_chains, labels=labels)
+
     worst = float(report.max_rhat)
     n_bad = int(np.sum(rhat > RHAT_THRESHOLD))
     if n_bad:
@@ -982,6 +1170,9 @@ def convergence_table(run_dir, rm, hmc_samples=None, con=None):
         print(f"\nAll {n_params} parameters have Rhat <= {RHAT_THRESHOLD} "
               f"(worst {worst:.3f}); min bulk-ESS {report.min_ess_bulk:.0f}, "
               f"min tail-ESS {report.min_ess_tail:.0f}.")
+        if not floor_ok:
+            print("But the ESS floor above failed, so this is not a pass -- it is an "
+                  "undetermined result. Do not report this run as converged.")
     return worst
 
 
@@ -995,14 +1186,10 @@ def theta_E_check(run_dir, rm, hmc_samples=None, con=None):
     ``hmc_samples`` / ``con``: see ``convergence_table``'s docstring -- same reuse, same
     fallback to loading/transforming fresh when not given.
     """
-    if hmc_samples is None:
-        hmc = load_checkpoint(run_dir, "hmc")
-        if hmc is None:
-            return
-        hmc_samples = np.asarray(hmc["samples"])
-    if con is None:
-        con = to_constrained(rm.model, np.asarray(hmc_samples).reshape(-1, hmc_samples.shape[-1]))
-    con = np.asarray(con).reshape(-1, con.shape[-1]) if np.asarray(con).ndim == 3 else np.asarray(con)
+    samples, con = hmc_and_constrained(run_dir, rm, hmc_samples, con)
+    if samples is None:
+        return
+    con = con.reshape(-1, con.shape[-1])
     # "mass/0/theta_E", not bare "theta_E": with a foreground component the SIS also has a
     # theta_E, and the host EPL (always mass index 0) is the one this check is about.
     idx = column(rm.model, "mass/0/theta_E", kind="mass")
@@ -1052,11 +1239,7 @@ def map_convergence_check(run_dir, rm, hmc_samples=None, max_hmc_eval=3000):
     mp = load_checkpoint(run_dir, "map")
     if mp is None:
         return
-    if hmc_samples is None:
-        hmc = load_checkpoint(run_dir, "hmc")
-        if hmc is None:
-            return
-        hmc_samples = np.asarray(hmc["samples"])
+    hmc_samples, _ = hmc_and_constrained(run_dir, rm, hmc_samples, need_con=False)
     if hmc_samples is None:
         return
 
@@ -1170,6 +1353,195 @@ def svi_loss_plot(run_dir, out_dir):
     return path
 
 
+def ess_vs_draws_plot(run_dir, out_dir, rm, hmc_samples=None, report=None,
+                      n_worst=6, n_prefix=8):
+    """ESS against the number of draws used, on the run already on disk.
+
+    The free test before spending a longer run (Vehtari et al. 2021 sec. 5, sec. 7;
+    ``claude/guide/04-running-the-fit.md`` sec. 4.3 step 1). ESS should grow roughly
+    linearly in the number of draws: a chain that is merely slow gets there by running
+    longer, so 4x the draws buys ~4x the ESS. Sublinear growth, or a fall, means the chains
+    are not sampling the same distribution and more draws will not fix it -- which sends you
+    to the model or the surrogate without first paying for the 4x run to find out.
+
+    The read is stated in the printed output as well as drawn, because the figure alone
+    invites eyeballing a log-log slope. The slope is fitted and reported.
+
+    Cost control: computed on the ``n_worst`` worst-R-hat parameters only, at ``n_prefix``
+    prefix lengths. ESS is per-column, so this is ``n_prefix/2 * n_worst/n_params`` times
+    the cost of the full ESS pass -- about 0.75x on a 36-parameter run, rather than 4.5x if
+    every column were carried. The worst-R-hat parameters are the ones the question is about;
+    a parameter already at R-hat 1.00 has nothing to diagnose.
+
+    Prefixes are taken from the START of each chain, keeping all chains. That is the honest
+    simulation of "what would a shorter run have looked like" -- and it means the earliest
+    prefixes include the warmup-adjacent draws that a shorter run would also have included.
+    """
+    samples, _ = hmc_and_constrained(run_dir, rm, hmc_samples, need_con=False)
+    if samples is None:
+        return None
+    n_chains, n_draws, n_params = samples.shape
+    if n_draws < 8 * MIN_CHAINS:
+        print(f"\nESS-vs-draws: {n_draws} draws per chain is too short to subdivide; "
+              f"skipping.")
+        return None
+
+    if report is None:
+        report = diagnose_convergence(samples, model=rm.model)
+    idx = worst_rhat_columns(report, n_worst)
+    names = [rm.labels[i] for i in idx]
+
+    # Geometric spacing: the interesting behaviour (a curve flattening) shows up as a
+    # departure from the unit slope on log-log axes, and linear spacing wastes most of the
+    # points on the top half of the run where nothing changes.
+    lengths = np.unique(np.geomspace(max(64, n_draws // 64), n_draws, n_prefix).astype(int))
+
+    ess = np.full((len(lengths), len(idx)), np.nan)
+    for k, n in enumerate(lengths):
+        sub = np.ascontiguousarray(samples[:, :n, idx])
+        rep = diagnose_convergence(sub, z_param_names=[report.names[i] for i in idx])
+        ess[k] = np.minimum(np.asarray(rep.ess_bulk, dtype=float),
+                            np.asarray(rep.ess_tail, dtype=float))
+
+    total = lengths * n_chains
+    fig, ax = plt.subplots(figsize=(6.5, 5))
+    for j, name in enumerate(names):
+        ax.plot(total, ess[:, j], marker="o", ms=3, label=name)
+    # Reference: exactly linear growth anchored at the final point of the worst parameter.
+    ref_j = int(np.argmin(ess[-1]))
+    ax.plot(total, ess[-1, ref_j] * total / total[-1], "k--", lw=1,
+            label="linear growth")
+    ax.axhline(ESS_FLOOR_TOTAL, color="r", ls=":", lw=1,
+               label=f"floor {ESS_FLOOR_TOTAL:.0f}")
+    ax.set_xscale("log")
+    ax.set_yscale("log")
+    ax.set_xlabel("total draws used (all chains)")
+    ax.set_ylabel("min(bulk, tail) ESS")
+    ax.set_title(f"ESS vs draws -- {n_worst} worst-Rhat parameters")
+    ax.legend(fontsize=7)
+    fig.tight_layout()
+    path = Path(out_dir) / "ess_vs_draws.png"
+    fig.savefig(path, dpi=150)
+    plt.close(fig)
+
+    # The slope over the last decade-ish is what the decision hangs on; an early transient
+    # while the chains are still finding the typical set would bias a whole-range fit.
+    half = len(lengths) // 2
+    lg = np.log(total[half:])
+    print("\n=== ESS vs draws (the free test before a longer run) ===")
+    print(f"{'parameter':<{max(len(n) for n in names)}}{'ESS now':>10}{'slope':>8}")
+    slopes = []
+    for j, name in enumerate(names):
+        y = ess[half:, j]
+        good = np.isfinite(y) & (y > 0)
+        slope = (np.polyfit(lg[good], np.log(y[good]), 1)[0]
+                 if good.sum() >= 2 else np.nan)
+        slopes.append(slope)
+        print(f"{name:<{max(len(n) for n in names)}}{ess[-1, j]:>10.0f}{slope:>8.2f}")
+    worst_slope = float(np.nanmin(slopes)) if np.any(np.isfinite(slopes)) else np.nan
+    if not np.isfinite(worst_slope):
+        print("Slope undefined (ESS non-positive or non-finite somewhere) -- read the "
+              "figure directly.")
+    elif worst_slope > 0.7:
+        print(f"Slope ~{worst_slope:.2f}, near-linear: ESS is still growing with draws, so "
+              f"a longer run buys what it costs. 4x the draws for ~4x the ESS.")
+    else:
+        print(f"Slope ~{worst_slope:.2f}, SUBLINEAR: more draws will not fix this. Go to "
+              f"the model or the surrogate (guide 04 sec. 4.3 step 3), not to a longer run.")
+    return path
+
+
+def rank_plot(run_dir, out_dir, rm, hmc_samples=None, report=None, n_worst=6, n_bins=20,
+              max_chains=10):
+    """Pooled-rank histograms, one panel per chain, for the worst-R-hat parameters.
+
+    Vehtari et al. recommend these over trace plots: ranks are computed over the pooled
+    draws of all chains, so if every chain targets the same distribution each chain's ranks
+    are uniform. A chain that is offset shows as a sloped or one-sided histogram, and it
+    shows *which* chain -- which R-hat, a single number over all chains, cannot say. This
+    catches a single misbehaving chain at R-hat values that clear a loose gate.
+
+    Computed here rather than through ``arviz.plot_rank``: in arviz 1.2 that function draws
+    a rank Delta-ECDF, not the per-chain histogram described above, and returns an
+    arviz-plots ``PlotCollection`` rather than a matplotlib figure. The statistic itself is
+    a pooled ``argsort``-of-``argsort``, which is exact and worth no dependency.
+
+    Ranks are taken in unconstrained space, matching where R-hat is computed. Every prior's
+    scalar z->x map is strictly monotone, so per-parameter ranks are identical in either
+    space; taking them in z keeps the figure aligned with the table it explains.
+
+    At most ``max_chains`` chains are drawn. Runs here go to 50 chains, and a 6x50 grid of
+    panels is ~56 inches wide and unreadable. The chains shown are the ones that deviate
+    most from uniform, by the chi-square statistic of their rank histogram, so the panel
+    that would have revealed the problem is the one that survives the cap -- a first-N slice
+    could drop the only bad chain. Ranks are always pooled over ALL chains before the cut;
+    only the drawing is subset, so each panel still means "this chain against the whole
+    run". The chain indices drawn are printed, and they index the original chain axis.
+    """
+    samples, _ = hmc_and_constrained(run_dir, rm, hmc_samples, need_con=False)
+    if samples is None:
+        return None
+    n_chains, n_draws, n_params = samples.shape
+
+    if report is None:
+        report = diagnose_convergence(samples, model=rm.model)
+    idx = worst_rhat_columns(report, n_worst)
+
+    edges = np.linspace(0.0, 1.0, n_bins + 1)
+    expected = n_draws / n_bins
+
+    # Pooled ranks first, for every chain: the cut below is about what to draw, never about
+    # what the ranks are relative to.
+    counts = np.empty((len(idx), n_chains, n_bins))
+    for r, i in enumerate(idx):
+        x = samples[:, :, i].reshape(-1)
+        # Fractional pooled rank in [0, 1): scattering arange into argsort order gives each
+        # draw its rank among all n_chains*n_draws of them.
+        ranks = np.empty(x.size, dtype=float)
+        ranks[np.argsort(x, kind="stable")] = np.arange(x.size)
+        ranks = (ranks / x.size).reshape(n_chains, n_draws)
+        for c in range(n_chains):
+            counts[r, c] = np.histogram(ranks[c], bins=edges)[0]
+
+    # Chi-square of each chain's histogram against uniform, summed over the plotted
+    # parameters. Largest first, so a cut keeps the chains worth looking at.
+    chisq = ((counts - expected) ** 2 / expected).sum(axis=(0, 2))
+    shown = sorted(int(c) for c in np.argsort(chisq)[::-1][:min(max_chains, n_chains)])
+
+    n_rows, n_cols = len(idx), len(shown)
+    fig, axes = plt.subplots(
+        n_rows, n_cols, figsize=(1.1 * n_cols + 1.5, 1.5 * n_rows),
+        squeeze=False, sharex=True,
+    )
+    centres = 0.5 * (edges[:-1] + edges[1:])
+    for r, i in enumerate(idx):
+        for k, c in enumerate(shown):
+            ax = axes[r][k]
+            ax.bar(centres, counts[r, c], width=1.0 / n_bins, color="0.4")
+            ax.axhline(expected, color="r", ls=":", lw=0.8)
+            ax.set_yticks([])
+            if r == 0:
+                ax.set_title(f"chain {c}", fontsize=7)
+            if k == 0:
+                ax.set_ylabel(f"{rm.labels[i]}\nRhat {report.rhat[i]:.3f}", fontsize=6)
+    for k in range(n_cols):
+        axes[-1][k].set_xlabel("rank", fontsize=6)
+        axes[-1][k].tick_params(labelsize=5)
+    fig.suptitle("Pooled-rank histograms -- uniform if the chains agree", fontsize=9)
+    fig.tight_layout()
+    path = Path(out_dir) / "rank_plots.png"
+    fig.savefig(path, dpi=150)
+    plt.close(fig)
+
+    print(f"\nRank plots ({len(idx)} worst-Rhat parameters x {n_cols} chains): {path}")
+    if n_cols < n_chains:
+        print(f"Showing the {n_cols} least-uniform of {n_chains} chains "
+              f"(indices {list(shown)}); ranks are pooled over all {n_chains}.")
+    print("Uniform panels mean the chains agree. A sloped or one-sided panel names the "
+          "chain that disagrees -- something Rhat, one number over all chains, cannot do.")
+    return path
+
+
 def corner_plot(run_dir, out_dir, rm, subset=None, hmc_samples=None, con=None):
     """Corner plot of the constrained posterior.
 
@@ -1177,34 +1549,29 @@ def corner_plot(run_dir, out_dir, rm, subset=None, hmc_samples=None, con=None):
     in one figure is unreadable at print size. Columns are located structurally by
     ``column``, so nothing here depends on a parameter's index.
 
-    Thinned to ``plot_corner.MAX_SAMPLES_FULL`` draws via ``plot_corner.thin_to_cap`` --
-    the same helper ``plot_corner.py`` uses for its own full corner, imported here (locally,
-    to avoid a diagnose<->plot_corner import cycle) rather than reimplemented. On the
-    largest run (2M draws) this figure used to cost ~2.4s in ``corner.corner`` and ~14.4s in
-    ``savefig``; thinning is for the *figure* only -- it never touches the R-hat/ESS table
-    or the percentiles, which are computed on every draw. The thinning factor is printed so
-    the figure never silently implies more draws than it shows.
+    The figure itself is drawn by ``plot_corner.make_corner`` rather than by a second
+    ``corner.corner`` call site here. Those two call sites had drifted: ``make_corner``
+    carries a guard that refuses a corner with fewer draws than it has dimensions (which
+    ``corner`` renders as an unreadable mess of empty panels rather than raising), and this
+    function did not. Sharing the renderer is what makes the guard apply to both.
+
+    Thinned to ``plot_corner.MAX_SAMPLES_FULL`` draws via ``plot_corner.thin_to_cap``. On
+    the largest run (2M draws) this figure used to cost ~2.4s in ``corner.corner`` and
+    ~14.4s in ``savefig``; thinning is for the *figure* only -- it never touches the
+    R-hat/ESS table or the percentiles, which are computed on every draw. The thinning
+    factor is printed so the figure never silently implies more draws than it shows.
+
+    ``plot_corner`` is imported locally, not at module scope, to avoid a
+    diagnose<->plot_corner import cycle.
 
     ``hmc_samples`` / ``con``: see ``convergence_table``'s docstring -- same reuse.
     """
-    try:
-        import corner
-    except ImportError:
-        print("corner not installed; skipping corner plot.")
+    samples, con_3d = hmc_and_constrained(run_dir, rm, hmc_samples, con)
+    if samples is None:
         return None
+    n_chains, n_draws, n_params = con_3d.shape
 
-    if hmc_samples is None:
-        hmc = load_checkpoint(run_dir, "hmc")
-        if hmc is None:
-            return None
-        hmc_samples = np.asarray(hmc["samples"])
-    n_chains, n_draws, n_params = hmc_samples.shape
-
-    if con is None:
-        con = to_constrained(rm.model, hmc_samples.reshape(-1, n_params))
-    con_3d = np.asarray(con).reshape(n_chains, n_draws, n_params)
-
-    from plot_corner import thin_to_cap, MAX_SAMPLES_FULL
+    from plot_corner import thin_to_cap, make_corner, MAX_SAMPLES_FULL
     thinned, factor = thin_to_cap(con_3d, MAX_SAMPLES_FULL)
     if factor > 1:
         print(f"Corner plot: thinning {n_chains * n_draws} -> "
@@ -1221,17 +1588,23 @@ def corner_plot(run_dir, out_dir, rm, subset=None, hmc_samples=None, con=None):
         ]
     idx = list(subset)
 
-    fig = corner.corner(
-        con_flat[:, idx],
-        labels=[rm.labels[i] for i in idx],
-        quantiles=[0.16, 0.5, 0.84],
-        show_titles=True,
-        title_fmt=".3f",
-    )
-    path = Path(out_dir) / "corner.png"
-    fig.savefig(path, dpi=150, bbox_inches="tight")
-    plt.close(fig)
-    return path
+    try:
+        return make_corner(
+            con_flat[:, idx],
+            labels=[rm.labels[i] for i in idx],
+            truths=None,
+            out_path=Path(out_dir) / "corner.png",
+            show_titles=True,
+            dpi=150,
+            # Held at the size corner chose for this 6-parameter figure before the two call
+            # sites were merged, so the output is unchanged by the refactor rather than
+            # quietly reformatted. make_corner's default (0.9 in/param) is tuned for the
+            # 36-parameter full corner and would shrink this one.
+            figsize=(12, 12),
+        )
+    except ImportError:
+        print("corner not installed; skipping corner plot.")
+        return None
 
 
 def main():
@@ -1311,15 +1684,37 @@ def main():
     # -- only reported, so it is attributable rather than mysterious. It scales with total
     # draws: ~30s rank-Rhat + ~25s bulk/tail-ESS on a 2M-draw run (50 chains x 40000 steps),
     # A100. See convergence_table's docstring.
+    report = None
+    if hmc_samples is not None:
+        t0 = time.perf_counter()
+        report = diagnose_convergence(hmc_samples, model=rm.model)
+        print(f"[timing] ArviZ rank-Rhat/ESS: {time.perf_counter() - t0:.1f}s")
+
     t0 = time.perf_counter()
-    worst_rhat = convergence_table(run_dir, rm, hmc_samples=hmc_samples, con=con)
-    print(f"[timing] convergence table (ArviZ rank-Rhat/ESS): {time.perf_counter() - t0:.1f}s")
+    worst_rhat = convergence_table(
+        run_dir, rm, hmc_samples=hmc_samples, con=con, report=report)
+    print(f"[timing] convergence table: {time.perf_counter() - t0:.1f}s")
 
     theta_E_check(run_dir, rm, hmc_samples=hmc_samples, con=con)
 
     p = svi_loss_plot(run_dir, out_dir)
     if p:
         print(f"SVI loss: {p}")
+
+    # The two diagnostics Vehtari et al. recommend for deciding what to do about an elevated
+    # Rhat, both computed from the draws already on disk. ESS-vs-draws answers "would a
+    # longer run help?" without paying for the longer run; the rank plots answer "which
+    # chain?", which Rhat cannot. See guide 04 sec. 4.3.
+    t0 = time.perf_counter()
+    p = ess_vs_draws_plot(run_dir, out_dir, rm, hmc_samples=hmc_samples, report=report)
+    print(f"[timing] ESS vs draws: {time.perf_counter() - t0:.1f}s")
+    if p:
+        print(f"ESS vs draws: {p}")
+
+    t0 = time.perf_counter()
+    rank_plot(run_dir, out_dir, rm, hmc_samples=hmc_samples, report=report)
+    print(f"[timing] rank plots: {time.perf_counter() - t0:.1f}s")
+
     t0 = time.perf_counter()
     p = corner_plot(run_dir, out_dir, rm, hmc_samples=hmc_samples, con=con)
     print(f"[timing] corner plot: {time.perf_counter() - t0:.1f}s")
