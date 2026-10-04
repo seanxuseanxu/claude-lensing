@@ -1,0 +1,66 @@
+==============================================================================
+DESI257 r3_unmasked -- EXPERIMENTAL adaptive supersampler validation
+==============================================================================
+
+num_pix=80 (80x80), configured supersample=2, reference_supersample=64
+
+Reference self-certification (reused from undersampling_recheck.py -- same SceneSimulator construction compare_to_reference uses internally, NOT re-measured here):
+  reference_self_error = {'native': 0.01774030092126682, 'subgrid': 0.07181432006694986}  (threshold tolerance/_REFERENCE_MARGIN = 0.05)
+  reference_converged = False  -- ALL numbers below are reported, NOT CERTIFIED.
+
+Uniform ladder for comparison (ss_ref=64, from undersampling_report.txt):
+  ss=1  max|d|/sigma 5.290  delta_chi2 mean +720.5  -> FAIL
+  ss=2  max|d|/sigma 3.697  delta_chi2 mean -221.1  -> FAIL  (configured rung)
+  ss=4  max|d|/sigma 1.497  delta_chi2 mean  -65.0  -> FAIL
+  ss=8  max|d|/sigma 0.439  delta_chi2 mean  -34.3  -> FAIL  (0.2 sigma/px tolerance)
+
+------------------------------------------------------------------------------
+SETTING: library_default -- DEFAULT_SNR_LEVELS as shipped (calibrated on the bundled demo system, not DESI257)
+  snr_levels=((10.0, 4.0), (7.0, 2.0), (2.0, 1.0), (1.0, 0.5), (-inf, 0.25)), smooth=1, dilate=2
+------------------------------------------------------------------------------
+  grid: AdaptiveGrid(shape=(80, 80), n_points=65500, pixels_per_factor={1.0: 1180, 2.0: 1600, 4.0: 3620})
+  [timing] grid construction: 0.001s
+  [timing] adaptive render (9-sample batch, incl. jit compile): 0.49s
+  n_points = 65500  (10.234 per native pixel; native supersample=1 uniform cost is 6400); equivalent uniform supersample = 3.20 (uniform ss=2 costs 25600, ss=8 costs 409600, ss=16 costs 1638400)
+  [bin_first] max|delta|/sigma = 0.778 at sample/pix (np.int64(0), np.int64(4), np.int64(18)), delta_chi2 mean +16.83  min +7.08  max +32.16  -> FAIL (0.2 sigma/px tolerance)  [timing: 28.20s incl. reference render]
+  [  subgrid] max|delta|/sigma = 4.034 at sample/pix (np.int64(7), np.int64(39), np.int64(39)), delta_chi2 mean -144.07  min -191.55  max -83.18  -> FAIL (0.2 sigma/px tolerance)  [timing: 38.37s incl. reference render]
+  saved factor map -> adaptive_factor_map_library_default.png
+
+------------------------------------------------------------------------------
+SETTING: factor8_opt_in -- default + factor-8 opted in above SNR 14, per the module's own suggested opt-in
+  snr_levels=((14.0, 8.0), (10.0, 4.0), (7.0, 2.0), (2.0, 1.0), (1.0, 0.5), (-inf, 0.25)), smooth=1, dilate=2
+------------------------------------------------------------------------------
+  grid: AdaptiveGrid(shape=(80, 80), n_points=187324, pixels_per_factor={1.0: 1180, 2.0: 1600, 4.0: 1082, 8.0: 2538})
+  [timing] grid construction: 0.001s
+  [timing] adaptive render (9-sample batch, incl. jit compile): 0.59s
+  n_points = 187324  (29.269 per native pixel; native supersample=1 uniform cost is 6400); equivalent uniform supersample = 5.41 (uniform ss=2 costs 25600, ss=8 costs 409600, ss=16 costs 1638400)
+  [bin_first] max|delta|/sigma = 0.134 at sample/pix (np.int64(1), np.int64(62), np.int64(36)), delta_chi2 mean +1.14  min -2.62  max +5.00  -> PASS (0.2 sigma/px tolerance)  [timing: 24.98s incl. reference render]
+  [  subgrid] max|delta|/sigma = 3.700 at sample/pix (np.int64(4), np.int64(39), np.int64(39)), delta_chi2 mean -159.77  min -200.48  max -107.14  -> FAIL (0.2 sigma/px tolerance)  [timing: 38.31s incl. reference render]
+  saved factor map -> adaptive_factor_map_factor8_opt_in.png
+
+------------------------------------------------------------------------------
+SETTING: aggressive_core -- lower thresholds pushing more of the compact core to factor 8, wider dilate
+  snr_levels=((5.0, 8.0), (3.0, 4.0), (1.5, 2.0), (0.5, 1.0), (-inf, 0.5)), smooth=1, dilate=3
+------------------------------------------------------------------------------
+  grid: AdaptiveGrid(shape=(80, 80), n_points=394576, pixels_per_factor={4.0: 313, 8.0: 6087})
+  [timing] grid construction: 0.001s
+  [timing] adaptive render (9-sample batch, incl. jit compile): 0.91s
+  n_points = 394576  (61.653 per native pixel; native supersample=1 uniform cost is 6400); equivalent uniform supersample = 7.85 (uniform ss=2 costs 25600, ss=8 costs 409600, ss=16 costs 1638400)
+  [bin_first] max|delta|/sigma = 0.134 at sample/pix (np.int64(1), np.int64(62), np.int64(36)), delta_chi2 mean +1.29  min -2.42  max +5.17  -> PASS (0.2 sigma/px tolerance)  [timing: 26.62s incl. reference render]
+  [  subgrid] max|delta|/sigma = 3.700 at sample/pix (np.int64(4), np.int64(39), np.int64(39)), delta_chi2 mean -159.62  min -200.45  max -106.91  -> FAIL (0.2 sigma/px tolerance)  [timing: 36.27s incl. reference render]
+  saved factor map -> adaptive_factor_map_aggressive_core.png
+
+==============================================================================
+SUMMARY
+==============================================================================
+setting             n_points  uniform_eq  bin_first max|d|/s  subgrid max|d|/s  bin_first dchi2  render_s
+library_default        65500        3.20               0.778             4.034             16.8      0.49
+factor8_opt_in        187324        5.41               0.134             3.700              1.1      0.59
+aggressive_core       394576        7.85               0.134             3.700              1.3      0.91
+
+Module-stated limitations (adaptive_supersample.py docstring, NOT re-derived here):
+  - EXPERIMENTAL: 'moves faster than the core scene API; treat its interface as less stable' (how-to admonition).
+  - PSF convention: bin-first (scatter to native grid, convolve with the native kernel) -- NOT the subgrid_kernel supersampled convolution the stock ss>=2 pipeline uses. The two conventions can differ by several sigma at a cuspy peak (module docstring: ~4 sigma on the bundled demo); this project's own uniform ladder independently measured a 3.75 sigma convention gap on DESI257 at ss_ref=64. Reported above as the 'subgrid' psf_mode delta, which conflates this gap with the factor map's own quadrature error and is NOT reducible by refining the grid.
+  - The factor map is frozen from the DATA at construction, so it is only accurate for models whose flux stays within `dilate` native pixels of where the data shows flux. Early burn-in proposals displaced further than that, or model features (e.g. a predicted faint counter-image) the data does not show at all, are rendered at the coarse tier and their likelihood/gradient carries the corresponding quadrature error -- compare_to_reference only certifies the exact params tested.
+  - DEFAULT_SNR_LEVELS are 'STARTING POINTS calibrated on the bundled demo system'; the module explicitly says to re-derive per-system with compare_to_reference, which is what the setting sweep above does.
+  - The map is static (frozen, not model-derived) specifically to keep the likelihood's shape fixed under jit and smooth in the parameters -- a real constraint on any HMC use, not just a performance choice.

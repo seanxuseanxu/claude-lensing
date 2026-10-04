@@ -101,10 +101,15 @@ def test_masked_chisq(cfg):
     red_chi2_true = float(np.asarray(red_chi2_true)[0])
 
     with tempfile.TemporaryDirectory() as tmp:
-        chi2_masked, _ = diagnose.residual_figure(
+        chi_squares, _ = diagnose.residual_figure(
             tmp, cfg, model, prob2, obs, err_map, im_sim, "verify-synthetic", z,
             mask=mask,
         )
+    # residual_figure now returns a ChiSquares namedtuple (item 5's centre-masked number
+    # alongside the full-field one). This test is about the full-field/masked-pixels
+    # equality item 3 guarantees -- ProbModel's red_chi2 was computed with NO core
+    # exclusion -- so it must compare against `.full`, not the new `.core_masked` field.
+    chi2_masked = chi_squares.full
 
     # The shared helper itself, called directly on the same normalised residual -- exactly
     # what plot_overview.py's panel now does instead of its own copy of the formula. This

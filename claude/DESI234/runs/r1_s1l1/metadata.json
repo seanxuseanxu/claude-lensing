@@ -37,6 +37,7 @@
     ]
   ],
   "n_masked_pixels": 5959,
+  "supersample": 2,
   "source_prior_version": 1,
   "lens_light_prior_version": 1,
   "timings": {

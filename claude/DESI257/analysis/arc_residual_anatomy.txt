@@ -1,0 +1,79 @@
+Run: /global/u1/s/seanjx/claude-lensing/claude/DESI257/runs/r3_unmasked
+Point estimate: HMC median
+Deflector centre (row, col): (39.397, 39.236), delta_pix=0.065"/px
+
+=== Region: E arc ===
+  selection: r in [1.76, 1.92]", PA in [40.0, 110.0] deg (array-space), model > 3.0 sigma, mask-kept
+  84 pixels selected, peak model significance 26.8 sigma
+  local chi2_nu before any correction: 5.4070 (over 84 px)
+
+  --- Global (row, col) translation fit ---
+    fit coefficients: a_row=-0.0454, a_col=+0.2964 (sigma per px-shift)
+    implied shift: s_row=+0.0454 px, s_col=-0.2964 px
+    |shift| = 0.2998 px = 0.0195 arcsec
+    local chi2_nu after removing this shift: 4.6204
+    fraction of local chi2 explained: 0.1455
+
+  --- Tangential/radial fit about the deflector centre ---
+    fit coefficients: a_tan=+0.2056, a_rad=+0.2567 (sigma per px-shift)
+    implied shift: s_tan=-0.2056 px, s_rad=-0.2567 px
+    |shift| = 0.3289 px = 0.0214 arcsec
+    local chi2_nu after removing this component: 4.6551
+    fraction of local chi2 explained: 0.1391
+
+  VERDICT (E arc): SUBSTRUCTURE -- best-fit shift model removes 15% of this region's local chi-squared.
+
+=== Region: N blob ===
+  selection: r in [1.4, 1.7]", PA in [320.0, 20.0] deg (array-space), model > 3.0 sigma, mask-kept
+  118 pixels selected, peak model significance 36.8 sigma
+  local chi2_nu before any correction: 1.7133 (over 118 px)
+
+  --- Global (row, col) translation fit ---
+    fit coefficients: a_row=-0.0131, a_col=-0.0079 (sigma per px-shift)
+    implied shift: s_row=+0.0131 px, s_col=+0.0079 px
+    |shift| = 0.0153 px = 0.0010 arcsec
+    local chi2_nu after removing this shift: 1.7097
+    fraction of local chi2 explained: 0.0021
+
+  --- Tangential/radial fit about the deflector centre ---
+    fit coefficients: a_tan=-0.0311, a_rad=+0.0253 (sigma per px-shift)
+    implied shift: s_tan=+0.0311 px, s_rad=-0.0253 px
+    |shift| = 0.0401 px = 0.0026 arcsec
+    local chi2_nu after removing this component: 1.6979
+    fraction of local chi2 explained: 0.0090
+
+  VERDICT (N blob): SUBSTRUCTURE -- best-fit shift model removes 1% of this region's local chi-squared.
+
+=== Region: SW object ===
+  selection: r in [2.4, 2.76]", PA in [195.0, 240.0] deg (array-space), model > 3.0 sigma, mask-kept
+  169 pixels selected, peak model significance 34.2 sigma
+  local chi2_nu before any correction: 2.9697 (over 169 px)
+
+  --- Global (row, col) translation fit ---
+    fit coefficients: a_row=+0.0315, a_col=+0.1177 (sigma per px-shift)
+    implied shift: s_row=-0.0315 px, s_col=-0.1177 px
+    |shift| = 0.1219 px = 0.0079 arcsec
+    local chi2_nu after removing this shift: 2.7383
+    fraction of local chi2 explained: 0.0779
+
+  --- Tangential/radial fit about the deflector centre ---
+    fit coefficients: a_tan=-0.0793, a_rad=-0.0998 (sigma per px-shift)
+    implied shift: s_tan=+0.0793 px, s_rad=+0.0998 px
+    |shift| = 0.1275 px = 0.0083 arcsec
+    local chi2_nu after removing this component: 2.7139
+    fraction of local chi2 explained: 0.0862
+
+  VERDICT (SW object): SUBSTRUCTURE -- best-fit shift model removes 9% of this region's local chi-squared.
+
+=== Cross-region comparison (row, col) shifts, pixels ===
+region           s_row     s_col    |s| (px)  |s| (arcsec)
+E arc          +0.0454   -0.2964      0.2998        0.0195
+N blob         +0.0131   +0.0079      0.0153        0.0010
+SW object      -0.0315   -0.1177      0.1219        0.0079
+
+Pairwise cosine similarity of (row, col) shift vectors (1 = same direction, -1 = opposite, ~0 = unrelated):
+  E arc vs N blob: -0.379
+  E arc vs SW object: +0.916
+  N blob vs SW object: -0.719
+
+CROSS-REGION VERDICT: All three regions read SUBSTRUCTURE independently -- none of the fitted shifts explains much of its region's chi-squared, so there is nothing consistent to compare directionally; a single rigid displacement is not indicated anywhere.

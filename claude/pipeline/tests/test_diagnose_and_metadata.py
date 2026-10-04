@@ -5,21 +5,29 @@
     - ``run_fit.merge_prior_metadata``: a ``--stages hmc`` rerun must not overwrite prior
       stages' recorded metadata with today's argparse defaults (KNOWN_ISSUES.md item 1).
 
-Run directly (pytest is not installed in this env), CPU-only like ``test_mask.py`` --
-nothing here builds a real scene or runs inference, so no ``--lens`` and no GPU:
+Plus, added 2026-08-11, one test that is NOT CPU-only/scene-free like the rest of this
+file: ``test_rebuild_model_uses_recorded_supersample_over_todays_config`` needs DESI257's
+real data files and builds a real model, the same way ``test_foreground_roundtrip.py``
+does, because it exercises ``diagnose.rebuild_model`` end to end. See its own docstring.
+
+Run directly (pytest is not installed in this env):
 
     PYTHONPATH=claude/pipeline python claude/pipeline/tests/test_diagnose_and_metadata.py
 """
 
 import io
+import json
 import sys
+import tempfile
 from contextlib import redirect_stdout
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
+from pathlib import Path
 from typing import Optional
 
 import numpy as np
 
 import diagnose
+import lenses
 import run_fit
 
 from tensorflow_probability.substrates.jax import distributions as tfd
@@ -191,6 +199,82 @@ def test_tension_handles_a_skewed_prior_in_quantile_space():
     assert rows == [], "the prior's own median must register as zero tension"
 
 
+# -- rebuild_model: supersample is per-run, not read from today's config -----------------
+
+def test_rebuild_model_uses_recorded_supersample_over_todays_config():
+    """KNOWN_ISSUES.md item 8's fix, extended from ``mask_circles`` to ``supersample``: a
+    run recorded at supersample=2 must rebuild at 2 even when the lens's config.py says 4
+    *today*. This is the exact hazard the task that added this test exists to close --
+    DESI257's config was about to move 2 -> 4, which would otherwise have silently
+    corrupted re-diagnosis of the three archived runs (r1_s1l1, r2_s2l2, r3_unmasked),
+    all fitted at ss=2.
+
+    Needs DESI257's real data files and builds a real model -- unlike the rest of this
+    file, which is pure/scene-free -- because the thing under test is
+    ``diagnose.rebuild_model`` end to end, through ``data.load``'s ``supersample=``
+    override. ``lenses.load`` is monkeypatched to hand back a config claiming
+    supersample=4 (simulating "today's config changed") without touching the file on
+    disk, while the metadata.json this test writes records supersample=2 -- the value the
+    run was actually fitted at.
+    """
+    real_cfg = lenses.load("DESI257")
+    assert real_cfg.supersample == 2, (
+        "this test assumes DESI257's config is at its historical supersample=2; if it "
+        "has since been deliberately raised, update this assertion and the scenario it "
+        "guards against"
+    )
+    bumped_cfg = replace(real_cfg, supersample=4)
+
+    orig_load = lenses.load
+    lenses.load = lambda name: bumped_cfg if name == "DESI257" else orig_load(name)
+    try:
+        with tempfile.TemporaryDirectory() as tmp:
+            metadata = {
+                "api": "scene",
+                "lens": "DESI257",
+                "n_source": 2,
+                "n_lens_light": 2,
+                "mask_circles": None,
+                "n_masked_pixels": real_cfg.num_pix * real_cfg.num_pix,
+                "supersample": 2,
+            }
+            with open(Path(tmp) / "metadata.json", "w") as f:
+                json.dump(metadata, f)
+            rm = diagnose.rebuild_model(tmp, quiet=True)
+    finally:
+        lenses.load = orig_load
+
+    assert rm.sim_config.supersample == 2, (
+        f"rebuild_model used supersample={rm.sim_config.supersample}, but the run's "
+        f"metadata.json recorded 2 and today's (monkeypatched) config says 4 -- the "
+        f"recorded value must win"
+    )
+
+
+def test_rebuild_model_falls_back_to_config_when_supersample_key_absent():
+    """A run written before ``run_fit.py`` recorded ``supersample`` (no such key in its
+    metadata.json) must fall back to the lens's current config, same as ``mask_circles``
+    did before KNOWN_ISSUES.md item 8's fix. Uses DESI257 unmodified, so the fallback
+    value and the config value agree and there is nothing to silently get wrong.
+    """
+    real_cfg = lenses.load("DESI257")
+    with tempfile.TemporaryDirectory() as tmp:
+        metadata = {
+            "api": "scene",
+            "lens": "DESI257",
+            "n_source": 2,
+            "n_lens_light": 2,
+            "mask_circles": None,
+            "n_masked_pixels": real_cfg.num_pix * real_cfg.num_pix,
+            # no "supersample" key
+        }
+        with open(Path(tmp) / "metadata.json", "w") as f:
+            json.dump(metadata, f)
+        rm = diagnose.rebuild_model(tmp, quiet=True)
+
+    assert rm.sim_config.supersample == real_cfg.supersample
+
+
 # -- run_fit.merge_prior_metadata ---------------------------------------------------------
 
 def _base_config(**overrides):
@@ -268,6 +352,123 @@ def test_merge_no_prior_metadata_is_a_no_op():
     assert merged == config
 
 
+# -- core_excluded_keep / ChiSquares (item 5's centre-masked chi-squared) ----------------
+#
+# The core mask is a REPORTING-only exclusion (KNOWN_ISSUES.md item 5): it never touches
+# the likelihood. These tests are all against ``diagnose.core_excluded_keep``, the pure
+# helper, plus one test of ``residual_figure``'s own source (see test_check_theta_E.py for
+# the precedent of pinning an expression rather than exercising a function that needs a
+# full model/prob to invoke) to confirm the radius is DERIVED, not a second hardcoded 8.
+
+def _brute_force_disc_excluded(shape, centroid_pix, radius_px, keep=None):
+    """Independent (non-vectorised-clever) computation of the same disc, so the test does
+    not just re-run ``core_excluded_keep``'s own arithmetic against itself."""
+    keep = np.ones(shape, dtype=bool) if keep is None else np.asarray(keep, dtype=bool)
+    out = keep.copy()
+    for r in range(shape[0]):
+        for c in range(shape[1]):
+            d = ((r - centroid_pix[0]) ** 2 + (c - centroid_pix[1]) ** 2) ** 0.5
+            if d < radius_px:
+                out[r, c] = False
+    return out
+
+
+def test_core_excluded_keep_matches_independent_disc_count():
+    shape = (41, 41)
+    centroid = (20.0, 20.0)  # dead centre of an odd-sized grid
+    radius_px = 5.0
+    got = diagnose.core_excluded_keep(shape, centroid, radius_px)
+    expected = _brute_force_disc_excluded(shape, centroid, radius_px)
+    assert got.dtype == bool
+    assert got.shape == shape
+    assert np.array_equal(got, expected), "excluded pixel set disagrees with an independent computation"
+    n_excluded = int((~got).sum())
+    assert n_excluded == int((~expected).sum())
+    assert n_excluded > 0
+
+
+def test_core_excluded_keep_is_symmetric_about_a_centred_centroid():
+    shape = (41, 41)
+    centroid = (20.0, 20.0)
+    radius_px = 6.0
+    keep = diagnose.core_excluded_keep(shape, centroid, radius_px)
+    # 180-degree rotation about the centre pixel must map the excluded disc onto itself.
+    assert np.array_equal(keep, keep[::-1, ::-1]), "disc about a centred centroid must be point-symmetric"
+
+
+def test_core_excluded_keep_handles_a_noninteger_centroid():
+    # DESI257's actual centroid_pix, per config.py: (59.397 - 20, 59.236 - 20).
+    shape = (79, 79)
+    centroid = (39.397, 39.236)
+    radius_px = 8.0
+    got = diagnose.core_excluded_keep(shape, centroid, radius_px)
+    expected = _brute_force_disc_excluded(shape, centroid, radius_px)
+    assert np.array_equal(got, expected)
+    n_excluded = int((~got).sum())
+    # Sanity: a disc of radius 8px covers pi*64 ~ 201 px; a non-integer centroid near a
+    # pixel centre should land close to that, well inside a generous band.
+    assert 150 < n_excluded < 260, f"excluded count {n_excluded} is not a sensible disc for r=8px"
+
+
+def test_core_excluded_keep_composes_with_an_existing_mask():
+    shape = (41, 41)
+    centroid = (20.0, 20.0)
+    radius_px = 5.0
+    keep = np.ones(shape, dtype=bool)
+    # Exclude a stripe far from the centroid, unrelated to the core disc.
+    keep[0, :] = False
+    got = diagnose.core_excluded_keep(shape, centroid, radius_px, keep=keep)
+    # Pixels already excluded by `keep` must stay excluded.
+    assert not got[0, :].any(), "pixels already excluded by keep must not be revived"
+    # The core disc must additionally be excluded on top of that.
+    assert not got[20, 20], "the centroid pixel itself must be excluded"
+    # Pixels outside both the stripe and the disc must remain kept.
+    assert got[20, 35], "a pixel far from both the stripe and the disc must remain kept"
+
+
+def test_core_masking_materially_lowers_chi2_on_an_injected_core_excess():
+    # The discriminating case: without this, a bug that returned the same number for
+    # `full` and `core_masked` would pass every test above.
+    shape = (60, 60)
+    centroid = (30.0, 30.0)
+    radius_px = 8.0
+    rng = np.random.default_rng(0)
+    norm_res = rng.normal(scale=1.0, size=shape)  # ordinary background residual, ~chi2_nu 1
+
+    keep_all = np.ones(shape, dtype=bool)
+    disc = _brute_force_disc_excluded(shape, centroid, radius_px, keep=keep_all)
+    core_pixels = ~disc  # True where the disc excludes, i.e. the injected-excess region
+    norm_res[core_pixels] = 40.0  # large injected core excess, as observed in DESI234/257
+
+    chi2_full, n_full = diagnose.masked_chisq(norm_res, keep_all)
+
+    keep_core = diagnose.core_excluded_keep(shape, centroid, radius_px, keep=keep_all)
+    chi2_core, n_core = diagnose.masked_chisq(norm_res, keep_core)
+
+    assert n_core < n_full, "core masking must remove pixels"
+    assert chi2_core < chi2_full - 1.0, (
+        f"core-masked chi2 ({chi2_core:.3f}) must be materially lower than full-field "
+        f"({chi2_full:.3f}) once the injected core excess is excluded"
+    )
+    # Independently computed: the mean over exactly the surviving (non-disc) pixels.
+    direct = float(np.mean(norm_res[keep_core] ** 2))
+    assert abs(chi2_core - direct) < 1e-9
+
+
+def test_residual_figure_derives_radius_px_from_the_constant_not_a_hardcoded_8():
+    import inspect
+    src = inspect.getsource(diagnose.residual_figure)
+    assert "CORE_MASK_RADIUS_ARCSEC / cfg.delta_pix" in src, (
+        "residual_figure's radius_px must be derived from CORE_MASK_RADIUS_ARCSEC / "
+        "cfg.delta_pix, not a literal pixel count; update this test if the expression "
+        "legitimately changed shape"
+    )
+    # And the constant itself must not silently become the DESI257 measurement (7px) or
+    # any other value than the documented 8px-at-0.065"/px choice.
+    assert diagnose.CORE_MASK_RADIUS_ARCSEC == 0.520
+    assert abs(diagnose.CORE_MASK_RADIUS_ARCSEC / 0.065 - 8.0) < 1e-9
+
+
 def main():
     tests = [
         test_map_hmc_verdict_passes_when_map_is_highest,
@@ -280,12 +481,20 @@ def main():
         test_tension_finds_desi234_r3_fg_gamma_where_pinning_cannot,
         test_tension_silent_on_a_healthy_parameter,
         test_tension_handles_a_skewed_prior_in_quantile_space,
+        test_rebuild_model_uses_recorded_supersample_over_todays_config,
+        test_rebuild_model_falls_back_to_config_when_supersample_key_absent,
         test_merge_carries_forward_unrun_stage_fields,
         test_merge_keeps_this_invocations_ran_stage_fields,
         test_merge_does_not_fabricate_missing_prior_fields,
         test_merge_stages_field_is_this_invocations_stages,
         test_merge_timings_preserves_prior_stages_and_overlays_new,
         test_merge_no_prior_metadata_is_a_no_op,
+        test_core_excluded_keep_matches_independent_disc_count,
+        test_core_excluded_keep_is_symmetric_about_a_centred_centroid,
+        test_core_excluded_keep_handles_a_noninteger_centroid,
+        test_core_excluded_keep_composes_with_an_existing_mask,
+        test_core_masking_materially_lowers_chi2_on_an_injected_core_excess,
+        test_residual_figure_derives_radius_px_from_the_constant_not_a_hardcoded_8,
     ]
     n_fail = 0
     for t in tests:

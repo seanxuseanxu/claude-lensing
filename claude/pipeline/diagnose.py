@@ -47,6 +47,7 @@ import argparse
 import dataclasses
 import json
 import time
+from collections import namedtuple
 from pathlib import Path
 
 import matplotlib
@@ -84,6 +85,23 @@ RHAT_THRESHOLD = 1.01
 ESS_FLOOR_TOTAL = 400.0
 ESS_FLOOR_PER_SPLIT_HALF = 50.0
 MIN_CHAINS = 4
+
+# Radius (arcsec) of the deflector-core excess-chi-squared region, for a *reporting* mask
+# only -- it never touches the likelihood or any fit. KNOWN_ISSUES.md item 5's convention is
+# to mask the core when computing chi-squared but not when modelling, so the core pixels
+# stay in every ImageData/ProbModel exactly as they were fit; only residual_figure's and
+# diagnose.main's SECOND, centre-masked chi-squared excludes them.
+#
+# Measured by claude/DESI257/analysis/core_checkerboard_extent.py: the radius enclosing 95%
+# of the excess chi-squared above the local background is 7 px on DESI257 r3_unmasked and
+# 8 px on DESI234 r3_unmasked (90% -> 7/6 px, 99% -> 8/8 px; insensitive to the choice). The
+# two systems agree to one pixel, and all three modelled systems are HST WFC3/IR F140W at
+# 0.065"/px, so this is an instrument-level constant rather than a per-lens config field.
+# Set to the larger of the two (8 px), so neither system is under-masked.
+#
+# In arcsec, not pixels, because the artifact is believed to be PSF-scale (see that script's
+# docstring) -- a property of the instrument, not of any one lens's pixel grid.
+CORE_MASK_RADIUS_ARCSEC = 0.520
 
 
 def load_checkpoint(run_dir, name):
@@ -219,7 +237,26 @@ def rebuild_model(run_dir, lens=None, theta_e_center=1.5, theta_e_width=0.35, qu
               + (f" (prior_v{foreground_prior_version})" if foreground_flag else "") +
               f", theta_E prior LogNormal(log {theta_e_center}, {theta_e_width})")
 
-    image, psf, sim_config = data.load(cfg)
+    # supersample is a PER-RUN choice, not a fact about the field like the crop -- DESI234
+    # round 3 raised it 2 -> 4 (RESULTS_v3.md sec 1/3), and the same config cannot describe
+    # both rounds. ``run_fit.py`` records the value it actually fit with under
+    # "supersample" in metadata.json, so that recorded value wins here, exactly like
+    # mask_circles above (KNOWN_ISSUES.md item 8); cfg.supersample is used only as a
+    # fallback for runs written before that key existed. Using today's config unconditionally
+    # would rebuild the ProbModel's rendering grid at a resolution the run was never fitted at.
+    if "supersample" in run_cfg:
+        supersample = int(run_cfg["supersample"])
+    else:
+        supersample = cfg.supersample
+    if supersample != cfg.supersample and not quiet:
+        print(f"NOTE: run's recorded supersample={supersample} differs from "
+              f"{cfg.name}'s current config ({cfg.supersample}); using the recorded value.")
+    elif "supersample" not in run_cfg and not quiet:
+        print(f"NOTE: {run_dir} predates the recorded 'supersample' key; falling back to "
+              f"{cfg.name}'s current config (supersample={cfg.supersample}), which may not "
+              f"be what this run was actually fitted at.")
+
+    image, psf, sim_config = data.load(cfg, supersample=supersample)
     model = priors.build_model(
         cfg,
         theta_E_center=theta_e_center,
@@ -395,6 +432,32 @@ def masked_chisq(norm_res, keep):
     return float(np.mean(norm_res[keep] ** 2)), int(keep.sum())
 
 
+def core_excluded_keep(shape, centroid_pix, radius_px, keep=None):
+    """``keep`` (default: all-True) with a disc of radius ``radius_px`` about
+    ``centroid_pix`` additionally excluded -- the *reporting*-only core mask, never applied
+    to the likelihood. ``centroid_pix`` is ``(row, col)``, matching ``LensConfig.centroid_pix``.
+
+    Uses the same convention as ``core_checkerboard_extent.py``'s ``radius_map``/annulus
+    selection (``rmap >= r``), so the two scripts agree on which pixels count as "inside":
+    a pixel is excluded when its distance to the centroid is strictly less than
+    ``radius_px``, i.e. the surviving annulus starts at ``rmap >= radius_px``.
+    """
+    if keep is None:
+        keep = np.ones(shape, dtype=bool)
+    else:
+        keep = np.asarray(keep, dtype=bool)
+    rows = np.arange(shape[0])[:, None]
+    cols = np.arange(shape[1])[None, :]
+    dist = np.hypot(rows - centroid_pix[0], cols - centroid_pix[1])
+    return keep & ~(dist < radius_px)
+
+
+ChiSquares = namedtuple(
+    "ChiSquares",
+    ["full", "n_full", "core_masked", "n_core_masked", "radius_px", "radius_arcsec"],
+)
+
+
 def map_hmc_verdict(map_lp, hmc_max_lp):
     """Return ``(passed, deficit)``: MAP's log posterior must be >= the max HMC draw's.
 
@@ -562,6 +625,18 @@ def residual_figure(out_dir, cfg, model, prob, image, err_map, im_sim, label, z_
     normalised-residual colour scale, so the figure cannot imply the fit was judged on
     pixels it never saw.
 
+    Returns a ``ChiSquares`` namedtuple (not a bare float), because this function reports
+    TWO reduced chi-squareds and neither should be readable as the other by accident
+    (KNOWN_ISSUES.md item 5). ``full`` is the number above -- everything the likelihood was
+    fit on, mask included. ``core_masked`` is the same formula, ``masked_chisq`` again, over
+    ``full``'s keep-mask with an additional disc of radius ``CORE_MASK_RADIUS_ARCSEC``
+    excluded around ``cfg.centroid_pix`` -- a *reporting*-only exclusion of the deflector
+    core's known excess-chi-squared artifact (measured by
+    ``claude/DESI257/analysis/core_checkerboard_extent.py``; see that constant's comment).
+    This never touches the likelihood: the core pixels were in the fit and stay there:
+    ``core_masked`` differs from ``full`` only in which pixels this function's own average
+    is taken over, after the fit is already done.
+
     Critical curves, caustics and the ray-traced cutout border all come from
     ``gigalens.jax.analysis``: ``LensSolver.critical_and_caustics`` and
     ``image_border_in_source_plane``. Nothing here computes det(A) by hand -- a
@@ -589,7 +664,15 @@ def residual_figure(out_dir, cfg, model, prob, image, err_map, im_sim, label, z_
     # Reduced chi-squared over the KEPT pixels, matching the ProbModel's second return
     # value (Σ(r/σ)² / event_size). Averaging over masked pixels would report a
     # chi-squared for a likelihood that was never evaluated.
-    chi2, _ = masked_chisq(norm_res, keep)
+    chi2_full, n_full = masked_chisq(norm_res, keep)
+
+    # Second, reporting-only number: the same formula, over the same keep-mask, with the
+    # deflector-core excess-chi-squared region additionally excluded. Item 5 -- the core
+    # stays in the likelihood; this is computed after the fact, for display only.
+    radius_px = CORE_MASK_RADIUS_ARCSEC / cfg.delta_pix
+    keep_core = core_excluded_keep(image.shape, cfg.centroid_pix, radius_px, keep=keep)
+    chi2_core, n_core = masked_chisq(norm_res, keep_core)
+    n_core_excluded = n_full - n_core
 
     # Grey out the excluded discs rather than drawing them: NaN + set_bad. The colour
     # scale is fixed (-5, 5 sigma) rather than data-derived, so this greying is what keeps
@@ -723,7 +806,11 @@ def residual_figure(out_dir, cfg, model, prob, image, err_map, im_sim, label, z_
     cut_note = "" if n_cut == 0 else f", {n_cut} px masked"
     im3 = ax.imshow(norm_res_m, origin="lower", extent=extent_img, cmap=cmap,
                      vmin=-5, vmax=5)
-    ax.set_title(rf"Normalised residual  ($\chi^2_\nu$ = {chi2:.2f}{cut_note})")
+    ax.set_title(
+        rf"Normalised residual  ($\chi^2_\nu$ = {chi2_full:.2f}{cut_note}, "
+        rf"core-masked $\chi^2_\nu$ = {chi2_core:.2f} [r={radius_px:.1f}px, "
+        rf"{n_core_excluded}px excl.])"
+    )
     plt.colorbar(im3, ax=ax, fraction=0.046, label=r"$\sigma$")
 
     for ax in axes.flat:
@@ -734,7 +821,11 @@ def residual_figure(out_dir, cfg, model, prob, image, err_map, im_sim, label, z_
     path = Path(out_dir) / filename
     fig.savefig(path, dpi=150, bbox_inches="tight")
     plt.close(fig)
-    return chi2, path
+    chi_squares = ChiSquares(
+        full=chi2_full, n_full=n_full, core_masked=chi2_core, n_core_masked=n_core,
+        radius_px=radius_px, radius_arcsec=CORE_MASK_RADIUS_ARCSEC,
+    )
+    return chi_squares, path
 
 
 def label_switching_check(con, spans, pnames):
@@ -1639,14 +1730,22 @@ def main():
 
     t0 = time.perf_counter()
     im_sim = simulate_from_unconstrained(rm, z_unc)
-    chi2, res_path = residual_figure(
+    chi_squares, res_path = residual_figure(
         out_dir, rm.cfg, rm.model, rm.prob, rm.image, rm.prob.error_map, im_sim, label,
         z_unc, mask=rm.mask,
     )
     print(f"[timing] residual figure: {time.perf_counter() - t0:.1f}s")
     n_kept = rm.image.size if rm.mask is None else int(np.asarray(rm.mask).sum())
-    print(f"Reduced chi-squared at point estimate: {chi2:.3f} "
+    print(f"Full-field reduced chi-squared at point estimate: {chi_squares.full:.3f} "
           f"(over {n_kept}/{rm.image.size} unmasked pixels)")
+    n_core_excluded = chi_squares.n_full - chi_squares.n_core_masked
+    print(
+        f"Core-masked reduced chi-squared (REPORTING ONLY -- core pixels remain in the "
+        f"likelihood, this is a display-only exclusion): {chi_squares.core_masked:.3f} "
+        f"(radius {chi_squares.radius_arcsec:.3f}\" = {chi_squares.radius_px:.1f}px, "
+        f"{n_core_excluded} px excluded, {chi_squares.n_core_masked}/{rm.image.size} "
+        f"pixels kept)"
+    )
     print(f"Residual figure: {res_path}")
 
     # MAP is by definition the highest-density point; if HMC draws outscore it, MAP did not

@@ -31,5 +31,6 @@
   "lens_light_prior_version": 2,
   "timings": {
     "hmc": 825.3664999008179
-  }
+  },
+  "supersample": 2
 }

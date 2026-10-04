@@ -31,5 +31,6 @@
   "lens_light_prior_version": 2,
   "timings": {
     "svi": 1243.7737312316895
-  }
+  },
+  "supersample": 2
 }

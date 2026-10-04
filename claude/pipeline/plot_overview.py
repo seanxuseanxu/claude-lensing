@@ -23,15 +23,21 @@ def make_figure(run_dir, out_dir, lens=None):
     rm = diagnose.rebuild_model(run_dir, lens=lens)
     z_unc, label = diagnose.point_estimate(run_dir)
     im_sim = diagnose.simulate_from_unconstrained(rm, z_unc)
-    chi2, path = diagnose.residual_figure(
+    chi_squares, path = diagnose.residual_figure(
         out_dir, rm.cfg, rm.model, rm.prob, rm.image, rm.prob.error_map, im_sim, label,
         z_unc, mask=rm.mask, filename="lensing_overview.png",
     )
     n_kept = rm.image.size if rm.mask is None else int(rm.mask.sum())
-    print(f"Reduced chi-squared at point estimate: {chi2:.4f} "
+    print(f"Full-field reduced chi-squared at point estimate: {chi_squares.full:.4f} "
           f"(over {n_kept}/{rm.image.size} unmasked pixels)")
+    n_core_excluded = chi_squares.n_full - chi_squares.n_core_masked
+    print(
+        f"Core-masked reduced chi-squared (reporting only, core stays in the likelihood): "
+        f"{chi_squares.core_masked:.4f} (radius {chi_squares.radius_arcsec:.3f}\" = "
+        f"{chi_squares.radius_px:.1f}px, {n_core_excluded} px excluded)"
+    )
     print(f"Figure: {path}")
-    return chi2
+    return chi_squares
 
 
 def main():

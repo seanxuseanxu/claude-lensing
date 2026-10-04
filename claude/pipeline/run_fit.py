@@ -439,6 +439,12 @@ def main():
         # run states how much data went into the likelihood without needing the mask array.
         "mask_circles": cfg.mask_circles,
         "n_masked_pixels": int(mask.sum()) if mask is not None else int(image.size),
+        # Same hazard as mask_circles: supersample feeds the ProbModel's SimulatorConfig
+        # (data.load), and diagnose.rebuild_model must reconstruct the model a run was
+        # actually fitted with, not whatever claude/<LENS>/config.py says today. Recorded
+        # here so a later config change (e.g. ss=2 -> 4) cannot silently corrupt
+        # re-diagnosis of an archived run -- see KNOWN_ISSUES.md item 8.
+        "supersample": cfg.supersample,
         # Pin the prior versions explicitly. Checkpoints store unconstrained samples, so
         # reading them back through a different prior support silently yields different
         # physical values -- diagnose.py needs to know which one produced this run.

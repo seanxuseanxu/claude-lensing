@@ -9,22 +9,40 @@ and carries a retraction banner.
 >
 > | | |
 > |---|---|
-> | `theta_E` | **1.991 [1.989, 1.994]"** |
-> | `gamma` | 1.986 [1.965, 2.007] |
-> | \|shear\| | 0.044 [0.040, 0.048] |
+> | `theta_E` | **1.991 [1.989, 1.994]" (statistical)**, with a **grid systematic of order 0.01"** — see the third caveat |
+> | `gamma` | 1.986 [1.965, 2.007] (statistical) |
+> | \|shear\| | 0.044 [0.040, 0.048] (statistical) |
 > | convergence | R-hat <= 1.001 on **all 36 params, all 50 chains, no chain selection**; min bulk-ESS 70,858 |
-> | `chi2_nu` | 1.154 over all 6400 px |
+> | `chi2_nu` | **1.065** centre-masked (6198 px, core disc of 0.520" excluded) — the number to quote; 1.154 over all 6400 px |
 >
 > Round 2's masked, bimodal fit is **retracted** — its "dominant" mode's 73.4% draw fraction
 > measured where the chains were seeded, and the mask rested on a physics error. Unmasking the
 > SW object closed the bimodality outright and relaxed `gamma` (2.54 -> 1.99), `|shear|`
 > (0.148 -> 0.044) and `|e_host|` (0.380 -> 0.143) simultaneously.
 >
-> **Two caveats before quoting `theta_E`.** The MAP still finishes 18.1 nats below the best
+> **Three caveats before quoting `theta_E`.** The MAP still finishes 18.1 nats below the best
 > HMC draw, so `diagnose.map_convergence_check` is red (down from round 2's 681.8). And the
 > PSF is unrebuilt: the deflector core is the worst-fitting region in the image
 > (`chi2_nu = 2.16`), which is `KNOWN_ISSUES.md` item 5. This is a result, not yet a
 > publishable number.
+>
+> **The third caveat is the largest, and it is new as of 2026-08-11: the quoted interval is a
+> statistical interval much narrower than a measured numerical systematic.** This fit renders
+> at `supersample = 2`, which **fails** the library's 0.2 sigma/px quadrature tolerance by 18x
+> (max 3.697 sigma/px, mean `delta_chi2` = -216 over 6400 px;
+> `analysis/undersampling_report.txt`). A first-order estimate of what that costs `theta_E`
+> gives a shift of **order 0.01"** — about 5x the +/-0.002" half-width above — though at
+> `p = 0.061` it is statistically marginal, so it is a systematic to **state, not a correction
+> to apply** (`analysis/theta_e_systematic.txt`, and the review correction appended to
+> `analysis/README.md`). **Quote `theta_E = 1.99"`; the third decimal is not defensible.**
+>
+> The grid was nonetheless left at ss=2 deliberately, and the alternatives were measured
+> rather than assumed: ss=1 is worse (5.290 sigma/px) *and* crosses the PSF-convolution
+> convention boundary; ss=4 (1.497) and ss=8 (0.439) both still fail, so raising it is not a
+> fix; and the experimental adaptive supersampler reaches tolerance cheaply but only in a
+> bin-first PSF convention, whose ~3.7 sigma gap against this fit's subgrid convention is a
+> separate modelling decision needing its own validation. ss=2 is the most-tested pathway and
+> the one this result stands on. See `RESULTS_v3.md` section 8.
 
 Round 1 (`r1_s1l1`, one source component) did not converge (worst R-hat 1.878) and pinned its
 single source Sersic `n_sersic` at its prior ceiling (6.0, sd exactly 0.0); round 2's second
@@ -304,7 +322,13 @@ values is coincidence, not a validation of guessing.
 - [x] Cutout and PSF built, both with reproducible sidecars
 - [x] `config.py` written, every number measured on this system
 - [x] `LENS_IE = 82` / `SOURCE_IE = 24` calibrated by prior-draw render (see below)
-- [ ] `verify.py --lens DESI257` passing -- not (re-)confirmed this round
+- [x] `verify.py --lens DESI257` re-confirmed 2026-08-11: **4/5 passed, 1 skipped.** Checks 1-4
+      (data conditioning, parameter count/ordering, simulator flux scale, short end-to-end
+      MAP->SVI->HMC) pass; check 5, the SVI covariance guard, reports itself **skipped**
+      because this lens config names no `svi_guard_reference` pair. The suite used to print
+      this as "5/5 passed" -- it counted the skip as a pass. Fixed the same day
+      (`verify.summarize`, tested in `tests/test_verify_summary.py`): a skipped check has
+      established nothing and is now reported as its own category.
 - [x] Round 1 fit (`r1_s1l1`, 22 params) -- did not converge (worst R-hat 1.878); single
       source Sersic pinned at its prior ceiling. Quoted only for comparison; see `RESULTS_v2.md`.
 - [x] Round 2 fit (`r2_s2l2`, 36 params) -- **multimodal, and its headline is retracted.** The
@@ -330,18 +354,25 @@ values is coincidence, not a validation of guessing.
       worth having but is not a test. `RESULTS_v3.md` section 6.
 - [x] PSF rebuild (`KNOWN_ISSUES.md` item 5) -- **withdrawn, not done.** The deflector core is
       the worst-fitting region in the image (`chi2_nu` 2.16 against the field's 1.15) and shows
-      the characteristic checkerboard, which was read here as the leading defect. It is not:
+      an excess residual there, which was read here as the leading defect. It is not:
       a pixel-scale core residual is an ordinary artifact of Sersic deflector modelling, and
       the field's convention is to mask the centre when *reporting* chi-squared and not when
-      modelling. DESI234 rebuilt its PSF and the checkerboard survived it. What is owed instead
-      is a centre-masked `chi2_nu` alongside the current one -- `KNOWN_ISSUES.md` item 5 and
-      its next-step 1.
+      modelling. DESI234 rebuilt its PSF and the excess survived it.
+      (This entry used to call the feature a "checkerboard". Measured, it does **not** alternate
+      in sign -- core lag-1 autocorrelation is +0.20 here and positive on all four fits tested.
+      `KNOWN_ISSUES.md` item 5's naming correction.)
+- [x] Centre-masked `chi2_nu`, which was what item 5 owed instead -- **done 2026-08-11.**
+      `chi2_nu` = **1.065** over 6198 px with a 0.520" core disc excluded, against 1.154 over all
+      6400. The radius was measured, not chosen (`analysis/core_checkerboard_extent.py`); the core
+      pixels remain in the likelihood. `RESULTS_v3.md` section 8.6.
 - [ ] MAP exactly at the mode -- round 3's MAP is 18.1 nats below its best HMC draw
       (round 2's was 681.8). The 20,000-step sweep point that would have tested whether a
       longer optimisation closes that gap **completed and was then lost** with the `/tmp`
       scratch it wrote to, and was not re-run: it is a diagnostic, not a gate, and round 3
       uses the 5,000-step checkpoint either way. `runs/mapsweep/README.md`.
 
-`verify.py`'s check 6 (the SVI guard) will report itself **skipped** until round 1 gives this
-lens its own known-good and known-diverged runs. A skipped check is honest; it must not be
-weakened to pass.
+`verify.py`'s SVI guard (**check 5** as the suite is numbered today — this file said "check 6",
+which was stale) will report itself **skipped** until this lens is given its own known-good and
+known-diverged runs in `config.py`'s `svi_guard_reference`. A skipped check is honest; it must
+not be weakened to pass. As of 2026-08-11 the suite's summary line reports skips separately
+instead of folding them into the pass count, so this one is visible rather than implied.

@@ -1,0 +1,106 @@
+==============================================================================
+DESI257 r3_unmasked -- undersampling diagnostic (supersample=2 configured)
+==============================================================================
+
+ladder=(1, 2, 4), reference_supersample=32, num_pix=80, centroid_pix=(39.397, 39.236)
+
+------------------------------------------------------------------------------
+STEP 1: batched ladder, 9-sample batch (MAP, HMC-median, 7 spread draws)
+------------------------------------------------------------------------------
+[timing] batched ladder call: 28.6s
+
+Undersampling diagnostic — dataset 0 (forward (sampled amplitudes)), tolerance 0.2 sigma/pixel
+  reference: uniform supersample=32 (self-check vs 16: native: 0.080 sigma, subgrid: 0.191 sigma — NOT CONVERGED — raise reference_supersample; numbers below are not certified)
+  supersample=1 [native-kernel PSF (bin-first)]: max |d|/sigma = 5.290 at (y=39, x=39), 5.98% of pixels above tol, delta_chi2 = +720.4, spread +595.1..+953.7 -> FAIL
+  supersample=2 [subgrid-kernel PSF]: max |d|/sigma = 3.688 at (y=62, x=36), 5.14% of pixels above tol, delta_chi2 = -216.2, spread -293.7..-174.7 -> FAIL
+  supersample=4 [subgrid-kernel PSF]: max |d|/sigma = 1.427 at (y=39, x=40), 0.85% of pixels above tol, delta_chi2 = -60.0, spread -81.2..-28.1 -> FAIL
+  PSF-convention gap (native vs subgrid kernel, both at the reference): max 3.69 sigma — changing supersample across the 1 -> >=2 boundary changes the PSF model by this much; NOT reducible by supersampling.
+  recommendation: none of the tested supersamples reach 0.2 sigma/pixel — test higher rungs, or use the experimental adaptive supersampler on the refined pixels this report localizes.
+
+*** REFERENCE (ss_ref=32) NOT CONVERGED -- the numbers below are NOT CERTIFIED. ***
+    reference_self_error: {'native': 0.07954886527752766, 'subgrid': 0.1913744015964495}
+    reference_converged: False
+
+Per-rung delta_chi2 (chi2(rung) - chi2(matched reference)), mean and spread over the 9-sample batch, plus max|delta|/sigma:
+  supersample=1                mean    +720.44   min    +595.11   max    +953.73   max|d|/sigma 5.290   -> FAIL
+  supersample=2                mean    -216.17   min    -293.75   max    -174.71   max|d|/sigma 3.688   -> FAIL
+  supersample=4                mean     -59.99   min     -81.22   max     -28.10   max|d|/sigma 1.427   -> FAIL
+
+convention_gap_max (native vs subgrid PSF convention, at the reference): 3.6918583177081676
+recommended_supersample: None
+
+ss=2 rung: convention=subgrid, saved delta_over_sigma (9, 80, 80) -> undersampling_ss2_delta_over_sigma.npy
+saved plot (ss=2, HMC-median sample) -> undersampling_ss2.png
+
+------------------------------------------------------------------------------
+DECISIVE TEST: deflector core box, 10x10 px centred at pixel (39, 39) = cfg.centroid_pix, HMC-median sample
+------------------------------------------------------------------------------
+  observed normalised-residual peak |value| in box : 6.313 sigma
+  ss=2 predicted delta/sigma peak |value| in box   : 3.176 sigma
+  Pearson r (observed vs ss=2-predicted, pixel-by-pixel over the box): +0.1071
+
+  verdict: HYPOTHESIS FAILS: the ss=2 quadrature-error map does NOT reproduce the observed core residual; whatever residual exists there is not (mainly) a supersampling artifact.
+
+------------------------------------------------------------------------------
+COST CONTROL
+------------------------------------------------------------------------------
+Batched ladder wall-clock: 28.6s (budget for a per-sample follow-up: 1800s).
+Reference did NOT self-certify. Projected cost of 9 single-sample follow-up calls (same shape as batched, done once per sample): ~257.1s.
+Projected cost is within budget -- running per-sample reference_self_error isolation.
+  MAP           self_error = {'native': 0.008994445562629547, 'subgrid': 0.13020476911831694}   converged=False
+  HMC-median    self_error = {'native': 0.04693835033563209, 'subgrid': 0.16226460373683704}   converged=False
+  draw0         self_error = {'native': 0.04423775675589784, 'subgrid': 0.15863444881125152}   converged=False
+  draw1         self_error = {'native': 0.014038045886830436, 'subgrid': 0.12278661144009294}   converged=False
+  draw2         self_error = {'native': 0.07954886527752766, 'subgrid': 0.1913744015964495}   converged=False
+  draw3         self_error = {'native': 0.043220796830474896, 'subgrid': 0.15815411328310014}   converged=False
+  draw4         self_error = {'native': 0.024226245334519787, 'subgrid': 0.1429393672955575}   converged=False
+  draw5         self_error = {'native': 0.032441021620991745, 'subgrid': 0.15228768515980573}   converged=False
+  draw6         self_error = {'native': 0.014053664457552913, 'subgrid': 0.12206343993756996}   converged=False
+[timing] per-sample follow-up (9 calls): 107.1s
+
+==============================================================================
+DESI257 r3_unmasked -- undersampling RECHECK (ladder=(1, 2, 4, 8), reference_supersample=64)
+==============================================================================
+
+Follow-up to the ss_ref=32 run above: does raising the reference to ss_ref=64 self-certify, and does extending the ladder to include ss=8 reach tolerance? Same 9-sample batch (MAP, HMC-median, 7 spread HMC draws).
+
+------------------------------------------------------------------------------
+STEP 1: batched ladder (1, 2, 4, 8), ss_ref=64
+------------------------------------------------------------------------------
+[timing] batched ladder call: 85.7s
+
+Undersampling diagnostic — dataset 0 (forward (sampled amplitudes)), tolerance 0.2 sigma/pixel
+  reference: uniform supersample=64 (self-check vs 32: native: 0.018 sigma, subgrid: 0.072 sigma — NOT CONVERGED — raise reference_supersample; numbers below are not certified)
+  supersample=1 [native-kernel PSF (bin-first)]: max |d|/sigma = 5.290 at (y=39, x=39), 5.99% of pixels above tol, delta_chi2 = +720.5, spread +595.2..+953.8 -> FAIL
+  supersample=2 [subgrid-kernel PSF]: max |d|/sigma = 3.697 at (y=62, x=36), 5.27% of pixels above tol, delta_chi2 = -221.1, spread -299.0..-179.8 -> FAIL
+  supersample=4 [subgrid-kernel PSF]: max |d|/sigma = 1.497 at (y=39, x=40), 0.94% of pixels above tol, delta_chi2 = -65.0, spread -86.7..-31.6 -> FAIL
+  supersample=8 [subgrid-kernel PSF]: max |d|/sigma = 0.439 at (y=39, x=40), 0.17% of pixels above tol, delta_chi2 = -34.3, spread -41.5..-24.7 -> FAIL
+  PSF-convention gap (native vs subgrid kernel, both at the reference): max 3.75 sigma — changing supersample across the 1 -> >=2 boundary changes the PSF model by this much; NOT reducible by supersampling.
+  recommendation: none of the tested supersamples reach 0.2 sigma/pixel — test higher rungs, or use the experimental adaptive supersampler on the refined pixels this report localizes.
+
+*** REFERENCE (ss_ref=64) NOT CONVERGED -- the numbers below are NOT CERTIFIED. Per the task, this script does NOT escalate further to ss_ref=128 -- if 64 does not certify, the achievability of the library's certify margin (0.2/_REFERENCE_MARGIN sigma) on this system is a separate question from round 4's supersample choice. ***
+    reference_self_error: {'native': 0.01774030092126682, 'subgrid': 0.07181432006694986}
+    reference_converged: False
+
+Per-rung delta_chi2 (mean, spread over the 9-sample batch) and max|delta|/sigma:
+  supersample=1                mean    +720.46   min    +595.19   max    +953.80   max|d|/sigma 5.290   %pix>tol 5.99%   -> FAIL
+  supersample=2                mean    -221.13   min    -298.97   max    -179.78   max|d|/sigma 3.697   %pix>tol 5.27%   -> FAIL
+  supersample=4                mean     -64.95   min     -86.74   max     -31.63   max|d|/sigma 1.497   %pix>tol 0.94%   -> FAIL
+  supersample=8                mean     -34.31   min     -41.48   max     -24.67   max|d|/sigma 0.439   %pix>tol 0.17%   -> FAIL
+
+convention_gap_max (native vs subgrid PSF convention, at the reference): 3.751147081360325
+recommended_supersample: None
+
+------------------------------------------------------------------------------
+ANSWER: does ss=8 reach the 0.2 sigma/px tolerance?
+------------------------------------------------------------------------------
+ss=8: max|d|/sigma = 0.439, delta_chi2 mean -34.31 (spread -41.48..-24.67), 0.17% pixels above tolerance -> FAILS the 0.2 sigma/px tolerance.
+
+------------------------------------------------------------------------------
+CROSS-CHECK: does the ss_ref=32 ranking (ss=1 > ss=2 > ss=4 in max|d|/sigma, by a wide margin at each step) reproduce at ss_ref=64?
+------------------------------------------------------------------------------
+  ss=1: max|d|/sigma = 5.290
+  ss=2: max|d|/sigma = 3.697
+  ss=4: max|d|/sigma = 1.497
+  ss=8: max|d|/sigma = 0.439
+reference_self_error at ss_ref=64 (subgrid): 0.0718 sigma -- this is the noise floor these rung numbers sit above.

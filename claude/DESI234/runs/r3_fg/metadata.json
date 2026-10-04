@@ -31,6 +31,7 @@
   "n_devices": 2,
   "mask_circles": [],
   "n_masked_pixels": 6400,
+  "supersample": 4,
   "source_prior_version": 1,
   "lens_light_prior_version": 2,
   "foreground": true,

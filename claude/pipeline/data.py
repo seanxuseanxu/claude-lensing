@@ -99,7 +99,7 @@ def build_mask(cfg, shape):
     return mask
 
 
-def load(cfg):
+def load(cfg, supersample=None):
     """Return ``(image, psf, sim_config)`` ready for ``SceneSimulator`` and ``ImageData``.
 
     ``likelihood_precision`` is set explicitly rather than left to default. The default is
@@ -108,13 +108,22 @@ def load(cfg):
     at, so stating it keeps the port a change of API and not of arithmetic. Raising the
     pipeline to float64 is a separate, measurable decision -- it roughly doubles forward
     memory and compute, and it needs x64 enabled process-wide.
+
+    ``supersample`` defaults to ``cfg.supersample``, i.e. today's config. Pass it explicitly
+    to override that -- ``diagnose.rebuild_model`` does, with the value a run's own
+    ``metadata.json`` recorded, following the same per-run-not-today's-config pattern as
+    ``mask_circles`` (KNOWN_ISSUES.md item 8). A keyword override rather than mutating
+    ``cfg`` keeps ``cfg`` a faithful record of what the config file says, not what one
+    caller wanted it to say.
     """
+    if supersample is None:
+        supersample = cfg.supersample
     image = load_image(cfg)
     psf = load_psf(cfg)
     sim_config = SimulatorConfig(
         delta_pix=cfg.delta_pix,
         num_pix=cfg.num_pix,
-        supersample=cfg.supersample,
+        supersample=supersample,
         kernel=psf,
         likelihood_precision="float32",
     )

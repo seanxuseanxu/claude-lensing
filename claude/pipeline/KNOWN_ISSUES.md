@@ -18,8 +18,9 @@ tooling or the dataset rather than one fit.
   names the system it was measured on; the numbers themselves are in that system's own
   `RESULTS_*.md`. If you want the evidence, follow the pointer.
 
-Open items, needing work: **2** (MCLMC frozen chains), **5** (residual reporting change),
-**6** (MAP step count), **9** (a sizing rule to apply, not a bug). Everything else is closed.
+Open items, needing work: **2** (MCLMC frozen chains), **6** (MAP step count), **9** (a sizing
+rule to apply, not a bug), **10** (the rendering grid and the PSF convolution convention).
+Everything else is closed — item 5's reporting change landed 2026-08-11.
 
 ---
 
@@ -117,11 +118,32 @@ hand). `residual_figure`'s docstring carries the rationale for each panel.
 
 ---
 
-## 5. The pixel-scale checkerboard at the deflector core — CLOSED as an anomaly, open as a reporting change
+## 5. The excess residual at the deflector core — CLOSED
 
-DESI234's and DESI257's residuals both show a pixel-scale alternating +/-sigma checkerboard at
-the deflector core, reaching roughly +/-5 sigma (each system's `RESULTS_v2.md`). Two rounds of
-work went into explaining it, and the explaining was the mistake.
+DESI234's and DESI257's residuals both show an excess-chi-squared region at the deflector core.
+Two rounds of work went into explaining it, and the explaining was the mistake.
+
+> **Naming correction, 2026-08-11.** This item used to call the feature "a pixel-scale
+> alternating +/-sigma checkerboard ... reaching roughly +/-5 sigma", from the round-2 fits. **The
+> alternation is not there.** A checkerboard has *negative* lag-1 autocorrelation between
+> neighbouring pixels; measured on four fits — both systems, both rounds, both supersamples — it
+> is positive every time (`DESI257/analysis/core_checkerboard_extent.py`):
+>
+> | run | ss | core lag-1 rho | field lag-1 rho |
+> |---|---|---|---|
+> | DESI257 `r3_unmasked` | 2 | **+0.198** | +0.713 |
+> | DESI234 `r3_unmasked` | 4 | **+0.345** | +0.778 |
+> | DESI257 `r2_s2l2` | 2 | **+0.207** | +0.722 |
+> | DESI234 `r2_s2l2` | 2 | **+0.357** | +0.757 |
+>
+> The round-2 runs are included precisely because the old description came from them, and DESI234
+> changed supersample between the rounds — so the pair tests both "was the description loose?"
+> and "did something between the rounds remove the alternation?". Neither. The core *is*
+> measurably rougher than the field (rho falls from ~+0.75 to +0.20-0.35, real excess pixel-scale
+> power), but positively correlated: a smooth compact excess, not a sign-flipping pattern.
+> **The physical conclusion below is untouched.** Only the name and the round-2 amplitude figure
+> should stop being requoted as measured — a description repeated across two systems' results
+> files for two rounds, and never checked with the one statistic that defines the word.
 
 **The resolution (2026-08-10), from the repository owner:** a pixel-scale residual pattern at
 the core is common when modelling deflectors with Sersic profiles, and is taken by their
@@ -152,11 +174,41 @@ specific.**
 
 **Consequences to carry:**
 
-- `chi2_nu` as currently reported includes the core pixels and is therefore inflated on every
-  run of every system. Cross-run comparisons remain valid — the contamination is common to all
-  of them — but the absolute values are not a fit quality anyone else would recognise.
-  **Reporting a centre-masked `chi2_nu` alongside the current one is the fix, and is the one
-  piece of this item still outstanding.**
+- ~~`chi2_nu` as currently reported includes the core pixels and is therefore inflated on every
+  run of every system.~~ **FIXED 2026-08-11: `diagnose.py` reports both numbers.**
+  `residual_figure` returns a `ChiSquares` namedtuple (`full`, `core_masked`, the counts and the
+  radius) instead of a bare float, so every call site must now name which chi-squared it means —
+  deliberate, since the point of the change is that two confusable numbers exist. Both come from
+  the same `masked_chisq` helper; no second formula was written (item 3 is why). `main`'s summary
+  and the residual panel's title print both, with the radius and the excluded count, and state
+  that the core pixels remain in the likelihood.
+
+  **The radius is 0.520" = 8 px, measured, not chosen**
+  (`DESI257/analysis/core_checkerboard_extent.py`): the radius enclosing 95% of the excess
+  chi-squared above a *local* background — 7 px on DESI257 `r3_unmasked`, 8 px on DESI234
+  `r3_unmasked`, insensitive to that fraction (90% -> 7/6 px, 99% -> 8/8 px). The larger is used
+  so neither system is under-masked. It lives in `diagnose.CORE_MASK_RADIUS_ARCSEC` as an
+  **instrument-level constant in arcsec** rather than a per-lens config field, because the two
+  systems agree to one pixel and all three are HST WFC3/IR F140W at 0.065"/px — the script tests
+  that fork explicitly instead of assuming it, and reports the per-lens answer if they disagree.
+
+  | run | full-field | centre-masked | px excluded |
+  |---|---|---|---|
+  | DESI257 `r3_unmasked` | 1.154 (6400 px) | **1.065** (6198 px) | 202 |
+  | DESI234 `r3_unmasked` | 1.662 (6400 px) | **1.609** (6202 px) | 198 |
+
+  **The full-field values are unchanged to four figures** — the check that the change was purely
+  additive rather than a rewrite of the arithmetic. Both centre-masked values were reproduced
+  independently from the radial profile, through a code path sharing nothing with the
+  implementation (1.0646 and 1.6088). Six new cases in
+  `tests/test_diagnose_and_metadata.py` (24/24), including the discriminating one — an injected
+  core excess, where a bug returning the same number twice would otherwise pass.
+
+  Two criteria were tried and rejected before the one that worked, both recorded in the script's
+  docstring: a 3-sigma test on each annulus's mean squared residual is powerless (heavy-tailed
+  squares; a 9-px annulus reads 8.56 +/- 4.13, so it rejected an excess visible in the profile),
+  and a *far-field* background annulus reads essentially the whole-field `chi2_nu`, which made the
+  cumulative excess non-monotone and left no plateau to take a fraction of.
 - Do **not** mask the core during modelling. That discards the pixels that most constrain the
   deflector's centroid and inner slope.
 - Rebuilding DESI257's PSF, and the per-pixel kernel diagnostic that replaced it, are both
@@ -254,6 +306,56 @@ General lesson: **anything that changes the *likelihood* — the mask, the noise
 — must be recorded per run and read back from the run, not from today's config.** A prior's
 support is already handled this way (`priors.py`'s versioning); the mask was the gap.
 
+**2026-08-11: `supersample` was the second gap, found before it bit.** `data.load` built the
+`SimulatorConfig` (and so the rendering grid `ProbModel` optimises against) from
+`cfg.supersample` — today's config — exactly the bug `mask_circles` had. DESI234 round 3 had
+already raised it 2 → 4 (`DESI234/RESULTS_v3.md` sec. 1/3); DESI257 was about to follow, which
+would have silently changed what `diagnose.rebuild_model` reconstructed for its three archived
+runs (`r1_s1l1`, `r2_s2l2`, `r3_unmasked`), all fitted at ss=2, with no error raised.
+
+Fixed the same way as the mask: `run_fit.py` now writes `"supersample"` into `metadata.json`;
+`data.load(cfg, supersample=...)` takes an optional override (a keyword, not a `cfg` mutation,
+so `cfg` stays a faithful record of the config file); `rebuild_model` uses the run's recorded
+value when present, falls back to `cfg.supersample` for runs predating the key (with a `NOTE:`
+either way), same as `mask_circles`. Adversarially checked: with DESI257's config temporarily
+set to ss=4, `diagnose.py claude/DESI257/runs/r3_unmasked` still reports ss=2 from metadata.
+
+**Back-filled the archived runs**, verified from `config.py`'s git history before writing, not
+assumed:
+
+- **DESI257** (`r1_s1l1`, `r2_s2l2`, `r3_unmasked`): `supersample=2`. `config.py`'s entire git
+  history carries exactly one `supersample=` literal — the file was created with it at 2 and it
+  has never changed — so this is unambiguous.
+- **DESI238** (the twelve `"api": "scene"` runs; pre-port runs are unaffected since
+  `rebuild_model` already refuses those outright): `supersample=2`, same reasoning — one
+  `supersample=` literal in the file's whole history.
+- **DESI234** `r1_s1l1`, `r2_s2l2`: `supersample=2` — `config.py` was created at commit
+  `2efab5a` with `supersample=2`, before either run.
+- **DESI234** `r3_fg`, `r3_unmasked`: `supersample=4` — **measured, not inferred.** The
+  `git_commit` these runs recorded (`ba9fc2a`, DESI257's round-3 commit — unrelated to
+  DESI234) still shows `supersample=2` in `config.py` at that blob: the 2 → 4 edit was not
+  committed until `1566e6c`, dated the *next day*, so the git blob alone is ambiguous (an
+  uncommitted working-tree edit made before the runs and committed after them — a workflow
+  habit visible elsewhere in this repo's history). The first pass through this back-fill
+  resolved that ambiguity from prose (`RESULTS_v3.md` secs. 1/3 stating round 3 raised
+  `supersample` 2 → 4, corroborated by item 9's matching `n_samples`/`map_steps`) — weaker
+  evidence than a measurement, so it was re-checked directly: `rebuild_model` can be pointed
+  at either supersample, so each run was rebuilt at ss=2 and ss=4, rendered at its own
+  HMC-median point (`diagnose.point_estimate`), and scored with `diagnose.masked_chisq`
+  against its recorded keep-mask. Compared against `RESULTS_v3.md`'s own recorded values
+  (`chi2_nu` = 1.662 for `r3_unmasked`, table row `chi2_nu` line 420; 1.082 for `r3_fg`, same
+  row and confirmed again at line 24):
+
+  | run | ss=2 | ss=4 | recorded |
+  |---|---|---|---|
+  | `r3_unmasked` | 1.9051 | **1.6621** | 1.662 |
+  | `r3_fg` | 1.2557 | **1.0823** | 1.082 |
+
+  ss=4 reproduces both recorded values to four significant figures; ss=2 misses by 0.24–0.24
+  in chi2_nu, an order-of-magnitude larger gap than the reproduction error. This confirms
+  `supersample=4` directly rather than by inference — the git blob at the recorded commit
+  understates it because it lagged an uncommitted edit, not because the run used ss=2.
+
 ---
 
 ## 9. Raising `supersample` costs memory as ss², and the MAP/SVI batch buffer is per-device
@@ -283,14 +385,77 @@ whenever it follows DESI234 to ss=4.
 
 ---
 
+## 10. Every rendering grid tested fails the quadrature tolerance, and the PSF convolution convention is the blocker — OPEN
+
+Measured on DESI257 with `gigalens.jax.analysis.undersampling.diagnose_undersampling` over a
+9-sample batch against a `reference_supersample=64` reference, at the library's own 0.2 sigma/px
+tolerance (`DESI257/RESULTS_v3.md` §8.1, `DESI257/analysis/undersampling_report.txt`):
+
+| rung | max \|delta\|/sigma | mean `delta_chi2` |
+|---|---|---|
+| ss=1 (native-kernel PSF) | 5.290 | +720 |
+| ss=2 | 3.697 | -216 |
+| ss=4 | 1.497 | -86 |
+| ss=8 | 0.439 | -34 |
+
+**All four fail, and so does the reference's own self-check** (subgrid self-error 0.072 sigma
+against a 0.05 threshold), so these are reported, not certified. The ranking is still usable:
+doubling the reference 32 -> 64 cut its self-error 2.7x while ss=2 and ss=4 moved under 5%.
+
+**The cross-cutting lessons, which is why this is a pipeline item and not a DESI257 one:**
+
+- **`supersample` is not a knob that can be turned up until the error goes away.** ss=8 still
+  fails, and ss=16 is likely infeasible per item 9's per-device sizing rule.
+- **A remedy measured on one lens does not port.** DESI234 was fixed by ss=2 -> 4; on DESI257 ss=4
+  fails. **Compactness, not Sersic index, tracks the error**: DESI257 is *less* cuspy by index
+  (`n_sersic` 2.52, 1.30 against DESI234's 6.74, 2.45) but its inner lens-light component is ~3x
+  more compact (`R_sersic` 0.225" against 0.746"). Measure per system.
+- **Crossing the ss=1 -> ss>=2 boundary changes the PSF model, not the quadrature.** `supersample=1`
+  convolves the native-resolution kernel on the detector grid; `supersample>=2` convolves a
+  subgrid kernel before pooling. The gap is **3.69 sigma on DESI257, 5.02 sigma on DESI234**, and
+  is **not reducible by supersampling**. Any flux-scale calibration rendered at ss=1 for a fit
+  that runs at ss>=2 inherits it — DESI257's does.
+- **The experimental adaptive supersampler cannot sidestep it.**
+  `gigalens.jax.experimental.adaptive_supersample` reaches tolerance cheaply — factor-8 opt-in
+  clears 0.2 sigma/px at 187k light-evaluation points, 2.2x cheaper than the *failing* uniform
+  ss=8 rung — but only in its own `bin_first` convention; it has **no subgrid path**. Measured
+  against subgrid it fails at 3.70-4.03 sigma and barely moves as the grid refines, because that
+  number is the convention gap again. It also freezes its factor map from the **data** at
+  construction, so a burn-in proposal displaced more than `dilate` px from observed flux is
+  silently under-resolved — a real constraint on HMC exploration.
+  (`DESI257/analysis/adaptive_supersample_check.py`.)
+- **Reweighting an existing posterior to a finer grid will not work.** The per-draw `delta_chi2`
+  spread is ~17 nats, which guarantees weight collapse. The error tilts the likelihood rather
+  than offsetting it, so a refit is required.
+
+**What it costs a headline number, and how to state it honestly.** First-order linear response —
+regress the per-draw log-likelihood perturbation on the mass parameters, propagate through the
+posterior covariance (`DESI257/analysis/theta_e_systematic.py`) — gives `Delta theta_E = +0.0106"`
+= 4.12 posterior sd, 5.3x DESI257's quoted +/-0.002" half-width. But `R^2 = 0.197` and the
+regression's overall test is **`F(6,53) = 2.167`, p = 0.061**: the gradient is *not* statistically
+distinguishable from zero at 5%, and a "first-order" shift of 4.1 sd is not small in the sense
+linear response requires. **So the reportable form is a systematic of order 0.01" to state, not a
+correction to apply** — and a statistical interval must not be quoted as a total error bar. The
+general rule: **when the grid systematic exceeds the statistical interval, quote fewer digits.**
+
+**The blocker is a modelling decision, not an engineering one.** Reaching a certified grid
+affordably means adopting bin-first convolution, which must first be validated against how each
+system's PSF was actually measured (bin-first assumes an already pixel-integrated, e.g.
+star-stacked, empirical PSF). Until that is settled, DESI257 stays at ss=2 — the most-tested
+pathway — with the systematic stated. **Nothing here is a defect in gigalens**; the library
+measured all of it, and its `undersampling` module is what made the problem visible.
+
+---
+
 ## Next steps, ordered by value
 
 Closed items are not repeated here; see the item bodies. What remains:
 
-1. **Report a centre-masked `chi2_nu` alongside the current one** (item 5). Every `chi2_nu` in
-   this repository is inflated by core pixels the field excludes when reporting fit quality.
-   This is a reporting change in `diagnose.masked_chisq`'s callers, not a modelling change —
-   the core stays in the likelihood.
+1. **Settle the PSF convolution convention** (item 10). It gates every grid decision on every
+   system, it is the difference between a 3.7 sigma systematic and none, and the check is cheap:
+   determine how each system's PSF was measured, and validate a bin-first render against a
+   `lenstronomy` reference (`CLAUDE.md`'s ground-truth rule). Only then is a certified-grid refit
+   worth the compute.
 
 2. **Re-fit DESI234 round 4 with the deflector ellipticity constrained** (items 5, 7a).
    `r3_fg` is rejected: `q = 0.143`, `gamma = 2.951`. The question round 4 asks is whether a
@@ -368,6 +533,18 @@ Closed items are not repeated here; see the item bodies. What remains:
   parameters, which is the same verdict from the other direction: a fit whose problem is the
   model or the surrogate, not the run length. Together they add ~30 s to a 172 s diagnosis on
   the 2M-draw run.
+
+- **`verify.py` counted a SKIPPED check as a pass — fixed 2026-08-11.** A check that cannot run on
+  a lens signals it by *returning* a `"SKIPPED: ..."` detail rather than raising, so it landed with
+  `ok=True`, and the summary printed `len(RESULTS) - n_fail` as the pass count.
+  `verify.py --lens DESI257` therefore reported **5/5 checks passed** when only four had run — and
+  the one that had not was check 5, the SVI covariance guard, which is the last thing that should
+  be silently credited. `verify.summarize` / `verify.status_of` now report passes, skips and
+  failures as three categories (the accounting was split out of `main` so it is testable without
+  running the suite against a real lens); tested in `tests/test_verify_summary.py`, which pins both
+  directions — a skip is not a pass, and a pass whose detail merely *mentions* skipping is still a
+  pass. Exit status is still driven by failures alone. **A skipped check is honest; the bug was
+  reporting absent evidence as evidence.**
 
 - **Redundant pipeline code removed 2026-08-11.** `data.build_prob_model` is now the one place
   the `ImageData` → `ProbModel` construction happens; `run_fit.py` (which fits), `verify.py`

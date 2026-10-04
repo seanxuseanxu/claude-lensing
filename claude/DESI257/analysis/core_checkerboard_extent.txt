@@ -1,0 +1,216 @@
+Jax plugin configuration error: Exception when calling jax_plugins.xla_cuda13.initialize()
+Traceback (most recent call last):
+  File "/global/homes/s/seanjx/.conda/envs/gigajax7.0/lib/python3.14/site-packages/jax/_src/xla_bridge.py", line 495, in discover_pjrt_plugins
+    plugin_module.initialize()
+    ~~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "/global/homes/s/seanjx/.conda/envs/gigajax7.0/lib/python3.14/site-packages/jax_plugins/xla_cuda13/__init__.py", line 370, in initialize
+    _check_cuda_versions(raise_on_first_error = True)
+    ~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/global/homes/s/seanjx/.conda/envs/gigajax7.0/lib/python3.14/site-packages/jax_plugins/xla_cuda13/__init__.py", line 274, in _check_cuda_versions
+    for d in range(cuda_versions.cuda_device_count())
+                   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^
+RuntimeError: jaxlib/cuda/versions_helpers.cc:135: operation cuInit(0) failed: CUDA_ERROR_NO_DEVICE
+An NVIDIA GPU may be present on this machine, but a CUDA-enabled jaxlib is not installed. Falling back to cpu.
+/global/u1/s/seanjx/claude-lensing/claude/pipeline/priors.py:435: UserWarning: EPL[lens mass host].e1^2+e2^2 < 1.0^2: prior mass violating e1^2+e2^2 < 1.0^2: estimated mass 5.33e-06 (probe (K=3000000)) exceeds 1e-06 (~5e-06 of a typical run's ~1e6 evaluations land where the kernel computes a different model) — deriv clips c=sqrt(e1^2+e2^2) to [0,1] (epl.py); at c=1, q=0 makes b=0 and the kernel silently renders identically-zero deflection (verified 2026-07-10: |e|=1.3 -> all-zero). Consider a bounded/truncated prior.
+  return LensModel(
+/global/u1/s/seanjx/claude-lensing/claude/pipeline/priors.py:435: UserWarning: [plausibility] SHEAR[lens mass shear].|shear| <= 0.2: prior mass outside plausible region |shear| <= 0.2: estimated mass 0.136 (probe (K=3000000)) exceeds 0.05 — external-shear magnitude sqrt(gamma1^2+gamma2^2)>0.2 is much larger than realistic line-of-sight shear on galaxy/group scales — physically valid (the kernel is exact) but implausible, so a plausibility prompt, not a hard bound. Physically valid but atypical; check this is intended.
+  return LensModel(
+==============================================================================
+DESI257  claude/DESI257/runs/r3_unmasked
+==============================================================================
+point estimate: HMC median;  rendered at recorded supersample=2
+centroid_pix (row, col) = (39.397, 39.236);  delta_pix = 0.065 "/px
+full-field chi2_nu over 6400 kept px = 1.1544
+
+field baseline, annulus 8-20 px (0.52-1.30"):
+  mean (r/sigma)^2 = 0.6454 +/- 0.0306
+  lag-1 autocorr   = +0.7134 +/- 0.0223 (2002 pairs)
+
+radial profile ('cum %' = running share of the total excess chi-squared):
+    r_px   r_arcsec    n_px   mean(r/sig)^2       excess   cum %   lag-1 rho
+      0      0.000       4      4.572 +/-  2.476        15.7     2.4    +0.7702
+      1      0.065       9      8.562 +/-  4.131        71.3    13.2    +0.4133
+      2      0.130      16      8.106 +/-  3.055       119.4    31.3    +0.4463
+      3      0.195      20      5.895 +/-  1.407       105.0    47.2    +0.4383
+      4      0.260      31      4.219 +/-  1.065       110.8    64.0    +0.1995
+      5      0.325      35      4.291 +/-  1.322       127.6    83.4    +0.5754
+      6      0.390      41      2.986 +/-  1.107        95.9    97.9    +0.7048
+      7      0.455      46      0.944 +/-  0.187        13.8   100.0    +0.4525
+      8      0.520      54      0.694 +/-  0.134         2.6   100.4    +0.6274
+      9      0.585      60      0.670 +/-  0.141         1.5   100.6    +0.5655
+     10      0.650      65      0.727 +/-  0.163         5.3   101.4    +0.7819
+     11      0.715      70      0.869 +/-  0.110        15.6   103.8    +0.6731
+     12      0.780      80      0.683 +/-  0.100         3.0   104.2    +0.6531
+     13      0.845      86      0.592 +/-  0.076        -4.6   103.5    +0.7822
+     14      0.910      92      0.486 +/-  0.064       -14.7   101.3    +0.6784
+     15      0.975      96      0.463 +/-  0.060       -17.5    98.7    +0.7106
+     16      1.040     102      0.409 +/-  0.062       -24.1    95.0    +0.5522
+     17      1.105     113      0.611 +/-  0.097        -3.9    94.4    +0.6285
+     18      1.170     116      0.764 +/-  0.142        13.8    96.5    +0.8231
+     19      1.235     123      0.833 +/-  0.094        23.1   100.0    +0.7937
+
+total excess chi-squared inside 20 px = 659.4
+  90% of it is enclosed by r = 7 px = 0.455"
+  95% of it is enclosed by r = 7 px = 0.455"  <- radius used
+  99% of it is enclosed by r = 8 px = 0.520"
+
+sign-alternation check inside that radius: lag-1 autocorr = +0.1977 (284 pairs), against a field baseline of +0.7134.
+  A checkerboard would be NEGATIVE. It is not, here or in any annulus above, so
+  the artifact at these points is a smooth positively-correlated core excess,
+  not the pixel-scale sign alternation KNOWN_ISSUES item 5 describes.
+
+==============================================================================
+DESI234  claude/DESI234/runs/r3_unmasked
+==============================================================================
+point estimate: HMC median;  rendered at recorded supersample=4
+centroid_pix (row, col) = (39.130, 39.470);  delta_pix = 0.065 "/px
+full-field chi2_nu over 6400 kept px = 1.6621
+
+field baseline, annulus 8-20 px (0.52-1.30"):
+  mean (r/sigma)^2 = 1.2838 +/- 0.0643
+  lag-1 autocorr   = +0.7780 +/- 0.0224 (2000 pairs)
+
+radial profile ('cum %' = running share of the total excess chi-squared):
+    r_px   r_arcsec    n_px   mean(r/sig)^2       excess   cum %   lag-1 rho
+      0      0.000       3   (too few pixels)
+      1      0.065      11      4.854 +/-  1.954        39.3     9.6    +0.2464
+      2      0.130      14      7.281 +/-  2.515        84.0    30.1    +0.4494
+      3      0.195      23      4.200 +/-  1.067        67.1    46.5    +0.1846
+      4      0.260      28      5.196 +/-  2.245       109.5    73.2    +0.7957
+      5      0.325      34      3.340 +/-  0.812        69.9    90.3    +1.0561
+      6      0.390      41      1.274 +/-  0.261        -0.4    90.2    +0.6013
+      7      0.455      44      2.198 +/-  0.581        40.2   100.0    +1.0638
+      8      0.520      58      1.310 +/-  0.207         1.5   100.4    +0.7325
+      9      0.585      61      1.077 +/-  0.177       -12.6    97.3    +0.5675
+     10      0.650      64      1.876 +/-  0.390        37.9   106.5    +0.8772
+     11      0.715      72      1.762 +/-  0.278        34.4   114.9    +0.8569
+     12      0.780      76      1.816 +/-  0.289        40.4   124.8    +0.9396
+     13      0.845      89      1.663 +/-  0.300        33.8   133.1    +0.7312
+     14      0.910      89      1.787 +/-  0.285        44.8   144.0    +0.7858
+     15      0.975      95      1.585 +/-  0.232        28.6   151.0    +0.8181
+     16      1.040     106      1.292 +/-  0.196         0.8   151.2    +0.6944
+     17      1.105     110      0.883 +/-  0.133       -44.0   140.4    +0.6097
+     18      1.170     119      0.533 +/-  0.066       -89.3   118.6    +0.7555
+     19      1.235     117      0.632 +/-  0.086       -76.2   100.0    +0.8386
+
+total excess chi-squared inside 20 px = 409.6
+  90% of it is enclosed by r = 6 px = 0.390"
+  95% of it is enclosed by r = 8 px = 0.520"  <- radius used
+  99% of it is enclosed by r = 8 px = 0.520"
+
+sign-alternation check inside that radius: lag-1 autocorr = +0.3454 (364 pairs), against a field baseline of +0.7780.
+  A checkerboard would be NEGATIVE. It is not, here or in any annulus above, so
+  the artifact at these points is a smooth positively-correlated core excess,
+  not the pixel-scale sign alternation KNOWN_ISSUES item 5 describes.
+
+==============================================================================
+DESI257 r2  claude/DESI257/runs/r2_s2l2
+==============================================================================
+point estimate: HMC median;  rendered at recorded supersample=2
+centroid_pix (row, col) = (39.397, 39.236);  delta_pix = 0.065 "/px
+full-field chi2_nu over 5997 kept px = 1.0746
+
+field baseline, annulus 8-20 px (0.52-1.30"):
+  mean (r/sigma)^2 = 0.6584 +/- 0.0305
+  lag-1 autocorr   = +0.7223 +/- 0.0223 (2002 pairs)
+
+radial profile ('cum %' = running share of the total excess chi-squared):
+    r_px   r_arcsec    n_px   mean(r/sig)^2       excess   cum %   lag-1 rho
+      0      0.000       4      6.393 +/-  2.714        22.9     3.4    +0.8630
+      1      0.065       9      8.424 +/-  3.754        69.9    13.8    +0.4125
+      2      0.130      16      7.868 +/-  2.933       115.4    30.9    +0.4379
+      3      0.195      20      5.847 +/-  1.275       103.8    46.3    +0.4587
+      4      0.260      31      4.243 +/-  1.099       111.1    62.8    +0.1812
+      5      0.325      35      4.410 +/-  1.362       131.3    82.3    +0.5869
+      6      0.390      41      3.157 +/-  1.172       102.4    97.5    +0.7458
+      7      0.455      46      1.024 +/-  0.199        16.8   100.0    +0.5219
+      8      0.520      54      0.700 +/-  0.111         2.3   100.3    +0.6661
+      9      0.585      60      0.642 +/-  0.127        -1.0   100.2    +0.5946
+     10      0.650      65      0.687 +/-  0.136         1.9   100.5    +0.7450
+     11      0.715      70      0.863 +/-  0.104        14.3   102.6    +0.6777
+     12      0.780      80      0.687 +/-  0.098         2.3   102.9    +0.6189
+     13      0.845      86      0.640 +/-  0.082        -1.6   102.7    +0.7838
+     14      0.910      92      0.565 +/-  0.072        -8.6   101.4    +0.7322
+     15      0.975      96      0.509 +/-  0.066       -14.4    99.3    +0.7070
+     16      1.040     102      0.437 +/-  0.063       -22.5    95.9    +0.5946
+     17      1.105     113      0.646 +/-  0.105        -1.4    95.7    +0.6829
+     18      1.170     116      0.767 +/-  0.143        12.7    97.6    +0.8512
+     19      1.235     123      0.790 +/-  0.101        16.1   100.0    +0.7615
+
+total excess chi-squared inside 20 px = 673.7
+  90% of it is enclosed by r = 7 px = 0.455"
+  95% of it is enclosed by r = 7 px = 0.455"  <- radius used
+  99% of it is enclosed by r = 8 px = 0.520"
+
+sign-alternation check inside that radius: lag-1 autocorr = +0.2068 (284 pairs), against a field baseline of +0.7223.
+  A checkerboard would be NEGATIVE. It is not, here or in any annulus above, so
+  the artifact at these points is a smooth positively-correlated core excess,
+  not the pixel-scale sign alternation KNOWN_ISSUES item 5 describes.
+
+==============================================================================
+DESI234 r2  claude/DESI234/runs/r2_s2l2
+==============================================================================
+point estimate: HMC median;  rendered at recorded supersample=2
+centroid_pix (row, col) = (39.130, 39.470);  delta_pix = 0.065 "/px
+full-field chi2_nu over 5959 kept px = 1.2997
+
+field baseline, annulus 8-20 px (0.52-1.30"):
+  mean (r/sigma)^2 = 1.1432 +/- 0.0558
+  lag-1 autocorr   = +0.7570 +/- 0.0224 (2000 pairs)
+
+radial profile ('cum %' = running share of the total excess chi-squared):
+    r_px   r_arcsec    n_px   mean(r/sig)^2       excess   cum %   lag-1 rho
+      0      0.000       3   (too few pixels)
+      1      0.065      11      7.914 +/-  2.891        74.5    16.3    +0.4827
+      2      0.130      14      7.227 +/-  2.198        85.2    35.0    +0.4188
+      3      0.195      23      4.272 +/-  1.221        72.0    50.8    +0.2500
+      4      0.260      28      5.146 +/-  1.986       112.1    75.3    +0.7767
+      5      0.325      34      2.909 +/-  0.554        60.0    88.5    +0.9624
+      6      0.390      41      1.450 +/-  0.242        12.6    91.3    +0.6888
+      7      0.455      44      2.049 +/-  0.469        39.9   100.0    +1.0405
+      8      0.520      58      1.358 +/-  0.215        12.5   102.7    +0.8237
+      9      0.585      61      1.048 +/-  0.188        -5.8   101.5    +0.4638
+     10      0.650      64      2.087 +/-  0.430        60.4   114.7    +0.9167
+     11      0.715      72      1.870 +/-  0.302        52.3   126.2    +0.8290
+     12      0.780      76      1.803 +/-  0.267        50.2   137.2    +1.0074
+     13      0.845      89      1.268 +/-  0.163        11.1   139.6    +0.7822
+     14      0.910      89      1.224 +/-  0.210         7.2   141.2    +0.7685
+     15      0.975      95      1.032 +/-  0.165       -10.5   138.9    +0.6968
+     16      1.040     106      1.036 +/-  0.148       -11.4   136.4    +0.6723
+     17      1.105     110      0.778 +/-  0.110       -40.2   127.6    +0.6494
+     18      1.170     119      0.542 +/-  0.072       -71.5   111.9    +0.7096
+     19      1.235     117      0.679 +/-  0.082       -54.3   100.0    +0.8338
+
+total excess chi-squared inside 20 px = 456.2
+  90% of it is enclosed by r = 7 px = 0.455"
+  95% of it is enclosed by r = 8 px = 0.520"  <- radius used
+  99% of it is enclosed by r = 8 px = 0.520"
+
+sign-alternation check inside that radius: lag-1 autocorr = +0.3573 (364 pairs), against a field baseline of +0.7570.
+  A checkerboard would be NEGATIVE. It is not, here or in any annulus above, so
+  the artifact at these points is a smooth positively-correlated core excess,
+  not the pixel-scale sign alternation KNOWN_ISSUES item 5 describes.
+
+==============================================================================
+SIGN ALTERNATION ACROSS ROUNDS: is 'checkerboard' the right name?
+==============================================================================
+Core lag-1 autocorrelation (NEGATIVE = alternating = a checkerboard):
+  DESI257     ss=2  core rho = +0.1977   field rho = +0.7134
+  DESI234     ss=4  core rho = +0.3454   field rho = +0.7780
+  DESI257 r2  ss=2  core rho = +0.2068   field rho = +0.7223
+  DESI234 r2  ss=2  core rho = +0.3573   field rho = +0.7570
+  -> NO run alternates, at either round or either supersample. The core
+     excess is smooth and positively correlated. 'Checkerboard' does not
+     describe what is measurable in these residuals; item 5's physical
+     conclusion (a PSF artifact of Sersic deflector modelling, mask when
+     reporting, not when modelling) is untouched, but the NAME is wrong and
+     the round-2 description it came from should not be requoted as measured.
+
+==============================================================================
+CROSS-CHECK: is the extent a property of the instrument or of the lens?
+==============================================================================
+  DESI257    7 px = 0.455"   (90%: 7 px, 95%: 7 px, 99%: 8 px; total excess 659)
+  DESI234    8 px = 0.520"   (90%: 6 px, 95%: 8 px, 99%: 8 px; total excess 410)
+
+  spread = 0.065" = 1.0 px
+  -> AGREE to within one pixel. An instrument-level constant is justified. Use the larger, 8 px = 0.520", so neither system is under-masked.

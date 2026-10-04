@@ -1,0 +1,108 @@
+==============================================================================
+DESI257 r3_unmasked -- first-order theta_E shift from the ss=2 quadrature error
+==============================================================================
+
+mask: 6400/6400 px kept (UNMASKED, confirmed)
+HMC checkpoint: 50 chains x 10000 steps x 36 params (post-burnin, per metadata.json)
+
+Draw selection: N=60 posterior draws, index-paired linspace over 50 chains x 10000 steps (spread_hmc_draws).
+  chains used (sorted unique): [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49]
+  step range covered: 0 .. 9999 (60 unique step indices)
+  MAP and HMC-median carried as 2 extra points, scored identically, excluded from the regression (not posterior draws).
+z_batch shape: (62, 36) (60 draws + MAP + HMC-median)
+
+------------------------------------------------------------------------------
+STEP: diagnose_undersampling(ladder=(2,), reference_supersample=64), chunked
+------------------------------------------------------------------------------
+  chunk [0:10] (10 samples): 54.7s
+  chunk [10:20] (10 samples): 50.7s
+  chunk [20:30] (10 samples): 51.4s
+  chunk [30:40] (10 samples): 52.5s
+  chunk [40:50] (10 samples): 54.8s
+  chunk [50:60] (10 samples): 57.3s
+  chunk [60:62] (2 samples): 30.1s
+[timing] 351.4s total for 62 samples in 7 chunks of <= 10 (5.67s/sample)
+rung convention: 'subgrid'; reference_self_error keys: ['subgrid']
+CONFIRMED: both the ss=2 rung and the ss=64 reference render under the SAME ('subgrid') PSF convention -- this isolates quadrature error and does NOT include the ~3.7 sigma bin-first-vs-subgrid PSF-convention gap measured separately (undersampling_report.txt).
+reference_converged: False  (self_error={'subgrid': 0.09108071496380116}, library pass margin = tolerance/_REFERENCE_MARGIN = 0.2/4.0 = 0.05 sigma)
+*** REFERENCE NOT CERTIFIED -- the numbers below are REPORTED, NOT CERTIFIED, same as every other script in this directory. ***
+
+SIGN CHECK: module's delta_chi2 = chi2(rung) - chi2(reference); delta(theta) = delta_chi2/2 = log p_ref(theta) - log p_ss2(theta) (docstring derivation). delta_chi2 is measured NEGATIVE here (the ss=2 rung fits the observed data BETTER -- lower chi2 -- than the converged reference, at the same parameters: the coarse quadrature is quietly absorbing some of its own error into an apparently better fit). So delta < 0: correcting to the reference makes these parameter points LESS probable than the ss=2 fit currently reports -- the physically sensible direction for removing an artifact that flattered the fit.
+  delta_chi2 range over batch: [-304.10, -157.56]
+  delta range over batch:      [-152.050, -78.779] nats
+  delta at MAP: -149.486 nats;  delta at HMC-median: -106.092 nats
+
+------------------------------------------------------------------------------
+SANITY CHECK 1: mean(delta) over the N=60 draws vs the already-measured delta_chi2 mean (-221.1, undersampling_recheck.py, 9-sample batch, ss_ref=64)
+------------------------------------------------------------------------------
+  this script:  mean(delta) = -108.36 nats over N=60 draws (delta_chi2 mean -216.71)
+  already measured: delta_chi2 mean -221.1 -> delta = -110.55 nats (9-sample batch, different draw selection, same ss_ref=64, subgrid convention)
+  relative difference: 2.0%  -> CONSISTENT
+
+------------------------------------------------------------------------------
+SANITY CHECK 2: spread of delta over draws vs the already-reported ~17-nat delta_chi2 spread (guarantees weight collapse under full reweighting)
+------------------------------------------------------------------------------
+  std(delta_chi2) over N=60 draws = 29.23 nats (chi2 units); std(delta) = 14.62 nats (log-likelihood units)
+  range(delta_chi2) = [-304.10, -157.56], range(delta) = [-152.05, -78.78]
+  order of magnitude matches the previously reported ~17-nat delta_chi2 spread (here: 29.2 nats std over a wider, more representative N=60 batch) -- both say the same thing: per-draw delta_chi2 varies by O(10) nats across the posterior, which is exactly why full importance reweighting was already ruled out (weight collapse) and only this first-order estimate is attempted.
+
+------------------------------------------------------------------------------
+STEP: regress delta on the 6 host-mass parameters (standardized), OLS
+------------------------------------------------------------------------------
+  parameters (z-column indices): center_x=14, center_y=15, e1=16, e2=17, gamma=18, theta_E=19
+
+  R^2 = 0.1967  (n=60, p=6 predictors + intercept, dof=53)
+  intercept = -108.356 +/- 1.784 nats (delta at the draws' own mean parameter point)
+  standardized gradient g_std = d(delta)/d(theta_std)  [nats per 1 sd of theta]:
+    center_x   g_std =   +2.515 +/- 5.034   (t = +0.50)
+    center_y   g_std =   +6.462 +/- 5.006   (t = +1.29)
+    e1         g_std =   +2.906 +/- 2.678   (t = +1.09)
+    e2         g_std =  +12.528 +/- 9.511   (t = +1.32)
+    gamma      g_std =   +8.310 +/- 5.689   (t = +1.46)
+    theta_E    g_std =  +10.960 +/- 5.702   (t = +1.92)
+
+  R^2 < 0.3: delta is NOT well-described as linear in these 6 parameters over the posterior bulk spanned by these draws. Per the method above, the shift computed below should be read as an ORDER-OF-MAGNITUDE BOUND, not a value -- this is stated again in the final verdict.
+
+------------------------------------------------------------------------------
+STEP: Delta_theta = Sigma @ g  (posterior covariance times the gradient, original units)
+------------------------------------------------------------------------------
+  covariance estimated from 10000 draws (every 50th step of all 50 chains, full post-burnin range)
+
+  posterior sd (from the same stride sample), original units:
+    center_x   sd = 0.00267
+    center_y   sd = 0.00429
+    e1         sd = 0.00264
+    e2         sd = 0.00643
+    gamma      sd = 0.02120
+    theta_E    sd = 0.00257
+
+  Delta theta_E = +0.010587"  = +4.122 x posterior sd (sd = 0.00257")
+  Delta gamma   = -0.009006    = -0.425 x posterior sd (sd = 0.02120)
+
+  quoted theta_E interval: 1.991 [1.989, 1.994]" -- reported half-width 0.002"
+  |Delta theta_E| = 0.010587" is LARGER than the quoted +/-0.002" interval (ratio 5.29x).
+
+------------------------------------------------------------------------------
+SANITY CHECK 3: split-half agreement (first 30 vs last 30 of the 60 selected draws, ordered by the chains/steps linspace selection -- an interleaved-in-index but not adjacent-in-chain split)
+------------------------------------------------------------------------------
+  first half   (n=30): R^2=0.317  Delta theta_E=+0.017580"  Delta gamma=-0.014029
+  second half  (n=30): R^2=0.235  Delta theta_E=+0.012655"  Delta gamma=-0.039232
+
+  sign agreement on Delta theta_E across halves and the full sample: YES
+  magnitude ratio |half1/half2| = 1.39 (1.0 = perfect agreement; large or <<1 deviations from 1 indicate noise)
+  -> split-half STABLE: the two halves agree on sign and rough magnitude.
+
+------------------------------------------------------------------------------
+PLOT: delta vs theta_E across draws (marginal view -- NOT controlling for gamma etc, so the scatter is the honest picture, not the fitted multivariate line)
+------------------------------------------------------------------------------
+  marginal (theta_E only) OLS: slope=2125.88 nats/arcsec, R^2=0.0899 (weaker than the 6-parameter R^2=0.1967 above, as expected since theta_E/gamma are correlated and share explanatory power)
+  saved -> theta_e_systematic.png
+
+==============================================================================
+VERDICT
+==============================================================================
+linear-response validity: R^2=0.197 (LOW), split-half stable, |Delta theta_E|/sd = 4.122 (NOT small relative to the posterior spread, as a first-order approximation should be)
+
+PLAIN-ENGLISH VERDICT: this measurement does NOT resolve the question. The linear-response picture is not credible enough at N=60 (either R^2 is low, or the two draw-halves disagree on sign/magnitude) to certify a shift number. The honest statement is that the ss=2 quadrature error's effect on theta_E's posterior mean could not be pinned down to better than order-of-magnitude with this draw count; a larger N or a genuine ss=64 refit would be needed to do better, and neither is attempted here (the latter was already ruled out by the delta_chi2 spread -- weight collapse under reweighting).
+
+[timing] total script wall-clock: 357.6s

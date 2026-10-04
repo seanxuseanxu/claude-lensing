@@ -47,6 +47,13 @@ import svi_health
 
 RESULTS = []
 
+# A check that cannot run on this lens returns a detail string starting with this prefix
+# (e.g. check 5 needs a known-good/known-diverged pair the lens config may not name). It is
+# neither a pass nor a failure, and the summary counts it as neither: a skipped check has
+# established nothing, and folding it into the pass count would report absent evidence as
+# evidence. See claude/guide/ -- a skipped check is honest, but it must stay visible.
+SKIP_PREFIX = "SKIPPED"
+
 
 def check(name):
     """Decorator: run a check, record pass/fail, never abort the suite on one failure.
@@ -70,6 +77,34 @@ def check(name):
         return run
 
     return wrap
+
+
+def summarize(results):
+    """Classify ``(label, ok, detail)`` triples into pass / skip / fail counts.
+
+    Split out of ``main`` so the accounting is testable without running the suite. A check
+    that returned a ``SKIP_PREFIX`` detail is recorded ``ok=True`` -- it did not raise -- but
+    it is *not* a pass, and counting it as one would have reported DESI257 as 5/5 when only
+    four checks actually ran.
+
+    Returns ``(n_pass, n_skip, n_fail, summary_line)``.
+    """
+    n_fail = sum(1 for _, ok, _ in results if not ok)
+    n_skip = sum(1 for _, ok, detail in results if ok and detail.startswith(SKIP_PREFIX))
+    n_pass = len(results) - n_fail - n_skip
+    line = f"{n_pass}/{len(results)} checks passed"
+    if n_skip:
+        line += f", {n_skip} skipped (not run -- established nothing)"
+    if n_fail:
+        line += f", {n_fail} failed"
+    return n_pass, n_skip, n_fail, line
+
+
+def status_of(ok, detail):
+    """The four-character status label for one result triple."""
+    if ok and detail.startswith(SKIP_PREFIX):
+        return "SKIP"
+    return "PASS" if ok else "FAIL"
 
 
 def build(cfg, n_source, n_lens_light):
@@ -459,11 +494,11 @@ def main():
     print("\n" + "=" * 72)
     width = max(len(n) for n, _, _ in RESULTS)
     for name, ok, detail in RESULTS:
-        print(f"{'PASS' if ok else 'FAIL'}  {name:<{width}}  {detail}")
+        print(f"{status_of(ok, detail)}  {name:<{width}}  {detail}")
     print("=" * 72)
 
-    n_fail = sum(1 for _, ok, _ in RESULTS if not ok)
-    print(f"{len(RESULTS) - n_fail}/{len(RESULTS)} checks passed")
+    _, _, n_fail, summary = summarize(RESULTS)
+    print(summary)
     return 1 if n_fail else 0
 
 
