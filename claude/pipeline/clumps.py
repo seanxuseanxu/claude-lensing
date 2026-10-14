@@ -137,7 +137,7 @@ def compare(run_dir, out_dir, radius=3.0, lens=None):
     rm = diagnose.rebuild_model(run_dir, lens=lens)
     cfg = rm.cfg
 
-    z_unc, label = diagnose.point_estimate(run_dir)
+    z_unc, label = diagnose.point_estimate(run_dir, rm=rm)
     print(f"Point estimate: {label}")
     im_sim = diagnose.simulate_from_unconstrained(rm, z_unc)
 

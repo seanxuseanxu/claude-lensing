@@ -2,11 +2,14 @@
 
 HST WFC3/IR F140W imaging of DESI-234.4783+14.7232. This file records the data and the
 conditioning decisions, so that when a number does appear it is clear what it was
-conditioned on. **For results, see `RESULTS_v3.md`** (round 3); `RESULTS_v2.md` is superseded
-and carries a retraction banner.
+conditioned on. **For the quotable result, see `RESULTS_v2.md`** (round 2, converged);
+**for the current state of the modelling, see `RESULTS_v4.md`** (round 4, did not converge;
+the ellipticity bound did not rescue the foreground model). `RESULTS_v2.md` and
+`RESULTS_v3.md` carry correction banners dated 2026-08-10: round 3 does not supersede round
+2's `theta_E`, and neither does round 4.
 
-> **Current status — round 3, revised 2026-08-10: `r3_fg` is rejected as unphysical, and
-> round 2's `theta_E` stands.**
+> **Current status — round 4, 2026-10-05: the foreground model still does not give a
+> physical deflector, and round 2's `theta_E` stands.**
 >
 > | round | run | params | converged | `chi2_nu` | mass model `q` | `gamma` |
 > |---|---|---|---|---|---|---|
@@ -14,6 +17,30 @@ and carries a retraction banner.
 > | 2 | `r2_s2l2` | 36 | yes, R-hat <= 1.008 | 1.300 | 0.900 | 2.199 |
 > | 3 | `r3_unmasked` | 36 | **no** — chains frozen, max R-hat **13.94** | 1.662 | 0.943 | 2.130 |
 > | 3 | `r3_fg` | 46 | **no** — under-mixed, max R-hat **1.92** | **1.082** | **0.143** | **2.951** |
+> | 4 | `r4_fg_q` | 46 | **no** — max R-hat **2.125**, ESS floor **failed** (min 63) | 1.199 | **0.295** | **2.898** |
+> | 4b | `r4_fg_q2` | 46 | **no** — max R-hat **2.330**, ESS floor **failed** (min 56) | 1.276 | **0.302** | **2.917** |
+>
+> **Round 4 bounded the deflector's ellipticity and the deflector went to the new wall.**
+> With `mass_prior_version=2` enforcing gigalens' soft `q >= 0.2` floor, the host fits
+> `e1 = -0.4692` against a bound at `-0.4714` — `diagnose.py` reports it PINNED, with 96.3%
+> of draws within 0.01 of the bound. **This is not an artifact of the fit's poor starting
+> point:** among the top 10% of draws by log posterior the pinned fraction is 96.0%, against
+> 96.3% over all draws. The likelihood prefers the excluded region. The bound relocated the
+> pathology from `q = 0.143` to `q = 0.295`; it did not remove it.
+>
+> **Round 4's own question is therefore still unanswered.** Whether a foreground mass
+> component survives when the deflector is required to be round cannot be read off a fit in
+> which the deflector is still not round. The fitted foreground SIS `theta_E = 0.4752"`
+> (R-hat 1.609) **must not be quoted** — it is a statistic on a non-converged fit with an
+> unphysical host, the same error retracted on 2026-08-10.
+>
+> **The sampling explanations are now spent.** A second run (`r4_fg_q2`) tripled MAP and SVI
+> and closed two thirds of the MAP-vs-HMC deficit; convergence did not improve, and the
+> deflector pinned at the same place (`q = 0.302`). Chain length had already measured
+> sublinear twice. Of guide 04 §4.3's ordered list, only "improve the model" is left.
+>
+> See `RESULTS_v4.md` §4 for the tagged judgement that the host EPL and the foreground SIS
+> are competing for the same deflection, and the fit that would falsify it.
 >
 > **`r3_fg`'s deflector is a 7:1 needle with a near-singular slope.** Axis ratio
 > `q = 0.143` (16/84: 0.134–0.153) and `gamma = 2.951 ± 0.005`, against a prior
@@ -42,12 +69,15 @@ and carries a retraction banner.
 > despite its frozen chains. Two independent conditionings agreeing to under a milliarcsecond
 > is worth more than one converged fit alone.
 >
-> **Round 4 is a re-run of the foreground model, not a sampling fix.** The earlier reading —
-> that round 3's failures were sampling, not modelling — was made before `r3_fg`'s mass model
-> was examined and is wrong for `r3_fg`. Constrain the deflector's ellipticity to a physical
-> range, refit, and see whether the foreground component survives. `r3_unmasked`'s frozen
-> chains remain a genuine sampler problem; float64 is the first thing to vary there
-> (`pipeline/data.py:118` pins float32).
+> **Round 4 ran that re-run, and it was necessary but not sufficient.** The reading that
+> round 3's `r3_fg` failure was modelling rather than sampling is upheld — bounding the
+> ellipticity was the right move and it was not enough. What round 4 adds is that the
+> *unbounded prior* was not the whole fault: the likelihood presses against the bound
+> wherever the bound is put, so there is something wrong with the 46-parameter model itself,
+> most likely a degeneracy between the host EPL and the foreground SIS (`RESULTS_v4.md` §4).
+> `r3_unmasked`'s frozen chains remain a genuine and separate sampler problem; float64 is
+> still the first thing to vary there (`pipeline/data.py:118` pins float32) and is still
+> untried.
 
 Everything below is measured from this system's own files. Nothing is inherited from
 DESI238 except the *structure* of `config.py` and two prior widths that are explicitly
@@ -225,20 +255,36 @@ values is coincidence, not a validation of guessing.
       See `RESULTS_v2.md` for the full result, the residual-structure caveats (PSF mismatch
       at the core, unmodelled arc knots), and section 6's finding that the second source
       component sits outside the caustic and is not multiply imaged.
-      **Its `theta_E` is superseded as a measurement by round 3** — see the banner on
-      `RESULTS_v2.md`.
+      **Its `theta_E` stands as the system's current number**, qualified by the unmodelled
+      interloper mass. It was briefly held superseded by round 3; that reading was retracted
+      on 2026-08-10 when `r3_fg` was rejected — see the banner at the head of this file and
+      the one on `RESULTS_v2.md`.
 - [x] Round 3 fits (`r3_unmasked` 36 params, `r3_fg` 46 params; both unmasked, `supersample = 4`)
       — **neither converged**, max R-hat 13.94 and 1.92, and **`r3_fg` is additionally rejected
       as unphysical**: `q = 0.143`, `gamma = 2.951`. Its positive conclusions are withdrawn; see
       the correction banner on `RESULTS_v3.md`. What survives is `r3_unmasked`'s
       `theta_E = 1.5386` on a sane mass model, reproducing round 2 to 0.0007" despite frozen
       chains — support for round 2, not a replacement.
-- [ ] Round 4: refit the foreground model with the deflector's ellipticity constrained to a
-      physical range, and ask whether a foreground mass component survives when the deflector
-      is required to be round. This replaces "a converged `r3_fg`-class run" — `RESULTS_v3.md`
-      §5.4's reading that the fix is sampling and not modelling was made before `r3_fg`'s mass
-      model was examined, and is wrong for that run. It remains right for `r3_unmasked`, whose
-      chains are frozen on a sane model; try float64 there first (`pipeline/data.py:118`).
+- [x] Round 4 fit (`r4_fg_q`, 46 params, `mass_prior_version=2`) — **did not converge**:
+      46/46 parameters above the 1.01 gate, worst R-hat 2.125, and the Vehtari ESS floor
+      **failed** (min bulk-ESS 63 against 400 total / 50 per split half), so R-hat is
+      uninterpretable in both directions. **Its question is not answered.** Bounding the
+      ellipticity moved the deflector from `q = 0.143` to `q = 0.295` and pinned it against
+      the new bound (96.3% of draws within 0.01 of it; 96.0% among the top 10% by log
+      posterior, so not a start-point artifact). The ESS-vs-draws slope is 0.08 — sublinear
+      — after 5x round 3's burnin, so chain length is not the remaining lever. See
+      `RESULTS_v4.md`.
+- [x] Round 4b (`r4_fg_q2`, same model, MAP and SVI tripled) — **the surrogate lever, pulled
+      and exhausted.** It closed the MAP-vs-HMC deficit from 193.75 to 69.60 nats and
+      produced no convergence improvement at all: worst R-hat 2.125 -> 2.330, min ESS
+      63 -> 56, slope 0.08 -> 0.04. The deflector pins identically (`q = 0.302` against
+      0.295), so two surrogates 124 nats apart agree on the same unphysical mass model.
+      `RESULTS_v4.md` §8.
+- [ ] The modelling question round 4 exposed: is the host EPL pinning because the foreground
+      SIS is taking its mass? `RESULTS_v4.md` §4 states the judgement and names the falsifier
+      — fix the SIS `theta_E` and see whether the host relaxes to `q > 0.5`.
+- [ ] `r3_unmasked`'s frozen chains: try float64 (`pipeline/data.py:118` pins float32).
+      Untouched by round 4.
 - [x] ~~The fifth-image falsification run~~ — **retired 2026-08-10, not run.** Closed by the
       repository owner's reading: the 2.30" object is much brighter than the other images and
       out of position for a fifth image. The object is foreground. Whether it carries mass that
@@ -253,10 +299,21 @@ weakened to pass.
 | round | run | params | converged | theta_E | notes |
 |---|---|---|---|---|---|
 | 1 | `r1_s1l1` | 22 | no (worst R-hat 1.652) | 1.532" (unreliable) | lens-light `n_sersic` pinned at bound |
-| 2 | `r2_s2l2` | 36 | yes (worst R-hat 1.008) | 1.539 +0.003/-0.002" — **superseded, see below** | `RESULTS_v2.md` — converged, but with the interloper's mass unmodelled; round 3 shows that mass shifts `theta_E` by 0.066" |
-| 3 | `r3_unmasked` | 36 | no (worst R-hat 13.94) | — | `RESULTS_v3.md` — chains **frozen** (§5.4); chi2_nu 1.662, the worse model by Δchi² ≈ 3700 |
-| 3 | `r3_fg` | 46 | no (worst R-hat 1.92) | — | `RESULTS_v3.md` — chains **under-mixed along a `theta_E` ridge**, not multimodal; chi2_nu **1.082**, the best of the round. Foreground SIS `theta_E = 0.370"` at 12.2 sd from zero |
+| 2 | `r2_s2l2` | 36 | yes (worst R-hat 1.008) | **1.539 +0.003/-0.002" — the system's current number** | `RESULTS_v2.md` — converged, with the interloper masked and its mass therefore unmodelled: a known, still-unquantified systematic |
+| 3 | `r3_unmasked` | 36 | no (worst R-hat 13.94) | 1.5386 (unconverged; agrees with round 2 to 0.0007") | `RESULTS_v3.md` — chains **frozen** (§5.4); chi2_nu 1.662. Mass model is sane (`q = 0.943`, `gamma = 2.130`), so it supports round 2 rather than replacing it |
+| 3 | `r3_fg` | 46 | no (worst R-hat 1.92) | — | `RESULTS_v3.md` — **rejected as unphysical**: `q = 0.143`, `gamma = 2.951`. chi2_nu 1.082 was the best of the round, bought with a 7:1 needle. Its foreground SIS `theta_E = 0.370"` is a statistic computed on a rejected model and measures nothing |
+| 4 | `r4_fg_q` | 46 | no (worst R-hat 2.125; **ESS floor failed**, min 63) | — | `RESULTS_v4.md` — same model under `mass_prior_version=2` (`q >= 0.2`). Deflector **pinned at the new bound**, `q = 0.295`, `gamma = 2.898`. Pinning holds among the highest-posterior draws, so the bound did not fix the model, it relocated the pathology. Foreground SIS `theta_E = 0.4752"` **not quotable** |
+| 4b | `r4_fg_q2` | 46 | no (worst R-hat 2.330; **ESS floor failed**, min 56) | — | `RESULTS_v4.md` §8 — same model, MAP and SVI tripled. A 124-nat better surrogate gave no convergence gain and the same pinned deflector (`q = 0.302`, `gamma = 2.917`). Rules the surrogate out as the cause |
 
-**No `theta_E` is currently quotable for this system.** Round 2's interval is statistically
-sound but on a misspecified model (interloper mass absent); round 3 fixes the model and fails
-to converge. `RESULTS_v3.md` §7 gives the systematic budget and states what round 4 needs.
+**Round 2's `theta_E = 1.539 +0.003/-0.002"` is the quotable number**, qualified by the
+unmodelled interloper mass. The claim that modelling that mass shifts `theta_E` by 0.066"
+was **retracted 2026-08-10**: the shift is the difference between a sane mass model and a
+broken one, not a measurement of the interloper's effect. `RESULTS_v3.md` §7 gives the
+systematic budget.
+
+**What round 4 was to establish, it did not.** Whether a foreground mass component survives
+once the deflector is required to be round is still open, because the deflector under a
+`q >= 0.2` bound is still not round — it sits on the bound. The interloper's mass therefore
+remains an **unquantified systematic on round 2's number**, exactly as it was before round 4,
+and no round has yet produced a converged fit that both models that mass and keeps a
+physical host. `RESULTS_v4.md` §4 and §6 state what would.

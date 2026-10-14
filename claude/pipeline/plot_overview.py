@@ -21,7 +21,7 @@ import lenses
 
 def make_figure(run_dir, out_dir, lens=None):
     rm = diagnose.rebuild_model(run_dir, lens=lens)
-    z_unc, label = diagnose.point_estimate(run_dir)
+    z_unc, label = diagnose.point_estimate(run_dir, rm=rm)
     im_sim = diagnose.simulate_from_unconstrained(rm, z_unc)
     chi_squares, path = diagnose.residual_figure(
         out_dir, rm.cfg, rm.model, rm.prob, rm.image, rm.prob.error_map, im_sim, label,

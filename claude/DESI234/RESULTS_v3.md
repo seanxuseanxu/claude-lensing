@@ -41,24 +41,49 @@
 > The body below is left as written, per this project's habit of banner-then-keep rather than
 > rewriting a finished run's record. Read it as the round-3 report plus this correction.
 
-**Status: complete. Round 3 produces no `theta_E`, and it settles the interloper anyway.**
+**Status: complete, and largely negative. Round 3 produces no `theta_E` and settles nothing
+about the interloper.**
 
 Both fits ran and **neither converged** (§5.1). §5.4 says why, and the two runs failed for two
 different reasons: `r3_unmasked`'s 50 chains are **frozen**, `r3_fg`'s are **under-mixed along a
-`theta_E` ridge**. Neither is the bimodality §4(b) predicted, and neither is a model problem.
+`theta_E` ridge**. Neither is the bimodality §4(b) predicted.
 
-What the round nevertheless establishes, on grounds that non-convergence cannot overturn:
+Beyond that, **`r3_fg` is rejected as unphysical**: its deflector is a 7:1 needle, axis ratio
+`q = 0.143` (16/84: 0.134–0.153), with `gamma = 2.951 ± 0.005` against a
+`TruncatedNormal(2.0, 0.25, 1, 3)` prior — 3.95 prior σ out, posterior 50× narrower than the
+prior. Galaxy-scale deflectors are neither. So `r3_fg`'s non-convergence is the lesser problem;
+the model it converged *towards* is wrong.
 
-- **The interloper is a foreground mass, and modelling it matters.** `r3_fg`'s foreground SIS
-  sits at `theta_E = 0.370"`, **12.2 sd from zero**, with its Sersic `Ie` 6.2 sd from zero and
-  no chain anywhere near the nested null. Masking it removed its light from the likelihood and
-  left its deflection unmodelled, which biased the main deflector by **0.066"** — about 20x
-  round 2's quoted statistical error.
-- **The model without it is rejected**, by Δchi² ≈ 3700 for 10 extra parameters on a shared
-  likelihood (`chi2_nu` 1.662 vs **1.082**).
-- **Round 2's `1.539 +0.003/-0.002"` is superseded as a measurement** (§7), and round 3 does not
-  replace it. Round 4 needs a converged `r3_fg`-class run; §5.4 shows the fix is sampling, not
-  modelling.
+What the round establishes:
+
+- **`r3_unmasked`'s mass model is sane** (`q = 0.943`, `gamma = 2.130`) and it lands at
+  `theta_E = 1.5386"`, reproducing round 2 to **0.0007"** despite frozen chains. Two
+  conditionings agreeing to under a milliarcsecond is the round's one durable result.
+- **Round 2's `1.539 +0.003/-0.002"` stands** as the system's number, qualified by the
+  unmodelled interloper mass — a known, unquantified systematic.
+
+What the round does **not** establish — these were claimed in the original version of this
+section and are **retracted** (2026-08-10); see the banner above:
+
+- ~~The interloper is a foreground mass, and modelling it matters.~~ `r3_fg`'s foreground SIS
+  at `theta_E = 0.370"`, 12.2 σ from zero, is a statistic computed on a rejected model. The
+  statistic itself was sound — the prior is a `HalfNormal` with mode at zero
+  (`pipeline/priors.py:190-212`), so zero was available and excluded — but soundness does not
+  survive the model. A needle-shaped deflector needs extra nearby mass to stay consistent with
+  the arc, which is a likelier reading of the detection than the interloper.
+- ~~Masking biased the main deflector by 0.066".~~ That is the gap between a sane mass model
+  and a broken one, not a measurement of the interloper's effect.
+- ~~The model without it is rejected by Δchi² ≈ 3700.~~ `r3_fg` does fit better
+  (`chi2_nu` 1.082 vs 1.662, the best on the system), but it bought that fit with an unphysical
+  mass distribution. A likelihood-ratio argument presupposes both models are admissible.
+- ~~Round 2 is superseded.~~ It is not.
+
+**Round 4** is therefore a re-run of the foreground model, not a sampling fix: constrain the
+deflector's ellipticity to a physical range, refit, and ask whether the foreground component
+survives. §5.4's reading that the fix is sampling rather than modelling was made before
+`r3_fg`'s mass model was examined and is wrong for that run; it remains right for
+`r3_unmasked`, whose frozen chains are a genuine sampler problem (float64 is the first thing to
+vary — `pipeline/data.py:118` pins float32).
 
 Round 2 (`runs/r2_s2l2`, 36 parameters) converged at R-hat <= 1.008 with
 `theta_E = 1.539 +0.003/-0.002"` but `chi2_nu = 1.300`, and `residuals.png` showed three
@@ -455,18 +480,30 @@ far from the zero that would recover the 36-parameter model:
 | `planes/0/mass/2/theta_E` (SIS) | **0.370"** | [0.342, 0.400] | **12.2 sd** | 0.0000 |
 | `planes/0/light/2/Ie` (Sersic) | **89.4** | [74.1, 100.6] | **6.2 sd** | — |
 
-(Column names read from `model.z_param_names`, not from guessed indices.) Caveat: these are
-percentiles of an unconverged chain set. The *sign* of the conclusion is safe — nothing about
-non-convergence moves a 12-sd separation to zero — but the widths are not yet quotable.
+(Column names read from `model.z_param_names`, not from guessed indices. Note that these paths
+are in gigalens' pre-2026-08-07 scheme; today they read `planes/lens/mass/foreground/theta_E`.
+See `KNOWN_ISSUES.md` item 11.) Caveat, **strengthened 2026-08-10**: these are percentiles of
+an unconverged chain set, and of a chain set whose mass model is rejected. The original caveat
+said only that the widths were not quotable while "the *sign* of the conclusion is safe —
+nothing about non-convergence moves a 12-sd separation to zero." That is true and insufficient:
+the threat to this detection was never non-convergence but misspecification, and a 12-sd
+separation measured under a 7:1-needle deflector is 12 sd from zero *in a model that is
+wrong*.
 
 **Cannot:** any value of `theta_E`, from either run, at any precision. See §7.
 
-**A consequence that raises the stakes.** With the foreground SIS carrying `theta_E = 0.370"`,
-the main deflector's `theta_E` falls 1.539 -> 1.473", a **0.066" shift — roughly 20x round 2's
-0.003" statistical error**. Whether or not that exact number survives convergence, it says the
-interloper's *mass* was a real systematic that masking did not avoid but merely hid: masking
-removes the object's light from the likelihood and leaves its deflection unmodelled. That is a
-different and larger error than the one round 2 was guarding against.
+**RETRACTED (2026-08-10) — the paragraph that stood here.** It read: *"With the foreground SIS
+carrying `theta_E = 0.370"`, the main deflector's `theta_E` falls 1.539 -> 1.473", a 0.066"
+shift — roughly 20x round 2's 0.003" statistical error,"* and concluded that the interloper's
+mass was a real systematic masking had hidden rather than avoided.
+
+It does not survive `r3_fg`'s rejection. The 1.473" end of that shift is the needle's
+`theta_E`, not a better estimate of the deflector's: the comparison is between a sane mass
+model and a broken one, so the 0.066" measures the breakage, not the interloper. The reasoning
+about masking remains correct in principle — masking removes an object's light from the
+likelihood and leaves its deflection unmodelled, and that *is* a different error from the one
+round 2 guarded against — but round 3 does not size it. **Nothing yet quantifies the
+interloper's mass systematic.** Round 4 exists to.
 
 ### 5.3 Two secondary findings from the diagnostics
 
@@ -557,16 +594,27 @@ split on whether the interloper is present. They do not:
   "interloper on / interloper off" axis exists for them to line up along.
 
 So the interloper is present in every chain of `r3_fg`, at a consistent mass and brightness, and
-the run's convergence failure has nothing to do with it. Combined with §5.2's 12.2-sd and 6.2-sd
-separations from zero, the reading is that **`r3_fg` is the right model and an insufficiently
-long run**, while `r3_unmasked` is a sampler failure on a model the data has already rejected by
-Δchi² ≈ 3700.
+the run's convergence failure has nothing to do with it. **That much stands** — it is a
+statement about the chains, which is what was measured.
 
-**What this sets up for round 4.** The two diagnoses call for different changes, and only one is
-a model change — which is none. `r3_fg` needs sampling: more steps, and a check on MCLMC's
-step-size adaptation along the `theta_E` ridge. `r3_unmasked` needs the same investigation
-`KNOWN_ISSUES.md` item 2 already owes DESI257; it is not worth re-running on its own merits,
-since its likelihood is 3700 in chi² worse.
+**The inference drawn from it does not, and is retracted (2026-08-10).** This section
+previously concluded that *"`r3_fg` is the right model and an insufficiently long run, while
+`r3_unmasked` is a sampler failure on a model the data has already rejected by Δchi² ≈ 3700."*
+Every chain agreeing on the SIS shows the detection is not a sampling artefact; it does not
+show the model is right. All 50 chains also agree the deflector is a 7:1 needle, and that is
+not a credible galaxy. Consistency across chains measures the posterior, not its adequacy —
+distinguishing those two is the point of §5.2's physicality check, which came later. The
+Δchi² argument falls with it: a likelihood ratio presupposes both models are admissible, and
+`r3_fg` is not.
+
+**What this sets up for round 4 (revised).** `r3_fg` needs a **model** change first: constrain
+the deflector's ellipticity to a physical range and refit, then ask whether the foreground
+component survives. Only if it converges *and* stays physical does the sampling question —
+more steps, MCLMC's step-size adaptation along the `theta_E` ridge — become the live one.
+`r3_unmasked` needs the investigation `KNOWN_ISSUES.md` item 2 already owes DESI257; its frozen
+chains are a genuine sampler failure. It should not be dismissed on Δchi² against `r3_fg`, as
+the previous version of this paragraph did: `r3_unmasked` is the one of the two with a sane
+mass model, and float64 (`pipeline/data.py:118` pins float32) is the first thing to vary.
 
 ---
 
@@ -613,11 +661,15 @@ the worst possible place for it — `lens/mass/host/theta_E` is the max-R-hat pa
 full run and of nearly every chain cluster at every k. Percentiles from these chains are not
 posterior quantiles and are not quoted as such anywhere above.
 
-**Round 2's `1.539 +0.003/−0.002"` is likewise not the answer**, and round 3 is what shows it.
-That interval came from a converged run (max R-hat 1.008) — but of a model with the
+**Round 2's `1.539 +0.003/−0.002"` is the answer this system currently has**, and round 3 does
+not displace it. It came from a converged run (max R-hat 1.008) of a model with the
 interloper's *mass* absent, since masking removes an object's light from the likelihood and
-leaves its deflection unmodelled. Adding that mass moves the main deflector by 0.066". The
-round-2 error bar was a statistical error on a model now known to be misspecified.
+leaves its deflection unmodelled. That remains a real and unquantified systematic — but it is a
+caveat on the number, not a refutation of it, and round 3 supplies no replacement.
+
+*(Retracted 2026-08-10: this paragraph previously read "is likewise not the answer, and round 3
+is what shows it", on the strength of a 0.066" shift that came from the rejected `r3_fg`. See
+the banner and §5.2.)*
 
 So the budget below is a **statement of what must be accounted for when a converged `r3_fg`-class
 run exists**, not an error bar on a number this round measured. Sizes are what has been measured
@@ -625,19 +677,24 @@ so far; the sign of each is known, the magnitude of the first is not yet.
 
 | term | size | status |
 |---|---|---|
-| statistical | ~0.006" (`r3_fg`'s width) | **not yet meaningful** — R-hat 1.92 on this parameter |
-| **interloper mass** | **0.066"** | measured (§5.2), the dominant term, ~20x round 2's quoted error |
+| statistical | ~0.006" (`r3_fg`'s width) | **not yet meaningful** — R-hat 1.92 on this parameter, and the run is rejected |
+| **interloper mass** | **unquantified** | ~~0.066", measured (§5.2)~~ — **retracted 2026-08-10**: that figure came from the rejected `r3_fg`. The sign is unknown and the magnitude unmeasured. Round 4 exists to size it |
 | background RMS, ±15% patch-to-patch | not propagated | ±15% in σ is ±30% in chi², and it scales the whole likelihood; `README.md` |
 | core residual artifact | floor, not removed | §1.1: ss=4 is certified and adopted, and the checkerboard **survives it** (Pearson r = −0.109 against the predicted map). It is real unmodelled structure at the deflector core, not a rendering choice, and nothing in round 3 removes it |
 | supersample 2 → 4 | included | a change of round 3 relative to round 2; §1.1's ladder certifies ss=4 against an ss=32 reference |
 | arc substructure | not propagated | §1.2: the arc residual is genuine clumpiness, not a displacement, so it does not bias the deflector centroid — but it does inflate chi² and is unmodelled |
 
-The honest bottom line: **the interloper term alone is an order of magnitude larger than the
-statistical error round 2 reported**, and it was invisible to that round by construction. That
-is the round's most durable result, and it holds independently of the convergence failures,
-because a 0.066" shift driven by a 12.2-sd mass detection is not something non-convergence
-manufactures.
+The honest bottom line, **revised 2026-08-10**: the interloper's mass is a systematic that
+round 2 could not see by construction, and round 3 **did not succeed in sizing it**. The
+previous version of this paragraph called the 0.066" term "the round's most durable result" and
+argued it held independently of the convergence failures, "because a 0.066" shift driven by a
+12.2-sd mass detection is not something non-convergence manufactures." The reasoning about
+non-convergence was right and beside the point: what invalidates the number is not that the
+chains failed to mix but that the model they were mixing towards is unphysical. The durable
+result of this round is the smaller one — `r3_unmasked` reproducing round 2 to 0.0007" on a
+sane mass model.
 
-**What a quotable `theta_E` requires:** a converged `r3_fg`-class run (§5.4's fix is sampling,
-not modelling), the ±15% RMS spread propagated rather than noted, and the core artifact either
-modelled or explicitly declared a floor on chi².
+**What a quotable `theta_E` requires:** a converged *and physical* `r3_fg`-class run — §5.4's
+reading that the fix is sampling rather than modelling is wrong for `r3_fg`, which needs its
+ellipticity constrained first — the ±15% RMS spread propagated rather than noted, and the core
+artifact either modelled or explicitly declared a floor on chi².

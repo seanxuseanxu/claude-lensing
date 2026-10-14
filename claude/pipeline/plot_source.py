@@ -108,7 +108,7 @@ def make_figure(run_dir, out_dir, lens=None):
             f"plot_source.py assumes a 2-row/2-col two-source layout; run has n_source={n_source}"
         )
 
-    z_unc, label = diagnose.point_estimate(run_dir)
+    z_unc, label = diagnose.point_estimate(run_dir, rm=rm)
     print(f"Point estimate: {label}")
 
     # Unbatched z -> scalar params. The simulator's grid carries a trailing singleton
@@ -119,11 +119,13 @@ def make_figure(run_dir, out_dir, lens=None):
 
     src_plane = len(model.planes) - 1
     src_components = model.planes[src_plane].light
-    # TRAP: params["planes"][i]["light"] is a dict keyed by component index, not a list, so
-    # `zip(src_components, that_dict)` would pair each component with an integer key rather
-    # than its parameters -- and fail somewhere further down, as a TypeError about ints.
-    light_params = params["planes"][src_plane]["light"]
-    source_params = [light_params[j] for j in range(len(light_params))]
+    # TRAP: params["planes"][i]["light"] is a dict, not a list, so `zip(src_components,
+    # that_dict)` would pair each component with a KEY rather than its parameters -- and
+    # fail somewhere further down. What the keys are has also changed (integer indices
+    # until 2026-08-07, the scene's own names since), and the planes dict's order is not
+    # model.planes' order, so go through diagnose.source_component_params, which resolves
+    # the plane by its name and the components by position.
+    source_params = diagnose.source_component_params(model, params, src_plane)
 
     # trace() returns {plane_index: (x, y)}; take the source plane's entry by key rather
     # than by position, since the dict spans every plane in the scene.

@@ -1,15 +1,22 @@
 # DESI234, round 2: bulge+disk light, two source components
 
-> **SUPERSEDED IN PART — do not quote `theta_E = 1.539 +0.003/-0.002"` as a measurement.**
-> Round 3 (`RESULTS_v3.md`) modelled the interloper this round masks, and found it carries
-> **0.370" of its own SIS mass at 12.2 sd from zero**. Adding that mass moves the main
-> deflector's `theta_E` by **0.066"** — about 20x the statistical error quoted below. Masking
-> removes an object's *light* from the likelihood but leaves its *deflection* unmodelled, so
-> the interval below is a statistical error on a model now known to be misspecified.
-> Round 3 does **not** replace it with a better number: both round-3 fits failed R-hat
-> (`RESULTS_v3.md` §5.1, §5.4). This round's convergence (max R-hat 1.008) is still real and
-> its method still stands; it is the *model*, not the sampling, that round 3 invalidated.
-> `RESULTS_v3.md` §7 has the systematic budget.
+> **This round's `theta_E = 1.539 +0.003/-0.002"` is the system's current number**, with one
+> standing caveat: the interloper is masked here, and masking removes an object's *light*
+> from the likelihood while leaving its *deflection* unmodelled. That systematic is real and
+> still unquantified.
+>
+> **The earlier version of this banner is RETRACTED (2026-08-10).** It said this interval was
+> superseded because round 3 had found the interloper carries 0.370" of SIS mass at 12.2 sd
+> from zero, shifting the main `theta_E` by 0.066". Both numbers come from `r3_fg`, which was
+> then rejected as unphysical — its deflector is a 7:1 needle (`q = 0.143`) with
+> `gamma = 2.951`. A sound statistic computed on a rejected model measures nothing, and the
+> 0.066" is the gap between a sane mass model and a broken one, not the interloper's effect.
+>
+> Round 3's other fit, `r3_unmasked`, has a sane mass model and lands at `theta_E = 1.5386`,
+> reproducing this round to 0.0007" despite frozen chains — support for this result, not a
+> replacement. Round 4 will refit the foreground model with the deflector's ellipticity
+> constrained, and only then can the interloper's mass be quantified. `RESULTS_v3.md` §7 has
+> the systematic budget.
 
 **Date:** 2026-08-08. First converged fit of this system. Round 1 (`r1_s1l1`) is documented
 below for comparison only — it did not converge and none of its parameter values should be

@@ -1,0 +1,43 @@
+{
+  "api": "scene",
+  "lens": "DESI234",
+  "seed": 0,
+  "n_samples": 512,
+  "map_steps": 8000,
+  "n_vi": 1024,
+  "svi_steps": 12000,
+  "sampler": "mclmc",
+  "n_hmc": 50,
+  "burnin": 25000,
+  "num_results": 4000,
+  "target_acceptance": 0.9,
+  "desired_energy_variance": 0.0005,
+  "theta_e_center": 1.43,
+  "theta_e_width": 0.25,
+  "stages": [
+    "svi",
+    "hmc"
+  ],
+  "label": "r4_fg_q",
+  "git_commit": "2b9facd762962e54417641b2044342b07b175c0f",
+  "n_source": 2,
+  "n_lens_light": 2,
+  "lens_light_n_max": 10.0,
+  "n_free_params": 46,
+  "svi_peak_lr": 0.001,
+  "svi_warmup_frac": 0.1,
+  "max_leapfrog": 30,
+  "n_devices": 4,
+  "mask_circles": [],
+  "n_masked_pixels": 6400,
+  "supersample": 4,
+  "source_prior_version": 1,
+  "lens_light_prior_version": 2,
+  "foreground": true,
+  "foreground_prior_version": 1,
+  "mass_prior_version": 2,
+  "timings": {
+    "svi": 2394.1498548984528,
+    "hmc": 655.9025440216064
+  }
+}

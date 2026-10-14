@@ -97,9 +97,21 @@ def test_foreground_roundtrip():
     assert rm.foreground_prior_version == priors.FOREGROUND_PRIOR_VERSION
 
     # The disambiguated column lookup diagnose.py's own call sites use: must resolve to
-    # the HOST's theta_E (index of "planes/0/mass/0/theta_E"), not raise on the SIS's.
+    # the HOST's theta_E -- the FIRST mass component priors.py declares -- and not raise
+    # on the SIS's own theta_E. Asserted positionally rather than against a spelling:
+    # gigalens renamed these paths on 2026-08-07 (planes/0/mass/0/... ->
+    # planes/lens/mass/host/...), and pinning the literal string is what let that rename
+    # break every caller of this idiom silently. What must hold is that the column is the
+    # first mass theta_E, whatever it is called.
     idx = diagnose.column(rm.model, "mass/0/theta_E", kind="mass")
-    assert rebuilt_names[idx] == "planes/0/mass/0/theta_E"
+    first_mass_theta_E = next(
+        i for i, n in enumerate(rebuilt_names)
+        if "/mass/" in n and n.endswith("/theta_E")
+    )
+    assert idx == first_mass_theta_E, (
+        f"column() resolved {rebuilt_names[idx]} but the first mass theta_E is "
+        f"{rebuilt_names[first_mass_theta_E]}"
+    )
 
     return f"{rm.model.num_free_params} params, names identical, host theta_E at column {idx}"
 

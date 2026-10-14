@@ -133,11 +133,11 @@ def main():
     out_dir = Path(args.out) if args.out else run_dir
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    hmc = diagnose.load_checkpoint(run_dir, "hmc")
+    rm = diagnose.rebuild_model(run_dir, lens=args.lens)
+
+    hmc = diagnose.load_checkpoint(run_dir, "hmc", rm)
     if hmc is None:
         raise FileNotFoundError(f"No hmc.npz in {run_dir}; corner plots need HMC samples.")
-
-    rm = diagnose.rebuild_model(run_dir, lens=args.lens)
 
     samples = np.asarray(hmc["samples"])  # (n_chains, n_draws, n_params)
     n_chains, n_draws, n_params = samples.shape
@@ -150,7 +150,7 @@ def main():
 
     con_full = diagnose.to_constrained(rm.model, thinned.reshape(-1, n_params))
 
-    z_point, label = diagnose.point_estimate(run_dir)
+    z_point, label = diagnose.point_estimate(run_dir, rm=rm)
     print(f"Point estimate for truth lines: {label}")
     con_point = diagnose.to_constrained(rm.model, z_point.reshape(1, -1))[0]
 

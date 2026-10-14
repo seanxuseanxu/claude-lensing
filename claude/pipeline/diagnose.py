@@ -11,9 +11,16 @@ Three conventions worth stating, all verified against the running code rather th
 - ``model.bijector.forward`` takes a **flat array** of shape ``(..., num_free_params)``.
   The retired ``list(z.T)`` list-of-columns convention now raises ``TypeError`` outright,
   which is the good outcome -- it used to be accepted.
-- The flat column order is ``model.z_param_names``: path-keyed and sorted, so lens *light*
-  precedes lens *mass* within the lens plane (``light`` < ``mass``). ``model.z_labels`` is
-  the parallel display list. Never reconstruct either from declaration order.
+- The flat column order is ``model.z_param_names``, and it is **derived from the scene,
+  not fixed**. gigalens used to spell component indices into the paths and sort them
+  (``planes/0/light/0/Ie`` first, so lens *light* preceded lens *mass*); since 2026-08-07
+  (upstream ``cc5a078``) it spells the scene's own keys and orders columns by
+  **derivation**, independent of the key text: planes in order, then per plane geometry,
+  mass, light, then per component the profile's own declared parameter order, cosmo last
+  (``planes/lens/mass/host/theta_E`` first, mass before light). ``model.z_labels`` is the
+  parallel display list. Never reconstruct either from declaration order -- and never
+  assume a stored checkpoint is in today's order: see ``column_permutation``, and pass
+  ``rm`` to ``load_checkpoint`` for anything read physically.
 - HMC samples are shaped ``(n_chains, n_steps, n_params)`` -- **chains first**, the ArviZ
   layout that ``diagnose_convergence`` requires, and the opposite of TFP's own.
 
@@ -26,6 +33,12 @@ rather than reimplementing the fallbacks.
 Runs predating the scene-API port are refused, not guessed at: the port changed both the
 z-column order and the noise convention, so their stored samples mean something else here.
 Read them at the pre-port commit, or re-fit.
+
+Scene-API runs written before gigalens' 2026-08-07 renaming ARE readable, because
+``map.npz`` records the column names the run was written with. ``rebuild_model`` resolves
+those against the rebuilt model and ``load_checkpoint(run_dir, name, rm)`` applies the
+permutation. Reading one without ``rm`` is the silent-wrong-number case this file exists
+to prevent, so ``point_estimate`` refuses it outright.
 
 ``main()`` prints a ``[timing]`` line per stage. Measured 2026-08-11 on the largest run to
 date (``claude/DESI234/runs/r2_s2l2``, 50 chains x 40000 steps x 36 params = 2M draws),
@@ -104,12 +117,161 @@ MIN_CHAINS = 4
 CORE_MASK_RADIUS_ARCSEC = 0.520
 
 
-def load_checkpoint(run_dir, name):
-    """Return the npz for a stage, or None if that stage never ran."""
+def stored_param_names(run_dir):
+    """Return the flat-z column names a run was WRITTEN with, or None if unrecorded.
+
+    ``run_fit.save_map_checkpoint`` stores ``model.z_param_names`` verbatim in ``map.npz``
+    as ``param_names``. That record is the only thing that makes an old checkpoint
+    readable at all, because the column order is derived from the model and the model's
+    naming has since changed (see ``column_permutation``). ``hmc.npz`` and ``svi.npz``
+    carry no names of their own; all three stages of one run share the one order, so the
+    MAP record speaks for all of them.
+
+    ``None`` when ``map.npz`` is absent or predates the key -- the caller must then decide
+    whether it can proceed, rather than being handed a guess.
+    """
+    mp = _load_npz(run_dir, "map")
+    if mp is None or "param_names" not in mp:
+        return None
+    return [str(n) for n in mp["param_names"]]
+
+
+def column_permutation(run_dir, model):
+    """Return ``perm`` with ``perm[j] = i``: stored column ``j`` is ``model``'s column ``i``.
+
+    ``None`` when the stored order already equals today's and no permutation is needed.
+
+    **Why this exists.** The flat-z column order is *derived* from the scene, never
+    declared, so it changes whenever the scene's parameter paths change -- and nothing
+    about a stored array records which order it is in. Checkpoints written before
+    2026-08-07 name their columns with numeric indices and sort them
+    (``planes/0/mass/0/theta_E``, ``planes/0/light/0/Ie``, ...); today's gigalens names
+    them with the scene's own keys and keeps declaration order
+    (``planes/lens/mass/host/theta_E``, ...). Both orders are 36- or 46-long arrays of
+    float, both decode without error, and they are not the same permutation. DESI234's
+    ``r3_fg`` read back as ``theta_E = 231.9"`` under today's order -- impossible, and so
+    caught; the same run's ``gamma`` read back as 1.42 against a recorded 2.95, which is
+    merely wrong and would not have been.
+
+    The mapping is resolved by *name*, from the run's own recorded ``param_names``, not by
+    reconstructing the old sorting rule. Two names refer to the same parameter when their
+    ``(plane, site, component, parameter)`` positions agree; the stored name gives the
+    first three as declaration indices and today's gives them as keys, so today's names
+    are reduced to indices and matched against the stored ones. Reducing today's names to
+    the old scheme (rather than the reverse) is what makes this checkable: the reduced set
+    must equal the stored set exactly, and a mismatch raises.
+    """
+    stored = stored_param_names(run_dir)
+    today = list(model.z_param_names)
+    if stored is None:
+        # Nothing stored to decode -- a metadata-only directory, or a fit that has not
+        # reached its first checkpoint -- is not an error; there are no columns to get
+        # wrong. A run with samples but no names is, because those samples will be read.
+        if not any((Path(run_dir) / f"{s}.npz").exists() for s in ("hmc", "svi", "map")):
+            return None
+        raise ValueError(
+            f"{run_dir} has checkpoints but records no 'param_names' in map.npz, so the "
+            f"flat-z column order they were written with cannot be established. Today's "
+            f"order may differ (it changed with the 2026-08-07 gigalens naming change), "
+            f"and decoding the samples in the wrong order yields plausible, wrong "
+            f"physical values rather than an error. Re-fit the run, or read it at the "
+            f"commit that wrote it."
+        )
+    if stored == today:
+        return None
+    if len(stored) != len(today):
+        raise ValueError(
+            f"{run_dir} stored {len(stored)} flat-z columns but the model rebuilt from "
+            f"its metadata has {len(today)}. This is a model-variant mismatch, not a "
+            f"column reordering; rebuild_model's reconstruction is wrong."
+        )
+
+    # Reduce today's key-named paths to the old index-named scheme. Plane and component
+    # indices are declaration order within their parent, which is the order
+    # z_param_names itself is in -- hence first-seen order here.
+    planes, comps, reduced = {}, {}, []
+    for name in today:
+        _, plane, site, comp, param = name.split("/")
+        planes.setdefault(plane, len(planes))
+        key = (plane, site, comp)
+        if key not in comps:
+            comps[key] = len({k for k in comps if k[0] == plane and k[1] == site})
+        reduced.append(f"planes/{planes[plane]}/{site}/{comps[key]}/{param}")
+
+    if sorted(reduced) != sorted(stored):
+        only_stored = sorted(set(stored) - set(reduced))
+        only_today = sorted(set(reduced) - set(stored))
+        raise ValueError(
+            f"{run_dir}'s stored column names do not correspond to the rebuilt model's, "
+            f"so no permutation between them exists. In the checkpoint only: "
+            f"{only_stored}. In the rebuilt model only: {only_today}. The model this run "
+            f"was fitted with is not the one metadata.json rebuilds."
+        )
+    index_of = {name: i for i, name in enumerate(reduced)}
+    return [index_of[name] for name in stored]
+
+
+def reorder_columns(arr, perm, axis=-1):
+    """Return ``arr`` with its stored columns moved to the rebuilt model's order.
+
+    ``perm`` is ``column_permutation``'s output, or ``None`` for a no-op. Scattering
+    (``out[..., perm[j]] = arr[..., j]``) rather than gathering: ``perm`` maps stored
+    position to model position, and taking ``arr[..., perm]`` would silently apply the
+    inverse -- which for DESI234's 36-parameter runs is itself a valid-looking decode.
+    """
+    if perm is None:
+        return arr
+    arr = np.asarray(arr)
+    out = np.empty_like(arr)
+    idx_src = [slice(None)] * arr.ndim
+    idx_dst = [slice(None)] * arr.ndim
+    for j, i in enumerate(perm):
+        idx_src[axis], idx_dst[axis] = j, i
+        out[tuple(idx_dst)] = arr[tuple(idx_src)]
+    return out
+
+
+def _load_npz(run_dir, name):
+    """Return the raw npz for a stage, in whatever column order it was written."""
     path = Path(run_dir) / f"{name}.npz"
     if not path.exists():
         return None
     return np.load(path, allow_pickle=True)
+
+
+def load_checkpoint(run_dir, name, rm=None):
+    """Return the npz for a stage in the rebuilt model's column order, or None.
+
+    ``rm`` is a ``RunModel`` from ``rebuild_model``. Pass it whenever the arrays will be
+    interpreted physically -- it supplies the permutation that maps the run's stored
+    column order onto today's (see ``column_permutation``). Every array that carries a
+    parameter axis is permuted: ``samples`` and ``best_z``, SVI's ``mean``, and SVI's
+    ``scale_tril``, which is permuted as a covariance and re-factored rather than having
+    its rows and columns shuffled (a permuted Cholesky factor is not triangular, and is
+    not the Cholesky factor of the permuted covariance).
+
+    ``rm=None`` returns the arrays exactly as stored, and is correct only for uses that
+    never cross the parameter axis -- ``chisq_hist``, ``loss_hist``, ``best_lp``, a shape.
+    It is the old signature, so it stays the default; but a run whose stored order differs
+    from today's and is read without ``rm`` is a silent wrong answer, which is why
+    ``rebuild_model`` prints the permutation when one is in force.
+    """
+    stored = _load_npz(run_dir, name)
+    if stored is None or rm is None or rm.column_perm is None:
+        return stored
+    perm = rm.column_perm
+    out = dict(stored)
+    for key in ("samples", "best_z", "mean"):
+        if key in out:
+            out[key] = reorder_columns(np.asarray(out[key]), perm)
+    if "param_names" in out:
+        out["param_names"] = np.asarray(rm.pnames)
+    if "scale_tril" in out:
+        tril = np.asarray(out["scale_tril"], dtype=np.float64)
+        cov = tril @ tril.T
+        cov = reorder_columns(reorder_columns(cov, perm, axis=0), perm, axis=1)
+        out["scale_tril"] = np.linalg.cholesky(cov)
+    return out
 
 
 def load_run_config(run_dir):
@@ -135,7 +297,9 @@ class RunModel:
         raw metadata dict), ``mask`` (the keep-mask the fit used, or None), the resolved
         ``mask_circles`` that mask was built from, and the resolved variant fields
         ``n_source``, ``n_lens_light``, ``lens_light_n_max``, ``theta_e_center``,
-        ``theta_e_width``, ``foreground`` (bool), ``foreground_prior_version``.
+        ``theta_e_width``, ``foreground`` (bool), ``foreground_prior_version``,
+        ``mass_prior_version``, and ``column_perm`` (the stored-to-rebuilt flat-z column
+        permutation, or None when the orders already agree -- see ``column_permutation``).
     """
 
     def __init__(self, **kw):
@@ -208,6 +372,12 @@ def rebuild_model(run_dir, lens=None, theta_e_center=1.5, theta_e_width=0.35, qu
             priors.lens_light_prior_version_for(n_lens_light),
         )
     )
+    # Host EPL prior version. Absent in metadata written before 2026-10-03, which is
+    # correctly read as v1 -- that is the unbounded-ellipticity support those runs were
+    # actually fitted under, and MASS_PRIOR_VERSION is still 1 so the default agrees.
+    mass_prior_version = int(
+        run_cfg.get("mass_prior_version", priors.MASS_PRIOR_VERSION)
+    )
     # foreground: whether the run's model carries the SIS + Sersic interloper pair, and
     # which versioned support it used. Absent in metadata written before round 3b, which
     # is correctly read as False/no-op -- those runs have no such component.
@@ -233,6 +403,7 @@ def rebuild_model(run_dir, lens=None, theta_e_center=1.5, theta_e_width=0.35, qu
               f"lens_light_n_max={lens_light_n_max}, "
               f"source_prior_v{source_prior_version}, "
               f"lens_light_prior_v{lens_light_prior_version}, "
+              f"mass_prior_v{mass_prior_version}, "
               f"foreground={foreground_flag}"
               + (f" (prior_v{foreground_prior_version})" if foreground_flag else "") +
               f", theta_E prior LogNormal(log {theta_e_center}, {theta_e_width})")
@@ -266,6 +437,7 @@ def rebuild_model(run_dir, lens=None, theta_e_center=1.5, theta_e_width=0.35, qu
         lens_light_n_max=lens_light_n_max,
         source_prior_version=source_prior_version,
         lens_light_prior_version=lens_light_prior_version,
+        mass_prior_version=mass_prior_version,
         foreground=foreground,
         foreground_prior_version=foreground_prior_version,
     )
@@ -308,9 +480,20 @@ def rebuild_model(run_dir, lens=None, theta_e_center=1.5, theta_e_width=0.35, qu
             f"every physical value read from this run would be too."
         )
 
+    # The flat-z column order this run's arrays are stored in, resolved against the model
+    # just rebuilt. Done last, so a model-variant error above is reported as such rather
+    # than surfacing here as an unmappable set of names.
+    column_perm = column_permutation(run_dir, model)
+    if column_perm is not None and not quiet:
+        print(f"NOTE: this run's stored flat-z column order differs from the rebuilt "
+              f"model's; load_checkpoint(run_dir, name, rm) permutes {len(column_perm)} "
+              f"columns into today's order. Arrays read without passing rm are in the "
+              f"stored order and must not be interpreted physically.")
+
     return RunModel(
         cfg=cfg,
         run_cfg=run_cfg,
+        column_perm=column_perm,
         image=image,
         psf=psf,
         sim_config=sim_config,
@@ -328,6 +511,7 @@ def rebuild_model(run_dir, lens=None, theta_e_center=1.5, theta_e_width=0.35, qu
         theta_e_width=theta_e_width,
         source_prior_version=source_prior_version,
         lens_light_prior_version=lens_light_prior_version,
+        mass_prior_version=mass_prior_version,
         foreground=foreground_flag,
         foreground_prior_version=foreground_prior_version,
     )
@@ -347,8 +531,27 @@ def column(model, suffix, kind=None):
     always builds the host EPL first, so ``suffix="mass/0/theta_E"`` picks it
     unambiguously regardless of how many other mass components follow -- callers that need
     the host's Einstein radius should use that, not the bare name.
+
+    A ``<site>/<n>/<param>`` suffix with a NUMERIC ``<n>`` is resolved positionally: the
+    ``n``-th component declared at that site, counting in ``z_param_names`` order. Until
+    2026-08-07 gigalens spelled component indices into the paths themselves and such a
+    suffix matched literally; it now spells the scene's own keys
+    (``planes/lens/mass/host/theta_E``), so the literal match finds nothing and every
+    caller of the ``mass/0/theta_E`` idiom would raise. The idiom always *meant* "the
+    first mass component", which is what is resolved here -- rather than hardcoding the
+    key ``host``, which is a per-config name that no rule makes the host's.
     """
     names = list(model.z_param_names)
+    parts = suffix.split("/")
+    if len(parts) == 3 and parts[1].isdigit():
+        site, want, param = parts[0], int(parts[1]), parts[2]
+        ordered = []
+        for n in names:
+            _, _, n_site, n_comp, _ = n.split("/")
+            if n_site == site and n_comp not in ordered:
+                ordered.append(n_comp)
+        if want < len(ordered):
+            suffix = f"{site}/{ordered[want]}/{param}"
     hits = [
         i
         for i, n in enumerate(names)
@@ -387,7 +590,7 @@ def simulate_from_unconstrained(rm, z_unc):
     return im.reshape(rm.sim_config.num_pix, rm.sim_config.num_pix)
 
 
-def point_estimate(run_dir, hmc_samples=None):
+def point_estimate(run_dir, hmc_samples=None, rm=None):
     """Return ``(z_unconstrained, label)`` for the best available point estimate.
 
     Preference: HMC posterior median > SVI mean > MAP best. The median is taken in
@@ -398,21 +601,33 @@ def point_estimate(run_dir, hmc_samples=None):
     ``hmc_samples``, if given, is the already-loaded ``(n_chains, n_steps, n_params)``
     array -- pass it when the caller has already paid for ``hmc.npz``'s decompression
     (288 MB / ~1.5s on the largest run), so a second read is not needed here. ``None``
-    (the default, and every external caller's usage) loads it fresh, unchanged from
-    before.
+    (the default, and every external caller's usage) loads it fresh.
+
+    ``rm`` supplies the stored-to-rebuilt column permutation (see ``column_permutation``).
+    The returned ``z`` is always destined for the model's bijector, so it must be in the
+    model's column order; when a run needs permuting and no ``rm`` is given, this raises
+    rather than returning a vector that will decode to the wrong physical values. Passing
+    ``hmc_samples`` yourself asserts you already permuted it -- that is the one path that
+    cannot be checked here, because the array arrives without provenance.
     """
     if hmc_samples is None:
-        hmc = load_checkpoint(run_dir, "hmc")
+        if rm is None and column_permutation(run_dir, rebuild_model(run_dir, quiet=True).model) is not None:
+            raise ValueError(
+                f"{run_dir}'s stored flat-z column order differs from the current "
+                f"model's, so a point estimate read from it must be permuted before it "
+                f"can be transformed. Pass rm=rebuild_model(run_dir)."
+            )
+        hmc = load_checkpoint(run_dir, "hmc", rm)
         hmc_samples = None if hmc is None else hmc["samples"]
     if hmc_samples is not None:
-        samples = hmc_samples  # (n_chains, n_steps, n_params)
+        samples = np.asarray(hmc_samples)  # (n_chains, n_steps, n_params)
         return np.median(samples.reshape(-1, samples.shape[-1]), axis=0), "HMC median"
 
-    svi = load_checkpoint(run_dir, "svi")
+    svi = load_checkpoint(run_dir, "svi", rm)
     if svi is not None:
         return np.asarray(svi["mean"]), "SVI mean"
 
-    mp = load_checkpoint(run_dir, "map")
+    mp = load_checkpoint(run_dir, "map", rm)
     if mp is not None:
         return np.asarray(mp["best_z"]).reshape(-1), "MAP best"
 
@@ -486,7 +701,8 @@ def check_theta_E(curves, center, theta_E, gamma=None, extra_mass=None):
     one (the largest) and flag loudly if it disagrees by more than 10%.
 
     ``extra_mass`` is the list of ADDITIONAL lens-plane mass components beyond the main
-    EPL -- i.e. ``params["planes"][0]["mass"][1:]`` -- and it is not optional bookkeeping.
+    EPL -- i.e. ``model.component_params(params, 0, "mass", i)`` for ``i >= 1`` -- and it
+    is not optional bookkeeping.
     The critical curve is a property of the TOTAL convergence on the lens plane, while
     ``theta_E`` here is the main deflector's alone. With a second mass present the two are
     different quantities and the 10% bound does not apply: a foreground SIS adds
@@ -558,16 +774,26 @@ def check_theta_E(curves, center, theta_E, gamma=None, extra_mass=None):
         print(f"Validation OK: tangential radius agrees with theta_E to {frac * 100:.2f}%.")
 
 
-def source_component_params(params, plane):
+def source_component_params(model, params, plane):
     """Light-component parameter dicts for ``plane``, in component-index order.
 
-    ``model.constrained`` returns ``planes``, ``light`` and ``mass`` as **dicts keyed by
-    integer index**, not lists. Iterating one yields the keys (ints), and ``params["planes"]``
-    does not even iterate in index order -- so a ``for p in ...["light"]`` loop that looks
-    exactly like a list iteration silently hands you integers. Index by ``range`` instead.
+    ``model.constrained`` returns ``planes``, ``light`` and ``mass`` as **dicts**, not
+    lists. Iterating one yields the keys, so a ``for p in ...["light"]`` loop that looks
+    exactly like a list iteration silently hands you keys rather than parameter dicts.
+
+    Both the plane and the component are resolved by ``LensModel.component_params``, which
+    gigalens documents as "the single supported way to reach a component's params". Do not
+    index the tree here. Two reasons beyond deference to the library: its keys are the
+    component's *name* with a ``str(index)`` fallback when unnamed, which only
+    ``component_key`` knows how to reproduce; and the tree's own order is **not**
+    ``model.planes``' order -- on DESI234 ``r3_fg`` ``params["planes"]`` comes out
+    ``{"source": ..., "lens": ...}``, reversed, and ``scene-design.md`` warns outright
+    against assuming otherwise. A positional lookup there returns the wrong plane while
+    raising nothing, because both planes carry ``light``: the deflector would be rendered
+    as the source.
     """
-    light = params["planes"][plane]["light"]
-    return [light[j] for j in range(len(light))]
+    n = len(model.planes[plane].light)
+    return [model.component_params(params, plane, "light", j) for j in range(n)]
 
 
 def render_source_plane(model, params, extent, n=400):
@@ -587,7 +813,7 @@ def render_source_plane(model, params, extent, n=400):
     img = np.zeros_like(Xg)
     src = len(model.planes) - 1
     for j, comp in enumerate(model.planes[src].light):
-        p = params["planes"][src]["light"][j]
+        p = model.component_params(params, src, "light", j)
         img = img + np.asarray(comp.profile.light(jnp.asarray(Xg), jnp.asarray(Yg), **p))
     return Xg, Yg, img
 
@@ -684,7 +910,10 @@ def residual_figure(out_dir, cfg, model, prob, image, err_map, im_sim, label, z_
     # Raw lens parameters -- needed for the critical curve / caustic / source panels,
     # which is the reason this file and plot_overview.py used to be two implementations.
     params = model.constrained(jnp.asarray(np.asarray(z_unc).reshape(-1)))
-    epl_params = {k: float(np.asarray(v)) for k, v in params["planes"][0]["mass"][0].items()}
+    epl_params = {
+        k: float(np.asarray(v))
+        for k, v in model.component_params(params, 0, "mass", 0).items()
+    }
     theta_E = epl_params["theta_E"]
     lens_center = (epl_params["center_x"], epl_params["center_y"])
 
@@ -699,11 +928,12 @@ def residual_figure(out_dir, cfg, model, prob, image, err_map, im_sim, label, z_
     # component but carries no convergence (gamma1/gamma2 only), so it does not push the
     # tangential radius off theta_E the way a second deflector does. Only components with
     # an Einstein radius of their own qualify.
-    lens_plane_mass = params["planes"][0]["mass"]
+    n_mass = len(model.planes[0].mass)
     extra_mass = [
         d for d in (
-            {k: float(np.asarray(v)) for k, v in lens_plane_mass[i].items()}
-            for i in sorted(lens_plane_mass)[1:]
+            {k: float(np.asarray(v))
+             for k, v in model.component_params(params, 0, "mass", i).items()}
+            for i in range(1, n_mass)
         )
         if "theta_E" in d
     ]
@@ -726,7 +956,7 @@ def residual_figure(out_dir, cfg, model, prob, image, err_map, im_sim, label, z_
     # out.
     src_plane = len(model.planes) - 1
     src_centers, src_radii = [], []
-    for p in source_component_params(params, src_plane):
+    for p in source_component_params(model, params, src_plane):
         src_centers.append((float(np.asarray(p["center_x"])),
                              float(np.asarray(p["center_y"]))))
         src_radii.append(float(np.asarray(p["R_sersic"])))
@@ -1087,7 +1317,7 @@ def hmc_and_constrained(run_dir, rm, hmc_samples=None, con=None, need_con=True):
     than an error (see the module docstring, and ``diagnose_convergence``'s own warning).
     """
     if hmc_samples is None:
-        hmc = load_checkpoint(run_dir, "hmc")
+        hmc = load_checkpoint(run_dir, "hmc", rm)
         if hmc is None:
             return None, None
         hmc_samples = hmc["samples"]
@@ -1318,7 +1548,7 @@ def map_convergence_check(run_dir, rm, hmc_samples=None, max_hmc_eval=3000):
     Skipped with no output when ``map.npz`` or ``hmc.npz`` is absent -- there is nothing to
     compare.
     """
-    mp = load_checkpoint(run_dir, "map")
+    mp = load_checkpoint(run_dir, "map", rm)
     if mp is None:
         return
     hmc_samples, _ = hmc_and_constrained(run_dir, rm, hmc_samples, need_con=False)
@@ -1720,12 +1950,12 @@ def main():
     # separately -- four decompressions of what can be a >250MB file (~1.5s each on the
     # largest run to date).
     t0 = time.perf_counter()
-    hmc_ckpt = load_checkpoint(run_dir, "hmc")
+    hmc_ckpt = load_checkpoint(run_dir, "hmc", rm)
     hmc_samples = None if hmc_ckpt is None else np.asarray(hmc_ckpt["samples"])
     shape_note = "" if hmc_samples is None else f" {hmc_samples.shape}"
     print(f"[timing] load hmc.npz: {time.perf_counter() - t0:.1f}s{shape_note}")
 
-    z_unc, label = point_estimate(run_dir, hmc_samples=hmc_samples)
+    z_unc, label = point_estimate(run_dir, hmc_samples=hmc_samples, rm=rm)
     print(f"Point estimate: {label}")
 
     t0 = time.perf_counter()

@@ -40,7 +40,7 @@ def main():
 
     rm = diagnose.rebuild_model(run_dir, lens=args.lens, quiet=True)
 
-    hmc = diagnose.load_checkpoint(run_dir, "hmc")
+    hmc = diagnose.load_checkpoint(run_dir, "hmc", rm)
     if hmc is None:
         raise FileNotFoundError(f"No hmc.npz in {run_dir}")
     samples = np.asarray(hmc["samples"])  # (n_chains, n_steps, n_params)

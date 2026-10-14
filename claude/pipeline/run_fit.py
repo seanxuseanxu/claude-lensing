@@ -313,6 +313,17 @@ def main():
         help="Upper bound of the lens-light n_sersic Uniform prior (n_lens_light=1 only)",
     )
     parser.add_argument(
+        "--mass-prior-version",
+        type=int,
+        default=priors.MASS_PRIOR_VERSION,
+        choices=sorted(priors._MASS_PRIOR_BUILDERS),
+        help="Versioned support for the host EPL prior. 1 (default) leaves the "
+             "ellipticity e1/e2 unbounded, as every run before 2026-10-03 was fitted. "
+             "2 truncates them to the inscribed square of gigalens' soft q >= 0.2 "
+             "plausibility floor, which is what DESI234 round 4 uses after r3_fg fitted "
+             "q = 0.143.",
+    )
+    parser.add_argument(
         "--foreground",
         action="store_true",
         help="Add the SIS + Sersic foreground-interloper pair from the lens config's "
@@ -395,6 +406,7 @@ def main():
         n_source=args.n_source,
         n_lens_light=args.n_lens_light,
         lens_light_n_max=args.lens_light_n_max,
+        mass_prior_version=args.mass_prior_version,
         foreground=cfg.foreground_prior if args.foreground else None,
     )
     param_names = list(model.z_param_names)
@@ -459,6 +471,10 @@ def main():
         # silently produces wrong or shape-mismatched physical values.
         "foreground": bool(args.foreground),
         "foreground_prior_version": priors.FOREGROUND_PRIOR_VERSION if args.foreground else None,
+        # Which versioned support the host EPL used. v1 leaves e1/e2 unbounded; v2
+        # truncates them to gigalens' soft q >= 0.2 plausibility floor. Recorded for the
+        # same reason as every other *_prior_version: the support fixes the bijector.
+        "mass_prior_version": args.mass_prior_version,
     }
     print(f"Lens: {cfg.name}  ->  {out_dir}")
     print(f"JAX {jax.__version__}, devices: {jax.devices()}")

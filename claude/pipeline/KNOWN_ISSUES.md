@@ -447,6 +447,138 @@ measured all of it, and its `undersampling` module is what made the problem visi
 
 ---
 
+## 11. gigalens renamed its parameter paths, silently reordering every stored checkpoint — FIXED 2026-10-03
+
+**Every checkpoint this project wrote decoded to wrong physical values**, with no error, in
+every tool that reads one. DESI234's `r3_fg` read back as `theta_E = 231.93"`.
+
+**The dates are the whole story.** Upstream commit `cc5a078`, *"Put names in parameter keys;
+order z columns by derivation, not key text"*, is dated **2026-08-07**. Our editable checkout
+of nanolens pulled it on **2026-08-12** (`git reflog`: the 08-12 pull is the first that
+contains it; the 2026-09-25 pull, which earlier versions of this note wrongly blamed, merely
+also contains it). Every fit on all three systems finished by **2026-08-11**. So the entire
+run archive was written under the old order and is read under the new one — not some of it,
+all of it.
+
+The flat-`z` column order is *derived* from the scene (`CLAUDE.md`, "the scene API"), never
+declared. gigalens used to spell component indices into the parameter paths and sort them, so
+`planes/0/light/0/Ie` came first and lens *light* preceded lens *mass*. It now spells the
+scene's own keys and orders columns by **derivation** — planes in order; per plane geometry,
+mass, light; per component the profile's own declared parameter order — so
+`planes/lens/mass/host/theta_E` is column 0 and mass precedes light. Same model, same 36 or 46
+floats, different permutation — and an `.npz` of unconstrained samples carries no record of
+which order it is in.
+
+**This was not an oversight upstream, and that is worth stating plainly.** `cc5a078`'s message
+anticipates the exact hazard and argues the change *reduces* it: under the old scheme column
+order was the sorted order of the key text, so **any** key edit permuted `z` — including
+reordering a plane's `mass=[a, b]` list, which is a bit-identical physics no-op that "silently
+permuted every saved chain, MAP seed and covariance taken against it". Derivation order is the
+fix: a rename provably cannot move a column, and a reorder moves only what was reordered.
+Positional keys never avoided the hazard; they hid it behind an edit that looks innocent. The
+new scheme is the better one. What bit us is the one-time transition across it, with an archive
+of checkpoints that record no schema version.
+
+This is the hazard `rebuild_model`'s docstring already warned about, arriving by a route its
+guard did not cover: the `api: scene` check compares the *API*, and both sides are the scene API.
+Everything else was faithfully reconstructed — lens, prior versions, `supersample`, `mask_circles`
+— and the one unversioned thing, the column order, was the one that moved.
+
+**Why it was caught at all:** only because `theta_E = 231.93"` is impossible. The same run's
+`gamma` decoded to 1.42 against a recorded 2.95, and `q` to 0.939 against 0.143 — both wrong, both
+entirely plausible, neither self-announcing. A reader who looked only at `gamma` would have
+accepted it. **The published numbers were never wrong; they were computed before the rename. What
+broke was the ability to re-derive them**, which is most of what the diagnostics are for.
+
+**The fix.** `run_fit.save_map_checkpoint` has always stored `model.z_param_names` verbatim in
+`map.npz`, so each run is self-describing. `diagnose.column_permutation` resolves the stored names
+against the rebuilt model's **by name** — reducing today's key-named paths to the old index-named
+scheme and requiring the two sets to match exactly, so a mismatch raises rather than permuting
+hopefully. `load_checkpoint(run_dir, name, rm)` applies it; `rm.column_perm` is `None` when the
+orders already agree, so new runs pay nothing. SVI's `scale_tril` is permuted as a covariance and
+re-factored, not shuffled — a permuted Cholesky factor is not triangular.
+
+Validated against numbers recorded *before* the rename, which nothing in today's code can
+retro-fit (`tests/test_column_permutation.py`):
+
+| run | recorded | decoded today |
+|---|---|---|
+| DESI234 `r3_fg` | `theta_E` 1.47259, `gamma` 2.9514, `q` 0.143 | 1.47259, 2.9514, 0.1436 |
+| DESI234 `r3_unmasked` | 1.53863, 2.1300, 0.943 | 1.53863, 2.1300, 0.9440 |
+| DESI238 `mclmc_long` | 1.478 ± 0.003, 1.800 | 1.47842, 1.7996 |
+| DESI257 `r3_unmasked` | 1.991 [1.989, 1.994], 1.986 | 1.99141, 1.9853 |
+
+All three systems' headline results reproduce. **DESI234's `q = 0.143` is confirmed, not an
+artefact**, so round 4's premise stands.
+
+Two further consequences:
+
+- **`diagnose.column`'s `"mass/0/theta_E"` idiom was broken by the same rename** and now raises
+  `KeyError` rather than mis-resolving — the good failure, but it broke `theta_E_check`,
+  `corner_plot` and `test_foreground_roundtrip` at HEAD. A numeric component index in a suffix is
+  now resolved *positionally* (the n-th component declared at that site), which is what the idiom
+  always meant. Not by hardcoding the key `host`: nothing makes that name the host's.
+- **Reading without `rm` is refused.** `point_estimate(run_dir)` raises when a run needs permuting,
+  rather than returning stored-order columns. The failure mode is silence, so the guard matters
+  more than the fix.
+- **`model.constrained(...)`'s structured output is keyed by name too**, so every
+  `params["planes"][0]["mass"][0]` broke with `KeyError: 0` — in `residual_figure`,
+  `render_source_plane`, `source_component_params` and `plot_source.py`. **Use
+  `model.component_params(params, plane, kind, j)`**, which gigalens documents as "the single
+  supported way to reach a component's params" (with `plane_params` and `kind_params` for the
+  intermediate levels). Do not index the tree.
+
+  Two traps make that worth obeying rather than reimplementing. The keys are the component's
+  *name* with a `str(index)` fallback when unnamed, which only `component_key` reproduces. And
+  the tree's order is **not** `model.planes`' order: on `r3_fg`, `params["planes"]` comes out
+  `{"source": ..., "lens": ...}`, reversed. A positional read there returns the wrong plane
+  **while raising nothing**, since both planes carry `light` — the deflector would be rendered
+  as the source. `docs/explanation/scene-design.md:106` warns against assuming that order
+  outright.
+
+  **I wrote my own `plane_params`/`nth` before checking, then deleted them.** They worked —
+  the swap to the library's accessors reproduced every number byte-for-byte (θ_E 1.47259, SIS
+  0.3702, χ²_ν 1.088, `plot_source`'s component-sum residual 4.768e-07) — but working is not
+  the standard. CLAUDE.md's rule is that a hand-rolled version of something the library
+  already has is unvalidated, and mine was also narrower: it had no unnamed-component
+  fallback. **Read `GIGALENS_INDEX.md` and `docs/` before writing the helper, not after.**
+
+**A separate, smaller finding, left open.** Recomputing a stored MAP vector's log posterior today
+gives a few nats less than the run recorded (`r3_fg` −11.7, DESI257 `r3_unmasked` −1.3), entirely
+in the prior + Jacobian term; the likelihood is unaffected. It is **not** a decode problem — the
+unpermuted vector scores −324,530 against a recorded 19,422, five orders of magnitude away, while
+the permuted one is within 12. Today's computation was checked and is correct: the `theta_E`
+LogNormal and `gamma` TruncatedNormal terms agree with `scipy.stats` to 1e-8, and the bijector's
+`forward_log_det_jacobian` agrees with a numerical `slogdet` of its Jacobian to 2e-7. So the
+*stored scalars* are stale, written under an older normalisation, and the current numbers are the
+trustworthy ones. gigalens added two opt-in reparameterisations after these runs
+(`unconstrain="gaussian"`, `e69c769`; `TruncatedDiskNormal`, `27cd141`), but `priors.py` uses
+neither, so neither explains it and the source is unattributed. It affects only MAP-vs-HMC nat
+comparisons *across* the rename — never a parameter value, never R̂/ESS, never χ²_ν.
+
+**gigalens already solves this for new runs, and we are not using it.** `gigalens.chains`
+provides `save_chain`/`load_chain`: the saver stores `z_param_names` beside the samples *and* a
+"physical witness" — a few decoded draws — and the loader checks both, so a column reorder
+raises and `load_chain(..., reorder=True)` migrates it by matching names. It also catches
+something `column_permutation` cannot: a **prior-support change**, which leaves every name
+intact while silently changing what the same `z` decodes to.
+
+It does not rescue the existing archive. Our checkpoints are plain `.npz` files holding
+`samples` (and `param_names` only in `map.npz`), not `save_chain` files, and `reorder=True`
+requires the two name *sets* to match — ours differ by scheme entirely
+(`planes/0/light/0/Ie` vs `planes/lens/mass/host/theta_E`), so it would raise. Hence
+`column_permutation`, which reduces today's names to the old scheme to make the match
+checkable. **That function is a migration for the pre-2026-08-12 archive and should not
+outlive it: `run_fit` should write `save_chain` files.** Logged as a next step below.
+
+**The general lesson.** A derived quantity is only reproducible if something records what it was
+derived from. Prior *versions* were versioned because the project's rule says a support change
+must be; the column order was not, because nobody chose it — it fell out of the library. The
+checkpoints survived only because `save_map_checkpoint` happened to store the names. **Record what
+you derived from, not just what you derived.**
+
+---
+
 ## Next steps, ordered by value
 
 Closed items are not repeated here; see the item bodies. What remains:
@@ -462,12 +594,20 @@ Closed items are not repeated here; see the item bodies. What remains:
    foreground component survives when the deflector is required to be round. Until it is
    answered, nothing about the interloper's mass is established.
 
-3. **Re-run `prior_posterior_tension` over every archived run on all three systems.** New as of
+3. **Write checkpoints with `gigalens.chains.save_chain`** (item 11). It stores the column
+   names and a decoded physical witness beside the samples, so a column reorder *and* a
+   prior-support change both raise on load instead of decoding silently to wrong values. Our
+   own `column_permutation` covers neither case for new runs and the second case not at all;
+   it exists only to migrate the pre-2026-08-12 archive, and should be retired once nothing
+   reads that archive. Cheap, and it closes the failure mode item 11 is about rather than
+   detecting it after the fact.
+
+4. **Re-run `prior_posterior_tension` over every archived run on all three systems.** New as of
    2026-08-10 and applied only to DESI234. DESI238's converged result and DESI257's rounds have
    never been checked for a parameter sitting far out on an unbounded prior, which is exactly
    the failure it was built to catch.
 
-4. **Isolate the MCLMC freeze** (item 2) by capturing the adapted step size and trajectory
+5. **Isolate the MCLMC freeze** (item 2) by capturing the adapted step size and trajectory
    length from a frozen run and a healthy one on the same lens. Run `mode_structure.py`-style
    within-cluster R-hat on any future R-hat failure before calling it multimodal.
 
@@ -489,7 +629,7 @@ Closed items are not repeated here; see the item bodies. What remains:
    gigalens seeds one from the SVI surrogate, so the implementation is already outside the
    paper.
 
-5. **Measure `--map-steps` per model variant** (item 6). The check reports the deficit; nothing
+6. **Measure `--map-steps` per model variant** (item 6). The check reports the deficit; nothing
    chooses the step count. 350 and 1500 both fell short at 36 parameters.
 
 ---
